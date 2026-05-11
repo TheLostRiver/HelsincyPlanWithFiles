@@ -237,7 +237,7 @@ python -m unittest tests.test_plan_doctor tests.test_hooks -v
 
 预期：全部通过。
 
-- [ ] **Step 4：提交**
+- [x] **Step 4：提交**
 
 ```powershell
 git add .codex/hooks/planning_state.py .codex/skills/planning-with-files/scripts/plan.py tests/test_plan_doctor.py tests/test_hooks.py
@@ -620,14 +620,14 @@ git commit -m "test: add project consistency checks"
 - 修改：`README.md`
 - 修改：`README.en.md`
 
-- [ ] **Step 1：新增对比表**
+- [x] **Step 1：新增对比表**
 
 必须说明：
 
 - 原版强在多平台生态。
 - Helsincy 版强在 Codex/Windows 可靠性、自动事实记录、诊断能力、统一命令体验。
 
-- [ ] **Step 2：新增 30 秒上手**
+- [x] **Step 2：新增 30 秒上手**
 
 命令示例：
 
@@ -637,7 +637,7 @@ python .codex\skills\planning-with-files\scripts\plan.py init "My Task"
 python .codex\skills\planning-with-files\scripts\plan.py status
 ```
 
-- [ ] **Step 3：运行全量测试**
+- [x] **Step 3：运行全量测试**
 
 ```powershell
 python -m unittest discover -v

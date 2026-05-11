@@ -8,6 +8,24 @@ Helsincy Plan With Files is a Codex skill + hook tool. It stores task plans, res
 
 Current version: `0.1.0`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
+## 30-Second Start
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py doctor
+python .codex\skills\planning-with-files\scripts\plan.py init "My Task"
+python .codex\skills\planning-with-files\scripts\plan.py status
+```
+
+## Compared With Upstream
+
+| Area | Upstream `planning-with-files` | Helsincy Plan With Files |
+|------|--------------------------------|--------------------------|
+| Positioning | Multi-platform Manus-style planning skill | Codex/Windows-first planning runtime |
+| Hook runtime | Shell-oriented scripts and platform mirrors | Python hook runtime for more reliable Windows behavior |
+| Progress records | Mostly reminds the agent to write notes | Hooks automatically record objective file changes |
+| Diagnostics | Requires users to inspect scripts and hook state | `plan.py doctor` diagnoses install, active plan, and attestation |
+| Security boundary | Canonical skill emphasizes delimiter and attestation | Delimiter, attestation, and findings opt-in framing are implemented in Codex hooks |
+
 ## Features
 
 - Injects the active plan into Codex context on session start and user prompt submit.
