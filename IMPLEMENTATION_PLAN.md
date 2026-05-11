@@ -468,7 +468,7 @@ git commit -m "feat: add external context capture"
 - 修改：`.codex/hooks/planning_state.py`
 - 新建：`tests/test_progress_records.py`
 
-- [ ] **Step 1：写操作类型测试**
+- [x] **Step 1：写操作类型测试**
 
 预期映射：
 
@@ -478,7 +478,7 @@ git commit -m "feat: add external context capture"
 - `Edit` -> `edit`
 - `Write` -> `write`
 
-- [ ] **Step 2：实现 ChangedPath**
+- [x] **Step 2：实现 ChangedPath**
 
 新增：
 
@@ -496,7 +496,7 @@ class ChangedPath:
   - `src/example.py` (update)
 ```
 
-- [ ] **Step 3：运行测试**
+- [x] **Step 3：运行测试**
 
 ```powershell
 python -m unittest tests.test_progress_records tests.test_hooks -v
@@ -529,7 +529,7 @@ python -m unittest tests.test_progress_records tests.test_hooks -v
 
 预期：全部通过。
 
-- [ ] **Step 4：提交**
+- [x] **Step 4：提交**
 
 ```powershell
 git add .codex/hooks/planning_state.py tests/test_progress_records.py tests/test_hooks.py
