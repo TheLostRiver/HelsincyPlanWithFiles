@@ -73,11 +73,13 @@ Initialize planning files with the bundled skill scripts, or create them manuall
 Then use Codex normally. After the agent edits files, the hook appends a record to the active `progress.md`:
 
 ```text
-### Hook Record: 2026-05-11 20:35:47
-- PostToolUse: apply_patch
-- Changed files:
+### Auto Record: 2026-05-11 20:35:47
+- Tool: apply_patch
+- Files:
   - `.codex/hooks/planning_state.py`
 ```
+
+By default, the hook records only objective facts: time, tool, result, and file paths. Set `PWF_LOG_COMMAND=1` to include a command summary for debugging.
 
 ## Repository Contents
 
@@ -99,7 +101,7 @@ __pycache__/
 *.pyc
 ```
 
-`.planning/` is runtime context. It often contains current task progress, command summaries, and research notes, so it should not be committed as reusable tool code.
+`.planning/` is runtime context. It often contains current task progress, auto records, and research notes, so it should not be committed as reusable tool code.
 
 ## Testing
 
@@ -121,7 +123,8 @@ The tests cover:
 ## Design Principles
 
 - Hooks automatically record only file writes and edits.
+- Hook records are objective facts, such as tool, time, result, and file paths.
+- Agent notes are interpretive notes, such as rationale, judgment, risk, and next steps. They are useful references but are not guaranteed to be fully accurate; verify them against hook facts and code.
 - External web, browser, image, and PDF context is summarized by the agent.
 - Planning files are injected as data, not executable instructions.
 - Hooks fail open: errors should not break the main Codex workflow.
-

@@ -90,6 +90,12 @@ Filesystem = Disk (persistent, unlimited)
 | `findings.md` | Research, discoveries | After ANY discovery |
 | `progress.md` | Session log, test results | Throughout session |
 
+## Objective Records vs Agent Notes
+
+Hooks may append objective auto records to `progress.md`: tool name, timestamp, result, and changed file paths. These records are factual audit entries.
+
+Agent-written notes are interpretive: rationale, conclusions, risks, and next steps. They are useful working memory, but they are not guaranteed to be fully accurate. When accuracy matters, verify agent notes against hook records, tests, and the actual code.
+
 ## Critical Rules
 
 ### 1. Create Plan First

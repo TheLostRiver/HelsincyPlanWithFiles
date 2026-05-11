@@ -199,6 +199,10 @@ def _command_summary(command: str, limit: int = 160) -> str:
     return compact[: limit - 3] + "..."
 
 
+def log_command_enabled() -> bool:
+    return os.environ.get("PWF_LOG_COMMAND", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _git_status(root: Path) -> list[str]:
     try:
         probe = subprocess.run(
@@ -238,16 +242,16 @@ def append_progress(root: Path, payload: dict[str, Any]) -> bool:
     command = _tool_command(payload)
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    lines = ["", f"### Hook Record: {timestamp}", f"- PostToolUse: {tool_name}"]
+    lines = ["", f"### Auto Record: {timestamp}", f"- Tool: {tool_name}"]
     if tool_failed(payload):
-        lines.append("- Tool result: failed")
+        lines.append("- Result: failed")
     if changed_paths:
-        lines.append("- Changed files:")
+        lines.append("- Files:")
         lines.extend(f"  - `{path}`" for path in changed_paths)
-    elif tool_name == "Bash":
-        lines.append("- Changed files: not detected from hook payload")
+    else:
+        lines.append("- Files: none detected")
 
-    if command:
+    if command and log_command_enabled():
         lines.append(f"- Command: `{_command_summary(command)}`")
 
     if tool_name == "Bash":

@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -9,8 +10,12 @@ import unittest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def run_hook(script_name, project_root, payload):
+def run_hook(script_name, project_root, payload, env=None):
     script = REPO_ROOT / ".codex" / "hooks" / script_name
+    run_env = dict(os.environ)
+    run_env.pop("PWF_LOG_COMMAND", None)
+    if env is not None:
+        run_env.update(env)
     result = subprocess.run(
         [sys.executable, str(script)],
         cwd=str(REPO_ROOT),
@@ -18,6 +23,7 @@ def run_hook(script_name, project_root, payload):
         text=True,
         capture_output=True,
         check=False,
+        env=run_env,
     )
     return result
 
@@ -68,8 +74,36 @@ class HookTests(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr)
             progress = (root / "progress.md").read_text(encoding="utf-8")
-            self.assertIn("PostToolUse: apply_patch", progress)
+            self.assertIn("### Auto Record:", progress)
+            self.assertIn("- Tool: apply_patch", progress)
+            self.assertIn("- Files:", progress)
             self.assertIn("src/example.py", progress)
+            self.assertNotIn("- Command:", progress)
+
+    def test_post_tool_use_records_command_only_when_debug_enabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+
+            payload = {
+                "hook_event_name": "PostToolUse",
+                "tool_name": "apply_patch",
+                "tool_input": {
+                    "command": "*** Begin Patch\n*** Update File: src/example.py\n@@\n-old\n+new\n*** End Patch\n"
+                },
+                "tool_response": {"success": True},
+            }
+
+            result = run_hook(
+                "post_tool_use.py",
+                root,
+                payload,
+                env={"PWF_LOG_COMMAND": "1"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            progress = (root / "progress.md").read_text(encoding="utf-8")
+            self.assertIn("- Command:", progress)
 
     def test_post_tool_use_records_edit_file_path(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -87,7 +121,7 @@ class HookTests(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr)
             progress = (root / "progress.md").read_text(encoding="utf-8")
-            self.assertIn("PostToolUse: Edit", progress)
+            self.assertIn("- Tool: Edit", progress)
             self.assertIn("Source/Edited.cpp", progress)
 
     def test_post_tool_use_records_write_file_path(self):
@@ -106,7 +140,7 @@ class HookTests(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr)
             progress = (root / "progress.md").read_text(encoding="utf-8")
-            self.assertIn("PostToolUse: Write", progress)
+            self.assertIn("- Tool: Write", progress)
             self.assertIn("Docs/NewFile.md", progress)
 
     def test_post_tool_use_does_not_mark_failed_apply_patch_as_changed(self):
@@ -127,9 +161,10 @@ class HookTests(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr)
             progress = (root / "progress.md").read_text(encoding="utf-8")
-            self.assertIn("PostToolUse: apply_patch", progress)
-            self.assertIn("Tool result: failed", progress)
-            self.assertNotIn("Changed files:\n  - `src/failed.py`", progress)
+            self.assertIn("- Tool: apply_patch", progress)
+            self.assertIn("- Result: failed", progress)
+            self.assertIn("- Files: none detected", progress)
+            self.assertNotIn("- `src/failed.py`", progress)
 
     def test_post_tool_use_ignores_bash(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -148,7 +183,7 @@ class HookTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stdout.strip(), "")
             progress = (root / "progress.md").read_text(encoding="utf-8")
-            self.assertNotIn("PostToolUse: Bash", progress)
+            self.assertNotIn("Tool: Bash", progress)
 
     def test_post_tool_use_resolves_active_plan_directory(self):
         with tempfile.TemporaryDirectory() as tmp:

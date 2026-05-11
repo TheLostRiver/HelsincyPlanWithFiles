@@ -73,11 +73,13 @@ your-project/
 然后正常使用 Codex。agent 修改文件后，hook 会自动在 active `progress.md` 中追加类似记录：
 
 ```text
-### Hook Record: 2026-05-11 20:35:47
-- PostToolUse: apply_patch
-- Changed files:
+### Auto Record: 2026-05-11 20:35:47
+- Tool: apply_patch
+- Files:
   - `.codex/hooks/planning_state.py`
 ```
+
+默认记录只包含客观事实：时间、工具、结果和文件路径。设置 `PWF_LOG_COMMAND=1` 后，hook 会额外记录命令摘要，主要用于调试。
 
 ## 仓库内容建议
 
@@ -99,7 +101,7 @@ __pycache__/
 *.pyc
 ```
 
-`.planning/` 是运行时上下文，通常包含当前任务进度、命令摘要和研究笔记，不适合作为工具代码提交。
+`.planning/` 是运行时上下文，通常包含当前任务进度、自动记录和研究笔记，不适合作为工具代码提交。
 
 ## 测试
 
@@ -121,7 +123,8 @@ python -m unittest discover -v
 ## 设计原则
 
 - hook 只自动记录文件写入和修改。
+- hook 自动记录的是客观事实，例如工具、时间、结果和文件路径。
+- agent 主动记录的是解释性笔记，例如原因、判断、风险和下一步；这些内容可供参考，但不保证绝对准确，需要结合事实日志和实际代码核对。
 - 外部网页、浏览器、图片、PDF 等上下文由 agent 主动总结。
 - planning 文件作为数据注入，不作为指令执行。
 - hook fail-open：出现异常时不应破坏 Codex 主流程。
-
