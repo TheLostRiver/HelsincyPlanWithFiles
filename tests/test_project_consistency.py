@@ -35,6 +35,15 @@ class ProjectConsistencyTests(unittest.TestCase):
         self.assertIn("attestation", readme_cn)
         self.assertIn("attestation", readme_en)
 
+    def test_readmes_link_chinese_localization_plan(self):
+        readme_cn = read_text("README.md")
+        readme_en = read_text("README.en.md")
+        plan = REPO_ROOT / "docs" / "CHINESE_LOCALIZATION_PLAN.md"
+
+        self.assertTrue(plan.is_file())
+        self.assertIn("docs/CHINESE_LOCALIZATION_PLAN.md", readme_cn)
+        self.assertIn("docs/CHINESE_LOCALIZATION_PLAN.md", readme_en)
+
     def test_hooks_json_references_existing_hook_files(self):
         hooks = json.loads(read_text(".codex/hooks.json"))
         commands = collect_commands(hooks)

@@ -8,6 +8,10 @@ Helsincy Plan With Files is a Codex skill + hook tool. It stores task plans, res
 
 Current version: `0.1.0`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
+## Project Plans
+
+- [Chinese Localization Plan](docs/CHINESE_LOCALIZATION_PLAN.md): plans the in-repo Chinese language mode, Chinese templates, Chinese CLI/hook messages, and the future `v0.2.0` release path.
+
 ## 30-Second Start
 
 ```powershell
