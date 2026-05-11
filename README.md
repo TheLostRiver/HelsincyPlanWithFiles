@@ -4,6 +4,10 @@
 
 Helsincy Plan With Files 是一个用于 Codex 的 skill + hook 工具。它把任务计划、研究发现和执行进度保存在项目本地文件中，让 agent 在长任务、上下文压缩或会话恢复后仍能继续工作。
 
+## 版本
+
+当前版本：`0.1.0`。变更记录见 [CHANGELOG.md](CHANGELOG.md)。
+
 ## 功能
 
 - 在会话开始和用户提交提示时，把当前计划注入为 Codex 上下文。

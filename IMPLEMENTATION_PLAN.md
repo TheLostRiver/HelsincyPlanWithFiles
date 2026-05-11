@@ -550,7 +550,7 @@ git commit -m "feat: enrich objective progress records"
 - 修改：`README.md`
 - 修改：`README.en.md`
 
-- [ ] **Step 1：创建版本文件**
+- [x] **Step 1：创建版本文件**
 
 内容：
 
@@ -558,7 +558,7 @@ git commit -m "feat: enrich objective progress records"
 0.1.0
 ```
 
-- [ ] **Step 2：创建 changelog**
+- [x] **Step 2：创建 changelog**
 
 首个版本记录包含：
 
@@ -568,7 +568,7 @@ git commit -m "feat: enrich objective progress records"
 - opt-in hash attestation。
 - bilingual README。
 
-- [ ] **Step 3：README 链接 changelog**
+- [x] **Step 3：README 链接 changelog**
 
 中英文 README 都增加简短 Version 小节。
 

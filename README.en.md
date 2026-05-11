@@ -4,6 +4,10 @@
 
 Helsincy Plan With Files is a Codex skill + hook tool. It stores task plans, research findings, and progress logs as local project files so an agent can keep working after long tasks, context compaction, or session recovery.
 
+## Version
+
+Current version: `0.1.0`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+
 ## Features
 
 - Injects the active plan into Codex context on session start and user prompt submit.
