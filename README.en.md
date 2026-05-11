@@ -95,7 +95,6 @@ Recommended to ignore:
 
 ```text
 .planning/
-docs/superpowers/
 __pycache__/
 *.pyc
 ```

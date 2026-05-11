@@ -95,7 +95,6 @@ README.en.md
 
 ```text
 .planning/
-docs/superpowers/
 __pycache__/
 *.pyc
 ```
