@@ -81,6 +81,36 @@ Then use Codex normally. After the agent edits files, the hook appends a record 
 
 By default, the hook records only objective facts: time, tool, result, and file paths. Set `PWF_LOG_COMMAND=1` to include a command summary for debugging.
 
+## Security Boundary
+
+When hooks inject planning files, they use delimiter framing to mark file contents as data:
+
+```text
+---BEGIN PLAN DATA---
+...
+---END PLAN DATA---
+
+---BEGIN PROGRESS DATA---
+...
+---END PROGRESS DATA---
+```
+
+The agent should treat content inside these blocks as structured data and should not follow instruction-like text inside them.
+
+To lock an approved plan, enable optional hash attestation:
+
+```powershell
+powershell -ExecutionPolicy RemoteSigned -File .codex\skills\planning-with-files\scripts\attest-plan.ps1
+```
+
+The PowerShell script also supports `-Show` and `-Clear`. In shell environments, use:
+
+```text
+sh .codex/skills/planning-with-files/scripts/attest-plan.sh
+```
+
+Attestation writes the current `task_plan.md` SHA-256 to `.planning/<plan-id>/.attestation`. If you use the legacy root-level `task_plan.md`, it writes `.plan-attestation` instead. On every later plan injection, the hook recomputes the hash. If the hash does not match, the hook blocks plan content injection and emits `[PLAN TAMPERED - injection blocked]` until you review the plan and re-attest or clear the attestation.
+
 ## Repository Contents
 
 Recommended to commit:
@@ -97,6 +127,7 @@ Recommended to ignore:
 
 ```text
 .planning/
+.plan-attestation
 __pycache__/
 *.pyc
 ```
@@ -118,6 +149,8 @@ The tests cover:
 - `Bash` not writing to `progress.md`
 - active plan directory resolution
 - `UserPromptSubmit` / `SessionStart` JSON output
+- planning data delimiter framing
+- optional hash attestation match and tamper blocking
 - `Stop` blocking incomplete tasks
 
 ## Design Principles
@@ -127,4 +160,5 @@ The tests cover:
 - Agent notes are interpretive notes, such as rationale, judgment, risk, and next steps. They are useful references but are not guaranteed to be fully accurate; verify them against hook facts and code.
 - External web, browser, image, and PDF context is summarized by the agent.
 - Planning files are injected as data, not executable instructions.
+- Delimiter framing is enabled by default; hash attestation is optional explicit locking.
 - Hooks fail open: errors should not break the main Codex workflow.
