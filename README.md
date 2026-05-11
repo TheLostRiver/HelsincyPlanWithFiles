@@ -16,6 +16,19 @@ python .codex\skills\planning-with-files\scripts\plan.py init "My Task"
 python .codex\skills\planning-with-files\scripts\plan.py status
 ```
 
+## Agent Slash Commands
+
+仓库提供 `commands/` 目录中的 agent command prompt，可安装为 Codex slash commands。第一批命令都使用 `/plw-XXX` 命名：
+
+| 命令 | 作用 | 等价 CLI |
+|------|------|----------|
+| `/plw-doctor` | 诊断 hook、active plan 和 attestation 状态 | `plan.py doctor` |
+| `/plw-init` | 创建新的 planning 任务 | `plan.py init <task name>` |
+| `/plw-status` | 查看当前 active plan 状态 | `plan.py status` |
+| `/plw-switch` | 查看或切换 active plan | `plan.py switch [plan-id]` |
+| `/plw-attest` | 创建、查看或清除计划 hash attestation | `plan.py attest [--show or --clear]` |
+| `/plw-capture` | 把网页、浏览器、图片、PDF、文件或笔记上下文写入 `findings.md` | `plan.py capture ...` |
+
 ## 与原版对比
 
 | 方向 | 原版 `planning-with-files` | Helsincy Plan With Files |
@@ -145,6 +158,7 @@ attestation 会把当前 `task_plan.md` 的 SHA-256 写入 `.planning/<plan-id>/
 
 ```text
 .codex/
+commands/
 tests/
 README.md
 README.en.md

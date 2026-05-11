@@ -16,6 +16,19 @@ python .codex\skills\planning-with-files\scripts\plan.py init "My Task"
 python .codex\skills\planning-with-files\scripts\plan.py status
 ```
 
+## Agent Slash Commands
+
+The repository includes agent command prompts in `commands/`. They can be installed as Codex slash commands. The first batch uses the `/plw-XXX` naming pattern:
+
+| Command | Purpose | Equivalent CLI |
+|---------|---------|----------------|
+| `/plw-doctor` | Diagnose hooks, active plan, and attestation state | `plan.py doctor` |
+| `/plw-init` | Create a new planning task | `plan.py init <task name>` |
+| `/plw-status` | Show the current active plan status | `plan.py status` |
+| `/plw-switch` | Show or switch the active plan | `plan.py switch [plan-id]` |
+| `/plw-attest` | Create, show, or clear plan hash attestation | `plan.py attest [--show or --clear]` |
+| `/plw-capture` | Save web, browser, image, PDF, file, or note context to `findings.md` | `plan.py capture ...` |
+
 ## Compared With Upstream
 
 | Area | Upstream `planning-with-files` | Helsincy Plan With Files |
@@ -145,6 +158,7 @@ Recommended to commit:
 
 ```text
 .codex/
+commands/
 tests/
 README.md
 README.en.md

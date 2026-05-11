@@ -7,4 +7,5 @@
 - Added delimiter framing for injected plan, progress, and opt-in findings data.
 - Added opt-in SHA-256 plan attestation with tamper blocking.
 - Added `plan.py doctor`, `status`, `init`, `switch`, `attest`, and `capture` commands.
+- Added `/plw-*` agent slash command prompts for the planning CLI.
 - Added bilingual README files for Chinese and English users.
