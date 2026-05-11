@@ -1,4 +1,5 @@
 .planning/
+.plan-attestation
 docs/superpowers/
 __pycache__/
 *.pyc
@@ -6,4 +7,3 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .coverage
-
