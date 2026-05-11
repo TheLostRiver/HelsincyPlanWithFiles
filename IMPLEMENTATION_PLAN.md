@@ -428,7 +428,7 @@ python -m unittest tests.test_findings_capture -v
 - 修改：`.codex/hooks/planning_state.py`
 - 修改：`tests/test_hooks.py`
 
-- [ ] **Step 1：写 hook 测试**
+- [x] **Step 1：写 hook 测试**
 
 预期行为：
 
@@ -437,11 +437,11 @@ python -m unittest tests.test_findings_capture -v
 - findings 使用 `---BEGIN FINDINGS DATA---` / `---END FINDINGS DATA---`。
 - header 明确说明 findings 可能包含不可信外部内容。
 
-- [ ] **Step 2：实现 opt-in 注入**
+- [x] **Step 2：实现 opt-in 注入**
 
 只读 `findings.md` 尾部固定行数，例如 20 行。
 
-- [ ] **Step 3：运行测试**
+- [x] **Step 3：运行测试**
 
 ```powershell
 python -m unittest tests.test_hooks tests.test_findings_capture -v
@@ -645,7 +645,7 @@ python -m unittest discover -v
 
 预期：全部通过。
 
-- [ ] **Step 4：提交**
+- [x] **Step 4：提交**
 
 ```powershell
 git add README.md README.en.md

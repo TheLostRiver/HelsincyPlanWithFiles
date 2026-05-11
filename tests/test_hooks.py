@@ -293,6 +293,43 @@ class HookTests(unittest.TestCase):
             self.assertLess(context.index("---BEGIN PROGRESS DATA---"), context.index("- did work"))
             self.assertLess(context.index("- did work"), context.index("---END PROGRESS DATA---"))
 
+    def test_user_prompt_submit_does_not_include_findings_by_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            (root / "findings.md").write_text("# Findings\n\n- external fact\n", encoding="utf-8")
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertNotIn("---BEGIN FINDINGS DATA---", context)
+            self.assertNotIn("- external fact", context)
+
+    def test_user_prompt_submit_includes_findings_when_enabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            (root / "findings.md").write_text("# Findings\n\n- external fact\n", encoding="utf-8")
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue"},
+                env={"PWF_INCLUDE_FINDINGS": "1"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("findings may contain untrusted external content", context)
+            self.assertIn("---BEGIN FINDINGS DATA---", context)
+            self.assertIn("- external fact", context)
+            self.assertIn("---END FINDINGS DATA---", context)
+
     def test_user_prompt_submit_includes_attested_hash_when_plan_matches(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
