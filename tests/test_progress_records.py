@@ -48,6 +48,26 @@ def write_plan(root):
     (root / "findings.md").write_text("# Findings\n\n", encoding="utf-8")
 
 
+def write_plan_without_current_phase(root):
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "task_plan.md").write_text(
+        "\n".join(
+            [
+                "# Task Plan: No Phase",
+                "",
+                "## Phases",
+                "",
+                "### Phase 1: Test",
+                "- **Status:** in_progress",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (root / "progress.md").write_text("# Progress Log\n\n", encoding="utf-8")
+    (root / "findings.md").write_text("# Findings\n\n", encoding="utf-8")
+
+
 class ProgressRecordTests(unittest.TestCase):
     def test_apply_patch_records_operation_types(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -116,6 +136,46 @@ class ProgressRecordTests(unittest.TestCase):
             progress = (root / "progress.md").read_text(encoding="utf-8")
             self.assertIn("- `Source/Edited.cpp` (edit)", progress)
             self.assertIn("- `Docs/NewFile.md` (write)", progress)
+
+    def test_auto_record_includes_current_phase_when_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+
+            result = run_hook(
+                "post_tool_use.py",
+                root,
+                {
+                    "hook_event_name": "PostToolUse",
+                    "tool_name": "Edit",
+                    "tool_input": {"file_path": "Source/Edited.cpp"},
+                    "tool_response": {"success": True},
+                },
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            progress = (root / "progress.md").read_text(encoding="utf-8")
+            self.assertIn("- Phase: Phase 1", progress)
+
+    def test_auto_record_omits_phase_when_current_phase_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan_without_current_phase(root)
+
+            result = run_hook(
+                "post_tool_use.py",
+                root,
+                {
+                    "hook_event_name": "PostToolUse",
+                    "tool_name": "Edit",
+                    "tool_input": {"file_path": "Source/Edited.cpp"},
+                    "tool_response": {"success": True},
+                },
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            progress = (root / "progress.md").read_text(encoding="utf-8")
+            self.assertNotIn("- Phase:", progress)
 
 
 if __name__ == "__main__":

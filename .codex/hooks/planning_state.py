@@ -109,6 +109,21 @@ def read_tail(path: Path, limit: int) -> str:
     return "\n".join(lines[-limit:])
 
 
+def current_phase(path: Path) -> str:
+    if not path.is_file():
+        return ""
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    for index, line in enumerate(lines):
+        if line.strip() != "## Current Phase":
+            continue
+        for value in lines[index + 1 :]:
+            phase = value.strip()
+            if phase:
+                return phase
+        return ""
+    return ""
+
+
 def _data_block(name: str, content: str) -> str:
     lines = [f"---BEGIN {name} DATA---"]
     text = content.rstrip()
@@ -371,6 +386,9 @@ def append_progress(root: Path, payload: dict[str, Any]) -> bool:
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     lines = ["", f"### Auto Record: {timestamp}", f"- Tool: {tool_name}"]
+    phase = current_phase(paths.task_plan)
+    if phase:
+        lines.append(f"- Phase: {phase}")
     if tool_failed(payload):
         lines.append("- Result: failed")
     if changed_paths:

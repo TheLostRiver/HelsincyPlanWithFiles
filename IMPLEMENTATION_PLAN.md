@@ -510,18 +510,18 @@ python -m unittest tests.test_progress_records tests.test_hooks -v
 - 修改：`.codex/hooks/planning_state.py`
 - 修改：`tests/test_progress_records.py`
 
-- [ ] **Step 1：写 phase 测试**
+- [x] **Step 1：写 phase 测试**
 
 预期：
 
 - `task_plan.md` 中 `## Current Phase` 后面是 `Phase 3` 时，auto record 包含 `- Phase: Phase 3`。
 - 没有 current phase 时不输出 phase 行。
 
-- [ ] **Step 2：实现简单解析器**
+- [x] **Step 2：实现简单解析器**
 
 只从 `task_plan.md` 读取，不从 progress notes 推断。
 
-- [ ] **Step 3：运行测试**
+- [x] **Step 3：运行测试**
 
 ```powershell
 python -m unittest tests.test_progress_records tests.test_hooks -v
@@ -572,7 +572,7 @@ git commit -m "feat: enrich objective progress records"
 
 中英文 README 都增加简短 Version 小节。
 
-- [ ] **Step 4：提交**
+- [x] **Step 4：提交**
 
 ```powershell
 git add VERSION CHANGELOG.md README.md README.en.md
