@@ -328,6 +328,36 @@ def attest(root: Path, show: bool = False, clear: bool = False) -> int:
     return 0
 
 
+def capture(root: Path, kind: str, source: str, summary: str, trust: str = "untrusted") -> int:
+    paths = planning_state.planning_paths(root)
+    if paths is None:
+        print("No active plan found. Create or switch to a plan before capturing external context.")
+        return 1
+
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    block = "\n".join(
+        [
+            "",
+            f"## External Context: {timestamp}",
+            "",
+            "---BEGIN EXTERNAL CONTEXT DATA---",
+            f"- Kind: {kind}",
+            f"- Source: {source}",
+            f"- Trust: {trust}",
+            f"- Summary: {summary}",
+            "---END EXTERNAL CONTEXT DATA---",
+            "",
+        ]
+    )
+    paths.findings.parent.mkdir(parents=True, exist_ok=True)
+    with paths.findings.open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write(block)
+
+    print(f"captured external context: {kind}")
+    print(f"findings: {paths.findings}")
+    return 0
+
+
 def main(argv: Iterable[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="plan.py")
     parser.add_argument("--root", default=".", help="Project root to inspect")
@@ -348,6 +378,12 @@ def main(argv: Iterable[str] | None = None) -> int:
     attest_group.add_argument("--show", action="store_true")
     attest_group.add_argument("--clear", action="store_true")
 
+    capture_parser = subparsers.add_parser("capture", help="Append external context to findings.md")
+    capture_parser.add_argument("--kind", required=True, choices=["web", "browser", "image", "pdf", "file", "note"])
+    capture_parser.add_argument("--source", required=True)
+    capture_parser.add_argument("--summary", required=True)
+    capture_parser.add_argument("--trust", default="untrusted")
+
     args = parser.parse_args(list(argv) if argv is not None else None)
     root = Path(args.root).resolve()
 
@@ -361,6 +397,8 @@ def main(argv: Iterable[str] | None = None) -> int:
         return switch(root, args.plan_id)
     if args.command == "attest":
         return attest(root, show=args.show, clear=args.clear)
+    if args.command == "capture":
+        return capture(root, args.kind, args.source, args.summary, trust=args.trust)
     return 2
 
 

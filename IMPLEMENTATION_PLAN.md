@@ -390,7 +390,7 @@ git commit -m "feat: add unified plan commands"
 - 修改：`.codex/skills/planning-with-files/scripts/plan.py`
 - 新建：`tests/test_findings_capture.py`
 
-- [ ] **Step 1：写 capture 测试**
+- [x] **Step 1：写 capture 测试**
 
 预期行为：
 
@@ -399,7 +399,7 @@ git commit -m "feat: add unified plan commands"
 - 记录时间、kind、source、trust、summary。
 - 内容用 `---BEGIN EXTERNAL CONTEXT DATA---` / `---END EXTERNAL CONTEXT DATA---` 包起来。
 
-- [ ] **Step 2：实现记录格式**
+- [x] **Step 2：实现记录格式**
 
 追加格式：
 
@@ -414,7 +414,7 @@ git commit -m "feat: add unified plan commands"
 ---END EXTERNAL CONTEXT DATA---
 ```
 
-- [ ] **Step 3：运行测试**
+- [x] **Step 3：运行测试**
 
 ```powershell
 python -m unittest tests.test_findings_capture -v
@@ -449,7 +449,7 @@ python -m unittest tests.test_hooks tests.test_findings_capture -v
 
 预期：全部通过。
 
-- [ ] **Step 4：提交**
+- [x] **Step 4：提交**
 
 ```powershell
 git add .codex/hooks/planning_state.py .codex/skills/planning-with-files/scripts/plan.py tests/test_hooks.py tests/test_findings_capture.py
