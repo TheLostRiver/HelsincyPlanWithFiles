@@ -584,7 +584,7 @@ git commit -m "docs: add release governance"
 **文件：**
 - 新建：`tests/test_project_consistency.py`
 
-- [ ] **Step 1：写一致性测试**
+- [x] **Step 1：写一致性测试**
 
 检查：
 
@@ -593,7 +593,7 @@ git commit -m "docs: add release governance"
 - `.codex/hooks.json` 引用的 hook 文件都存在。
 - `VERSION` 的内容出现在 `CHANGELOG.md`。
 
-- [ ] **Step 2：运行测试**
+- [x] **Step 2：运行测试**
 
 ```powershell
 python -m unittest tests.test_project_consistency -v
@@ -601,7 +601,7 @@ python -m unittest tests.test_project_consistency -v
 
 预期：通过。
 
-- [ ] **Step 3：提交**
+- [x] **Step 3：提交**
 
 ```powershell
 git add tests/test_project_consistency.py

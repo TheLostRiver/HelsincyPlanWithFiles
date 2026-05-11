@@ -59,6 +59,12 @@ Make sure Codex hooks are enabled, and approve the hooks when Codex asks for tru
 
 ## Usage
 
+Run diagnostics first to confirm hook, active plan, and attestation state:
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py doctor
+```
+
 Initialize planning files with the bundled skill scripts, or create them manually:
 
 ```text

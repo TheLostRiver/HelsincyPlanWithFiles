@@ -59,6 +59,12 @@ your-project/
 
 ## 使用
 
+先运行诊断，确认 hook、active plan 和 attestation 状态正常：
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py doctor
+```
+
 初始化 planning 文件可以使用 skill 自带脚本，或者手动创建：
 
 ```text
