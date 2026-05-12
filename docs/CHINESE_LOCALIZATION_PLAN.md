@@ -58,7 +58,7 @@ python .codex\skills\planning-with-files\scripts\plan.py status --lang zh-CN
 | `.codex/skills/planning-with-files/scripts/plan.py` | `doctor/status/init/switch/attest/capture` 中文输出 |
 | `.codex/skills/planning-with-files/templates/*.md` | 增加中文模板或模板选择机制 |
 | `.codex/skills/planning-with-files/SKILL.md` | 增加中文使用说明和 `PWF_LANG` 约定 |
-| `.codex/skills/plw-*/SKILL.md` | 补充中文 agent 指令，保持 slash command 名称不变 |
+| `.codex/skills/pwf-*/SKILL.md` | 补充中文 agent 指令，保持 slash command 名称不变 |
 | `README.md` / `README.en.md` | 说明中文模式和兼容边界 |
 | `CHANGELOG.md` / `VERSION` | 发布中文化版本，例如 `0.2.0` |
 | `tests/` | 覆盖中文输出、英文回退和 README 链接 |
@@ -272,13 +272,13 @@ git commit -m "feat: add chinese planning templates"
 ### Task 4: Slash Commands 中文化
 
 **Files:**
-- Modify: `.codex/skills/plw-doctor/SKILL.md`
-- Modify: `.codex/skills/plw-init/SKILL.md`
-- Modify: `.codex/skills/plw-status/SKILL.md`
-- Modify: `.codex/skills/plw-switch/SKILL.md`
-- Modify: `.codex/skills/plw-attest/SKILL.md`
-- Modify: `.codex/skills/plw-capture/SKILL.md`
-- Test: `tests/test_plw_commands.py`
+- Modify: `.codex/skills/pwf-doctor/SKILL.md`
+- Modify: `.codex/skills/pwf-init/SKILL.md`
+- Modify: `.codex/skills/pwf-status/SKILL.md`
+- Modify: `.codex/skills/pwf-switch/SKILL.md`
+- Modify: `.codex/skills/pwf-attest/SKILL.md`
+- Modify: `.codex/skills/pwf-capture/SKILL.md`
+- Test: `tests/test_pwf_commands.py`
 
 - [ ] **Step 1: 写失败测试**
 
@@ -293,7 +293,7 @@ def test_command_files_include_chinese_guidance(self):
 - [ ] **Step 2: 运行测试确认失败**
 
 ```powershell
-python -m unittest tests.test_plw_commands -v
+python -m unittest tests.test_pwf_commands -v
 ```
 
 预期：失败，因为当前命令文件是英文提示。
@@ -309,7 +309,7 @@ python -m unittest tests.test_plw_commands -v
 - [ ] **Step 4: 运行测试确认通过**
 
 ```powershell
-python -m unittest tests.test_plw_commands -v
+python -m unittest tests.test_pwf_commands -v
 ```
 
 预期：全部通过。
@@ -317,7 +317,7 @@ python -m unittest tests.test_plw_commands -v
 - [ ] **Step 5: 提交**
 
 ```powershell
-git add .codex/skills/plw-* tests/test_plw_commands.py
+git add .codex/skills/pwf-* tests/test_pwf_commands.py
 git commit -m "docs: add chinese slash command guidance"
 ```
 
@@ -382,7 +382,7 @@ python .codex\skills\planning-with-files\scripts\plan.py status
 - Added Chinese language mode with `PWF_LANG=zh-CN`.
 - Added Chinese hook and CLI messages.
 - Added Chinese planning templates.
-- Added Chinese guidance for `/plw-*` commands.
+- Added Chinese guidance for `/pwf-*` commands.
 ```
 
 - [ ] **Step 5: 运行完整测试**
@@ -407,7 +407,7 @@ git commit -m "docs: document chinese language mode"
 - `PWF_LANG=zh-CN` 时，`plan.py status`、`doctor`、`init`、`switch`、`attest`、`capture` 的用户可见输出有中文路径。
 - `PWF_LANG` 未设置时，现有英文测试和行为保持通过。
 - `progress.md` auto record 的字段名、delimiter、hash、文件路径格式保持稳定。
-- `.codex/skills/plw-*/SKILL.md` 同时支持中文用户和英文用户理解。
+- `.codex/skills/pwf-*/SKILL.md` 同时支持中文用户和英文用户理解。
 - README 中英文都说明中文模式。
 - 完整测试 `python -m unittest discover -v` 通过。
 

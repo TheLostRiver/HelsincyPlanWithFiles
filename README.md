@@ -22,18 +22,18 @@ python .codex\skills\planning-with-files\scripts\plan.py status
 
 ## Agent Slash Commands
 
-仓库提供 `.codex/skills/plw-*` 本地 user-invocable skill wrapper。复制 `.codex/` 到目标项目后，这些命令会像 `/planning-with-files` 一样随项目生效，不需要安装到用户全局 `.codex`，卸载时删除项目内 `.codex/` 即可。
+仓库提供 `.codex/skills/pwf-*` 本地 user-invocable skill wrapper。复制 `.codex/` 到目标项目后，这些命令会像 `/planning-with-files` 一样随项目生效，不需要安装到用户全局 `.codex`，卸载时删除项目内 `.codex/` 即可。
 
-第一批命令都使用 `/plw-XXX` 命名，注意前缀是 `plw`，不是 `pwl`：
+第一批命令都使用 `/pwf-XXX` 命名，`pwf` 代表 planning with files：
 
 | 命令 | 作用 | 等价 CLI |
 |------|------|----------|
-| `/plw-doctor` | 诊断 hook、active plan 和 attestation 状态 | `plan.py doctor` |
-| `/plw-init` | 创建新的 planning 任务 | `plan.py init <task name>` |
-| `/plw-status` | 查看当前 active plan 状态 | `plan.py status` |
-| `/plw-switch` | 查看或切换 active plan | `plan.py switch [plan-id]` |
-| `/plw-attest` | 创建、查看或清除计划 hash attestation | `plan.py attest [--show or --clear]` |
-| `/plw-capture` | 把网页、浏览器、图片、PDF、文件或笔记上下文写入 `findings.md` | `plan.py capture ...` |
+| `/pwf-doctor` | 诊断 hook、active plan 和 attestation 状态 | `plan.py doctor` |
+| `/pwf-init` | 创建新的 planning 任务 | `plan.py init <task name>` |
+| `/pwf-status` | 查看当前 active plan 状态 | `plan.py status` |
+| `/pwf-switch` | 查看或切换 active plan | `plan.py switch [plan-id]` |
+| `/pwf-attest` | 创建、查看或清除计划 hash attestation | `plan.py attest [--show or --clear]` |
+| `/pwf-capture` | 把网页、浏览器、图片、PDF、文件或笔记上下文写入 `findings.md` | `plan.py capture ...` |
 
 ## 与原版对比
 

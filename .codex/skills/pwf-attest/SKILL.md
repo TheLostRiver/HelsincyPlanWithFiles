@@ -1,13 +1,13 @@
 ---
-name: plw-attest
-description: Lock, show, or clear plan hash attestation. Invoke with /plw-attest.
+name: pwf-attest
+description: Lock, show, or clear plan hash attestation. Invoke with /pwf-attest.
 user-invocable: true
 allowed-tools: "Bash"
 ---
 
-# /plw-attest
+# /pwf-attest
 
-Use any text after `/plw-attest` as optional attestation flags.
+Use any text after `/pwf-attest` as optional attestation flags.
 
 Run:
 

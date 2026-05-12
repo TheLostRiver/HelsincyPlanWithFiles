@@ -22,18 +22,18 @@ python .codex\skills\planning-with-files\scripts\plan.py status
 
 ## Agent Slash Commands
 
-The repository includes local user-invocable skill wrappers in `.codex/skills/plw-*`. After copying `.codex/` into a target project, these commands work like `/planning-with-files`; they do not need to be installed into the user-level `.codex`, so uninstalling is just removing the project-local `.codex/`.
+The repository includes local user-invocable skill wrappers in `.codex/skills/pwf-*`. After copying `.codex/` into a target project, these commands work like `/planning-with-files`; they do not need to be installed into the user-level `.codex`, so uninstalling is just removing the project-local `.codex/`.
 
-The first batch uses the `/plw-XXX` naming pattern. The prefix is `plw`, not `pwl`:
+The first batch uses the `/pwf-XXX` naming pattern. `pwf` means planning with files:
 
 | Command | Purpose | Equivalent CLI |
 |---------|---------|----------------|
-| `/plw-doctor` | Diagnose hooks, active plan, and attestation state | `plan.py doctor` |
-| `/plw-init` | Create a new planning task | `plan.py init <task name>` |
-| `/plw-status` | Show the current active plan status | `plan.py status` |
-| `/plw-switch` | Show or switch the active plan | `plan.py switch [plan-id]` |
-| `/plw-attest` | Create, show, or clear plan hash attestation | `plan.py attest [--show or --clear]` |
-| `/plw-capture` | Save web, browser, image, PDF, file, or note context to `findings.md` | `plan.py capture ...` |
+| `/pwf-doctor` | Diagnose hooks, active plan, and attestation state | `plan.py doctor` |
+| `/pwf-init` | Create a new planning task | `plan.py init <task name>` |
+| `/pwf-status` | Show the current active plan status | `plan.py status` |
+| `/pwf-switch` | Show or switch the active plan | `plan.py switch [plan-id]` |
+| `/pwf-attest` | Create, show, or clear plan hash attestation | `plan.py attest [--show or --clear]` |
+| `/pwf-capture` | Save web, browser, image, PDF, file, or note context to `findings.md` | `plan.py capture ...` |
 
 ## Compared With Upstream
 

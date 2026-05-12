@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- Converted `/plw-*` commands into project-local user-invocable skill wrappers under `.codex/skills/plw-*`.
+- Renamed the project-local command prefix from `/plw-*` to `/pwf-*`.
+- Converted `/pwf-*` commands into project-local user-invocable skill wrappers under `.codex/skills/pwf-*`.
 
 ## 0.1.0 - 2026-05-11
 

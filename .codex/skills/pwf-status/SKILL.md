@@ -1,11 +1,11 @@
 ---
-name: plw-status
-description: Show the active Helsincy Plan With Files task status. Invoke with /plw-status.
+name: pwf-status
+description: Show the active Helsincy Plan With Files task status. Invoke with /pwf-status.
 user-invocable: true
 allowed-tools: "Bash"
 ---
 
-# /plw-status
+# /pwf-status
 
 Run:
 

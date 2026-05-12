@@ -11,12 +11,12 @@ INSTALL_COMMANDS_SCRIPT = (
 )
 
 COMMANDS = {
-    "plw-doctor": "doctor",
-    "plw-init": "init",
-    "plw-status": "status",
-    "plw-switch": "switch",
-    "plw-attest": "attest",
-    "plw-capture": "capture",
+    "pwf-doctor": "doctor",
+    "pwf-init": "init",
+    "pwf-status": "status",
+    "pwf-switch": "switch",
+    "pwf-attest": "attest",
+    "pwf-capture": "capture",
 }
 
 
@@ -24,7 +24,7 @@ def read_repo_text(path):
     return (REPO_ROOT / path).read_text(encoding="utf-8")
 
 
-class PlwCommandTests(unittest.TestCase):
+class PwfCommandTests(unittest.TestCase):
     def test_command_prompt_directories_are_not_used(self):
         self.assertFalse(
             LEGACY_COMMAND_DIR.exists(),
@@ -35,7 +35,7 @@ class PlwCommandTests(unittest.TestCase):
             "project .codex/commands is not the local user-invocable skill path",
         )
 
-    def test_plw_skill_wrappers_have_slash_command_metadata(self):
+    def test_pwf_skill_wrappers_have_slash_command_metadata(self):
         for command_name in COMMANDS:
             with self.subTest(command=command_name):
                 path = SKILL_ROOT / command_name / "SKILL.md"
@@ -47,7 +47,7 @@ class PlwCommandTests(unittest.TestCase):
                 self.assertIn("user-invocable: true", text)
                 self.assertIn(f"/{command_name}", text)
 
-    def test_plw_skill_wrappers_route_to_plan_cli(self):
+    def test_pwf_skill_wrappers_route_to_plan_cli(self):
         for command_name, subcommand in COMMANDS.items():
             with self.subTest(command=command_name):
                 text = read_repo_text(f".codex/skills/{command_name}/SKILL.md")
@@ -59,13 +59,13 @@ class PlwCommandTests(unittest.TestCase):
         readme_cn = read_repo_text("README.md")
         readme_en = read_repo_text("README.en.md")
 
-        self.assertIn(".codex/skills/plw-", readme_cn)
-        self.assertIn(".codex/skills/plw-", readme_en)
+        self.assertIn(".codex/skills/pwf-", readme_cn)
+        self.assertIn(".codex/skills/pwf-", readme_en)
         self.assertNotIn("install-commands.ps1", readme_cn)
         self.assertNotIn("install-commands.ps1", readme_en)
         self.assertFalse(INSTALL_COMMANDS_SCRIPT.exists())
 
-    def test_readmes_document_plw_commands(self):
+    def test_readmes_document_pwf_commands(self):
         readme_cn = read_repo_text("README.md")
         readme_en = read_repo_text("README.en.md")
 

@@ -1,13 +1,13 @@
 ---
-name: plw-init
-description: Create a new Helsincy Plan With Files task. Invoke with /plw-init.
+name: pwf-init
+description: Create a new Helsincy Plan With Files task. Invoke with /pwf-init.
 user-invocable: true
 allowed-tools: "Bash"
 ---
 
-# /plw-init
+# /pwf-init
 
-Use any text after `/plw-init` as the task name and options.
+Use any text after `/pwf-init` as the task name and options.
 
 If no task name was provided, ask the user for the task name. Otherwise run:
 

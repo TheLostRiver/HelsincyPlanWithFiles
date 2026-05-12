@@ -1,13 +1,13 @@
 ---
-name: plw-switch
-description: Show or switch the active Helsincy Plan With Files task. Invoke with /plw-switch.
+name: pwf-switch
+description: Show or switch the active Helsincy Plan With Files task. Invoke with /pwf-switch.
 user-invocable: true
 allowed-tools: "Bash"
 ---
 
-# /plw-switch
+# /pwf-switch
 
-Use any text after `/plw-switch` as the optional plan id.
+Use any text after `/pwf-switch` as the optional plan id.
 
 Run:
 

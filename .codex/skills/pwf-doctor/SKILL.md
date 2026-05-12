@@ -1,11 +1,11 @@
 ---
-name: plw-doctor
-description: Run Helsincy Plan With Files diagnostics. Invoke with /plw-doctor.
+name: pwf-doctor
+description: Run Helsincy Plan With Files diagnostics. Invoke with /pwf-doctor.
 user-invocable: true
 allowed-tools: "Bash"
 ---
 
-# /plw-doctor
+# /pwf-doctor
 
 Run:
 

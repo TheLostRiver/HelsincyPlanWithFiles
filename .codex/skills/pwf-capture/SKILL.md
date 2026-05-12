@@ -1,13 +1,13 @@
 ---
-name: plw-capture
-description: Capture external or visual context into findings.md. Invoke with /plw-capture.
+name: pwf-capture
+description: Capture external or visual context into findings.md. Invoke with /pwf-capture.
 user-invocable: true
 allowed-tools: "Bash"
 ---
 
-# /plw-capture
+# /pwf-capture
 
-Use any text after `/plw-capture` as the capture metadata.
+Use any text after `/pwf-capture` as the capture metadata.
 
 If kind, source, or summary is missing, ask the user for the missing fields. Otherwise run:
 
