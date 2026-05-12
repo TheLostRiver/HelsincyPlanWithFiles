@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.3 - 2026-05-12
 
 - Added `plan.py compact` and `/pwf-compact` to archive old objective auto records from `progress.md`.
 - Added compacted progress summary injection so long-running tasks keep bounded context without losing audit history.
