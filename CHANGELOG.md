@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2 - 2026-05-12
+
+- Expanded injected recent `progress.md` context from 20 lines to 80 lines so objective hook records are less likely to hide important recent file changes.
+- Added tests for the 80-line progress context window.
+- Added the progress compaction implementation plan for future `/pwf-compact` work.
+- Improved Chinese and English installation docs to start from Release zip, git clone, or source zip workflows.
+
 ## 0.1.1 - 2026-05-12
 
 - Deprecated `v0.1.0` and earlier releases. Users should upgrade to `v0.1.1` and use `/pwf-*` commands.
