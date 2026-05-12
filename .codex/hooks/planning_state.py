@@ -223,7 +223,7 @@ def render_prompt_context(root: Path) -> str:
         plan_context,
         "",
         "=== recent progress ===",
-        _data_block("PROGRESS", read_tail(paths.progress, 20)),
+        _data_block("PROGRESS", read_tail(paths.progress, 80)),
     ]
     if findings_injection_enabled():
         parts.extend(

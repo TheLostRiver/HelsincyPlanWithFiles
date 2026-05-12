@@ -293,6 +293,28 @@ class HookTests(unittest.TestCase):
             self.assertLess(context.index("---BEGIN PROGRESS DATA---"), context.index("- did work"))
             self.assertLess(context.index("- did work"), context.index("---END PROGRESS DATA---"))
 
+    def test_user_prompt_submit_includes_last_80_progress_lines(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            progress_lines = [f"- progress line {index:03d}" for index in range(1, 86)]
+            (root / "progress.md").write_text(
+                "# Progress Log\n\n" + "\n".join(progress_lines) + "\n",
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("- progress line 006", context)
+            self.assertIn("- progress line 085", context)
+            self.assertNotIn("- progress line 005", context)
+
     def test_user_prompt_submit_does_not_include_findings_by_default(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

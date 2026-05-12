@@ -21,7 +21,7 @@ if [ -f "$PLAN_FILE" ]; then
     head -50 "$PLAN_FILE"
     echo ""
     echo "=== recent progress ==="
-    tail -20 "$PROGRESS_FILE" 2>/dev/null
+    tail -80 "$PROGRESS_FILE" 2>/dev/null
     echo ""
     echo "[planning-with-files] Read findings.md for research context. Continue from the current phase."
 fi

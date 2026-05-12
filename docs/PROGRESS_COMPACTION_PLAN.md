@@ -36,13 +36,13 @@ tail -20 progress.md 2>/dev/null
 - Upstream Codex skill: `https://raw.githubusercontent.com/OthmanAdi/planning-with-files/master/.codex/skills/planning-with-files/SKILL.md`
 - Upstream changelog: `https://raw.githubusercontent.com/OthmanAdi/planning-with-files/master/CHANGELOG.md`
 
-我们当前版本已经与原版一样只注入最近进度：
+我们当前版本在原版基础上扩大了最近进度注入窗口：
 
-- `.codex/hooks/planning_state.py` 的 `read_tail(paths.progress, 20)`
+- `.codex/hooks/planning_state.py` 的 `read_tail(paths.progress, 80)`
 - `.codex/hooks/user_prompt_submit.py` 通过 `render_prompt_context()` 注入 bounded progress
 - `.codex/hooks/session_start.py` 复用同一套 prompt context
 
-因此本方案要解决的不是“当前 hook 全量注入 progress”，而是“长期使用后 `progress.md` 文件无限增长，维护和恢复成本变高”。
+这样比原版 `tail -20` 更适合本项目的客观 hook records；每条 auto record 通常有多行，80 行大约能覆盖最近 10 到 15 条普通记录。因此本方案要解决的不是“当前 hook 全量注入 progress”，而是“长期使用后 `progress.md` 文件无限增长，维护和恢复成本变高”。
 
 ## 2. 设计原则
 
@@ -211,7 +211,7 @@ No active plan found. Create or switch to a plan before compacting progress.
 
 ```text
 PLAN head 50
-recent progress tail 20
+recent progress tail 80
 optional findings tail 20
 ```
 
@@ -220,7 +220,7 @@ optional findings tail 20
 ```text
 PLAN head 50
 optional compacted progress summary
-recent progress tail 20
+recent progress tail 80
 optional findings tail 20
 ```
 
@@ -233,7 +233,7 @@ optional findings tail 20
 ---END PROGRESS SUMMARY DATA---
 ```
 
-这样 agent 在只看到最近 20 行时，也能知道旧记录已经归档，以及归档的大致范围。
+这样 agent 在只看到最近 80 行时，也能知道旧记录已经归档，以及归档的大致范围。后续可以把 `tail 80` 进一步升级为“最近 N 条 auto records + 最大字符数保护”，让注入窗口按记录数量而不是纯行数工作。
 
 ### 6.2 PostToolUse Reminder
 
