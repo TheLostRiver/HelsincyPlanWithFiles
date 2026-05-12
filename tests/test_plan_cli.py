@@ -58,6 +58,23 @@ def write_active_plan(root, plan_id="2026-05-11-demo"):
     return plan_dir
 
 
+def auto_records(count):
+    records = []
+    for index in range(count):
+        records.append(
+            "\n".join(
+                [
+                    f"### Auto Record: 2026-05-12 10:{index:02d}:00",
+                    "- Tool: apply_patch",
+                    "- Files:",
+                    f"  - `src/file_{index}.py` (update)",
+                    "",
+                ]
+            )
+        )
+    return "\n".join(records)
+
+
 class PlanCliTests(unittest.TestCase):
     def test_status_reports_active_plan_summary(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -71,6 +88,18 @@ class PlanCliTests(unittest.TestCase):
             self.assertIn("current phase: Phase 2", result.stdout)
             self.assertIn("phases: 1/2 complete", result.stdout)
             self.assertIn("attestation: not set", result.stdout)
+            self.assertIn("progress: 0 auto records", result.stdout)
+
+    def test_status_recommends_compaction_for_large_progress(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_dir = write_active_plan(root)
+            (plan_dir / "progress.md").write_text("# Progress Log\n\n" + auto_records(101), encoding="utf-8")
+
+            result = run_plan(root, "status")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("progress: 101 auto records, compact recommended", result.stdout)
 
     def test_init_creates_active_planning_directory(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -155,6 +184,53 @@ class PlanCliTests(unittest.TestCase):
             clear = run_plan(root, "attest", "--clear")
             self.assertEqual(clear.returncode, 0, clear.stderr)
             self.assertFalse((plan_dir / ".attestation").exists())
+
+    def test_compact_archives_old_progress_records(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_dir = write_active_plan(root)
+            (plan_dir / "progress.md").write_text("# Progress Log\n\n" + auto_records(4), encoding="utf-8")
+
+            result = run_plan(root, "compact", "--keep-records", "2")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("compacted progress.md", result.stdout)
+            self.assertIn("archived auto records: 2", result.stdout)
+            self.assertIn("kept recent auto records: 2", result.stdout)
+            self.assertTrue((plan_dir / "progress.archive.md").is_file())
+            progress = (plan_dir / "progress.md").read_text(encoding="utf-8")
+            self.assertNotIn("src/file_0.py", progress)
+            self.assertIn("src/file_2.py", progress)
+
+    def test_compact_dry_run_leaves_progress_unchanged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_dir = write_active_plan(root)
+            original = "\n".join(
+                [
+                    "# Progress Log",
+                    "",
+                    "### Auto Record: 2026-05-12 10:00:00",
+                    "- Tool: Write",
+                    "- Files:",
+                    "  - `a.md` (write)",
+                    "",
+                    "### Auto Record: 2026-05-12 10:01:00",
+                    "- Tool: Edit",
+                    "- Files:",
+                    "  - `b.md` (edit)",
+                    "",
+                ]
+            )
+            (plan_dir / "progress.md").write_text(original, encoding="utf-8")
+
+            result = run_plan(root, "compact", "--keep-records", "1", "--dry-run")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("progress compaction dry run", result.stdout)
+            self.assertIn("would archive auto records: 1", result.stdout)
+            self.assertEqual((plan_dir / "progress.md").read_text(encoding="utf-8"), original)
+            self.assertFalse((plan_dir / "progress.archive.md").exists())
 
 
 if __name__ == "__main__":

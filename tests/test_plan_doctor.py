@@ -64,6 +64,23 @@ def write_active_plan(root):
     return plan_dir
 
 
+def write_auto_records(progress, count):
+    records = []
+    for index in range(count):
+        records.append(
+            "\n".join(
+                [
+                    f"### Auto Record: 2026-05-12 10:{index:02d}:00",
+                    "- Tool: Write",
+                    "- Files:",
+                    f"  - `src/{index}.md` (write)",
+                    "",
+                ]
+            )
+        )
+    progress.write_text("# Progress Log\n\n" + "\n".join(records), encoding="utf-8")
+
+
 class PlanDoctorTests(unittest.TestCase):
     def test_doctor_reports_healthy_project(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -160,6 +177,19 @@ class PlanDoctorTests(unittest.TestCase):
             self.assertIn("attestation: tampered", result.stdout)
             self.assertIn("expected=000000000000", result.stdout)
             self.assertIn(f"actual={actual[:12]}", result.stdout)
+
+    def test_doctor_warns_when_progress_compaction_is_recommended(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_hooks(root)
+            plan_dir = write_active_plan(root)
+            write_auto_records(plan_dir / "progress.md", 101)
+
+            result = run_plan(root, "doctor")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("[warn] progress.md has 101 auto records", result.stdout)
+            self.assertIn("run /pwf-compact or plan.py compact", result.stdout)
 
 
 if __name__ == "__main__":

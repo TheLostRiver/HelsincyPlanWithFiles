@@ -13,12 +13,16 @@ def main() -> None:
         return
 
     if planning_state.append_progress(root, payload):
+        message = (
+            "[planning-with-files] Recorded PostToolUse context in progress.md. "
+            "If a phase is now complete, update task_plan.md status."
+        )
+        notice = planning_state.progress_compaction_notice(root)
+        if notice:
+            message = f"{message} {notice}"
         adapter.emit_json(
             {
-                "systemMessage": (
-                    "[planning-with-files] Recorded PostToolUse context in progress.md. "
-                    "If a phase is now complete, update task_plan.md status."
-                )
+                "systemMessage": message
             }
         )
 

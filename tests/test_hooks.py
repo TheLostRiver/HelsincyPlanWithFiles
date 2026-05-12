@@ -115,6 +115,42 @@ class HookTests(unittest.TestCase):
             progress = (root / "progress.md").read_text(encoding="utf-8")
             self.assertIn("- Command:", progress)
 
+    def test_post_tool_use_warns_when_progress_hits_compact_threshold(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            existing = []
+            for index in range(99):
+                existing.append(
+                    "\n".join(
+                        [
+                            f"### Auto Record: 2026-05-12 10:{index:02d}:00",
+                            "- Tool: Write",
+                            "- Files:",
+                            f"  - `src/{index}.md` (write)",
+                            "",
+                        ]
+                    )
+                )
+            (root / "progress.md").write_text("# Progress Log\n\n" + "\n".join(existing), encoding="utf-8")
+
+            result = run_hook(
+                "post_tool_use.py",
+                root,
+                {
+                    "hook_event_name": "PostToolUse",
+                    "tool_name": "Edit",
+                    "tool_input": {"file_path": "src/current.md"},
+                    "tool_response": {"success": True},
+                },
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            message = json.loads(result.stdout)["systemMessage"]
+            self.assertIn("Recorded PostToolUse context", message)
+            self.assertIn("progress.md has 100 auto records", message)
+            self.assertIn("Consider running /pwf-compact", message)
+
     def test_post_tool_use_records_edit_file_path(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -314,6 +350,46 @@ class HookTests(unittest.TestCase):
             self.assertIn("- progress line 006", context)
             self.assertIn("- progress line 085", context)
             self.assertNotIn("- progress line 005", context)
+
+    def test_user_prompt_submit_includes_compacted_progress_summary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            (root / "progress.md").write_text(
+                "\n".join(
+                    [
+                        "# Progress Log",
+                        "",
+                        "<!-- PWF_COMPACT_SUMMARY_START -->",
+                        "## Compacted Progress Summary",
+                        "",
+                        "- Archived Auto Records: 72",
+                        "- Unique Files: 26",
+                        "<!-- PWF_COMPACT_SUMMARY_END -->",
+                        "",
+                        "### Auto Record: 2026-05-12 22:00:00",
+                        "- Tool: Edit",
+                        "- Files:",
+                        "  - `src/current.py` (edit)",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("=== compacted progress summary ===", context)
+            self.assertIn("---BEGIN PROGRESS SUMMARY DATA---", context)
+            self.assertIn("- Archived Auto Records: 72", context)
+            self.assertIn("---END PROGRESS SUMMARY DATA---", context)
+            self.assertIn("src/current.py", context)
 
     def test_user_prompt_submit_does_not_include_findings_by_default(self):
         with tempfile.TemporaryDirectory() as tmp:
