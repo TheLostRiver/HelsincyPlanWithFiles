@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Moved `/plw-*` agent slash command prompts into `.codex/commands/` so copying `.codex/` installs them with hooks and skills.
+
 ## 0.1.0 - 2026-05-11
 
 - Added a Windows-first Python hook runtime for Codex.

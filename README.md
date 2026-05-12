@@ -22,7 +22,7 @@ python .codex\skills\planning-with-files\scripts\plan.py status
 
 ## Agent Slash Commands
 
-仓库提供 `commands/` 目录中的 agent command prompt，可安装为 Codex slash commands。第一批命令都使用 `/plw-XXX` 命名：
+仓库提供 `.codex/commands/` 目录中的 agent command prompt，可安装为 Codex slash commands。第一批命令都使用 `/plw-XXX` 命名；复制 `.codex/` 到目标项目时会一并带上这些命令。
 
 | 命令 | 作用 | 等价 CLI |
 |------|------|----------|
@@ -85,6 +85,7 @@ apply_patch | Edit | Write
 ```text
 your-project/
   .codex/
+    commands/
     hooks.json
     hooks/
     skills/
@@ -162,7 +163,7 @@ attestation 会把当前 `task_plan.md` 的 SHA-256 写入 `.planning/<plan-id>/
 
 ```text
 .codex/
-commands/
+docs/
 tests/
 README.md
 README.en.md

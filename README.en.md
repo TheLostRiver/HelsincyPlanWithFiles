@@ -22,7 +22,7 @@ python .codex\skills\planning-with-files\scripts\plan.py status
 
 ## Agent Slash Commands
 
-The repository includes agent command prompts in `commands/`. They can be installed as Codex slash commands. The first batch uses the `/plw-XXX` naming pattern:
+The repository includes agent command prompts in `.codex/commands/`. They can be installed as Codex slash commands. The first batch uses the `/plw-XXX` naming pattern, and copying `.codex/` into a target project carries the commands with the hooks and skill.
 
 | Command | Purpose | Equivalent CLI |
 |---------|---------|----------------|
@@ -85,6 +85,7 @@ Copy the `.codex/` directory into the target project root:
 ```text
 your-project/
   .codex/
+    commands/
     hooks.json
     hooks/
     skills/
@@ -162,7 +163,7 @@ Recommended to commit:
 
 ```text
 .codex/
-commands/
+docs/
 tests/
 README.md
 README.en.md
