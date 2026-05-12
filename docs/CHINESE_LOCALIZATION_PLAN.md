@@ -58,7 +58,7 @@ python .codex\skills\planning-with-files\scripts\plan.py status --lang zh-CN
 | `.codex/skills/planning-with-files/scripts/plan.py` | `doctor/status/init/switch/attest/capture` 中文输出 |
 | `.codex/skills/planning-with-files/templates/*.md` | 增加中文模板或模板选择机制 |
 | `.codex/skills/planning-with-files/SKILL.md` | 增加中文使用说明和 `PWF_LANG` 约定 |
-| `.codex/commands/plw-*.md` | 补充中文 agent 指令，保持 slash command 名称不变 |
+| `.codex/skills/plw-*/SKILL.md` | 补充中文 agent 指令，保持 slash command 名称不变 |
 | `README.md` / `README.en.md` | 说明中文模式和兼容边界 |
 | `CHANGELOG.md` / `VERSION` | 发布中文化版本，例如 `0.2.0` |
 | `tests/` | 覆盖中文输出、英文回退和 README 链接 |
@@ -272,12 +272,12 @@ git commit -m "feat: add chinese planning templates"
 ### Task 4: Slash Commands 中文化
 
 **Files:**
-- Modify: `.codex/commands/plw-doctor.md`
-- Modify: `.codex/commands/plw-init.md`
-- Modify: `.codex/commands/plw-status.md`
-- Modify: `.codex/commands/plw-switch.md`
-- Modify: `.codex/commands/plw-attest.md`
-- Modify: `.codex/commands/plw-capture.md`
+- Modify: `.codex/skills/plw-doctor/SKILL.md`
+- Modify: `.codex/skills/plw-init/SKILL.md`
+- Modify: `.codex/skills/plw-status/SKILL.md`
+- Modify: `.codex/skills/plw-switch/SKILL.md`
+- Modify: `.codex/skills/plw-attest/SKILL.md`
+- Modify: `.codex/skills/plw-capture/SKILL.md`
 - Test: `tests/test_plw_commands.py`
 
 - [ ] **Step 1: 写失败测试**
@@ -285,7 +285,7 @@ git commit -m "feat: add chinese planning templates"
 ```python
 def test_command_files_include_chinese_guidance(self):
     for command_name in COMMANDS:
-        text = read_repo_text(f".codex/commands/{command_name}.md")
+        text = read_repo_text(f".codex/skills/{command_name}/SKILL.md")
         self.assertIn("中文", text)
         self.assertIn("PWF_LANG=zh-CN", text)
 ```
@@ -317,7 +317,7 @@ python -m unittest tests.test_plw_commands -v
 - [ ] **Step 5: 提交**
 
 ```powershell
-git add .codex/commands tests/test_plw_commands.py
+git add .codex/skills/plw-* tests/test_plw_commands.py
 git commit -m "docs: add chinese slash command guidance"
 ```
 
@@ -407,7 +407,7 @@ git commit -m "docs: document chinese language mode"
 - `PWF_LANG=zh-CN` 时，`plan.py status`、`doctor`、`init`、`switch`、`attest`、`capture` 的用户可见输出有中文路径。
 - `PWF_LANG` 未设置时，现有英文测试和行为保持通过。
 - `progress.md` auto record 的字段名、delimiter、hash、文件路径格式保持稳定。
-- `.codex/commands/plw-*.md` 同时支持中文用户和英文用户理解。
+- `.codex/skills/plw-*/SKILL.md` 同时支持中文用户和英文用户理解。
 - README 中英文都说明中文模式。
 - 完整测试 `python -m unittest discover -v` 通过。
 

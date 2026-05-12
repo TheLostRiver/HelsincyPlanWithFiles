@@ -1,6 +1,11 @@
 ---
-description: "Show the active Helsincy Plan With Files task status. /plw-status"
+name: plw-status
+description: Show the active Helsincy Plan With Files task status. Invoke with /plw-status.
+user-invocable: true
+allowed-tools: "Bash"
 ---
+
+# /plw-status
 
 Run:
 

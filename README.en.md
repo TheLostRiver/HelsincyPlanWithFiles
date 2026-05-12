@@ -22,11 +22,7 @@ python .codex\skills\planning-with-files\scripts\plan.py status
 
 ## Agent Slash Commands
 
-The repository includes agent command prompts in `.codex/commands/`. Copying `.codex/` into a target project carries the commands with the hooks and skill, but Codex Desktop needs them installed into the user-level prompts directory before they appear as slash commands:
-
-```powershell
-powershell -ExecutionPolicy RemoteSigned -File .codex\skills\planning-with-files\scripts\install-commands.ps1
-```
+The repository includes local user-invocable skill wrappers in `.codex/skills/plw-*`. After copying `.codex/` into a target project, these commands work like `/planning-with-files`; they do not need to be installed into the user-level `.codex`, so uninstalling is just removing the project-local `.codex/`.
 
 The first batch uses the `/plw-XXX` naming pattern. The prefix is `plw`, not `pwl`:
 
@@ -91,19 +87,12 @@ Copy the `.codex/` directory into the target project root:
 ```text
 your-project/
   .codex/
-    commands/
     hooks.json
     hooks/
     skills/
 ```
 
 Make sure Codex hooks are enabled, and approve the hooks when Codex asks for trust. The current configuration runs hooks with `python`, so it does not require `python3` or `sh` on Windows.
-
-To enable the `/plw-*` slash commands, install them and restart Codex:
-
-```powershell
-powershell -ExecutionPolicy RemoteSigned -File .codex\skills\planning-with-files\scripts\install-commands.ps1
-```
 
 ## Usage
 

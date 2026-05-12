@@ -1,6 +1,11 @@
 ---
-description: "Run Helsincy Plan With Files diagnostics. /plw-doctor"
+name: plw-doctor
+description: Run Helsincy Plan With Files diagnostics. Invoke with /plw-doctor.
+user-invocable: true
+allowed-tools: "Bash"
 ---
+
+# /plw-doctor
 
 Run:
 

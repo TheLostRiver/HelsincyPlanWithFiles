@@ -3,8 +3,12 @@ import unittest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-COMMAND_DIR = REPO_ROOT / ".codex" / "commands"
+SKILL_ROOT = REPO_ROOT / ".codex" / "skills"
+PROJECT_COMMAND_DIR = REPO_ROOT / ".codex" / "commands"
 LEGACY_COMMAND_DIR = REPO_ROOT / "commands"
+INSTALL_COMMANDS_SCRIPT = (
+    SKILL_ROOT / "planning-with-files" / "scripts" / "install-commands.ps1"
+)
 
 COMMANDS = {
     "plw-doctor": "doctor",
@@ -21,51 +25,45 @@ def read_repo_text(path):
 
 
 class PlwCommandTests(unittest.TestCase):
-    def test_root_commands_directory_is_not_used(self):
+    def test_command_prompt_directories_are_not_used(self):
         self.assertFalse(
             LEGACY_COMMAND_DIR.exists(),
-            "commands belong under .codex/commands so copying .codex installs them",
+            "root commands are easy to miss when users copy only .codex",
+        )
+        self.assertFalse(
+            PROJECT_COMMAND_DIR.exists(),
+            "project .codex/commands is not the local user-invocable skill path",
         )
 
-    def test_command_files_have_slash_command_metadata(self):
+    def test_plw_skill_wrappers_have_slash_command_metadata(self):
         for command_name in COMMANDS:
             with self.subTest(command=command_name):
-                path = COMMAND_DIR / f"{command_name}.md"
+                path = SKILL_ROOT / command_name / "SKILL.md"
 
                 self.assertTrue(path.is_file(), f"missing {path}")
                 text = path.read_text(encoding="utf-8")
                 self.assertTrue(text.startswith("---\n"), f"{path} needs YAML frontmatter")
-                self.assertIn("description:", text)
+                self.assertIn(f"name: {command_name}", text)
+                self.assertIn("user-invocable: true", text)
                 self.assertIn(f"/{command_name}", text)
 
-    def test_command_files_route_to_plan_cli(self):
+    def test_plw_skill_wrappers_route_to_plan_cli(self):
         for command_name, subcommand in COMMANDS.items():
             with self.subTest(command=command_name):
-                text = read_repo_text(f".codex/commands/{command_name}.md")
+                text = read_repo_text(f".codex/skills/{command_name}/SKILL.md")
 
                 self.assertIn("plan.py", text)
                 self.assertIn(subcommand, text)
 
-    def test_readmes_document_command_location(self):
+    def test_readmes_document_local_skill_location(self):
         readme_cn = read_repo_text("README.md")
         readme_en = read_repo_text("README.en.md")
 
-        self.assertIn(".codex/commands/", readme_cn)
-        self.assertIn(".codex/commands/", readme_en)
-        self.assertIn("install-commands.ps1", readme_cn)
-        self.assertIn("install-commands.ps1", readme_en)
-
-    def test_install_commands_script_exists(self):
-        script = (
-            REPO_ROOT
-            / ".codex"
-            / "skills"
-            / "planning-with-files"
-            / "scripts"
-            / "install-commands.ps1"
-        )
-
-        self.assertTrue(script.is_file())
+        self.assertIn(".codex/skills/plw-", readme_cn)
+        self.assertIn(".codex/skills/plw-", readme_en)
+        self.assertNotIn("install-commands.ps1", readme_cn)
+        self.assertNotIn("install-commands.ps1", readme_en)
+        self.assertFalse(INSTALL_COMMANDS_SCRIPT.exists())
 
     def test_readmes_document_plw_commands(self):
         readme_cn = read_repo_text("README.md")
