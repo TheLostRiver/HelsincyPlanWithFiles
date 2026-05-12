@@ -14,13 +14,42 @@ Important: please do not use `v0.1.0` or earlier anymore. Older versions include
 
 - [Chinese Localization Plan](docs/CHINESE_LOCALIZATION_PLAN.md): plans the in-repo Chinese language mode, Chinese templates, Chinese CLI/hook messages, and the future `v0.2.0` release path.
 
-## 30-Second Start
+## Installation
+
+For regular users, download `HelsincyPlanWithFiles-v0.1.1-codex.zip` from the release page. This package contains only the project-local `.codex/`, hooks, `/pwf-*` commands, and basic docs needed for installation.
+
+### Option A: Download From Release
+
+1. Open the [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest).
+2. Download `HelsincyPlanWithFiles-v0.1.1-codex.zip`.
+3. Unzip it and copy the `.codex/` directory into your target project root.
+4. Restart Codex and approve the hooks when Codex asks for trust.
+5. Run `/pwf-doctor` in Codex to check the installation.
+
+The target project should look like this:
+
+```text
+your-project/
+  .codex/
+    hooks.json
+    hooks/
+    skills/
+```
+
+If the target project already has a `.codex/` directory, back it up or merge `hooks.json` manually so existing project configuration is not overwritten.
+
+### Option B: Install From git clone
+
+Use this path if you want to inspect source code, run tests, or contribute:
 
 ```powershell
-python .codex\skills\planning-with-files\scripts\plan.py doctor
-python .codex\skills\planning-with-files\scripts\plan.py init "My Task"
-python .codex\skills\planning-with-files\scripts\plan.py status
+git clone https://github.com/TheLostRiver/HelsincyPlanWithFiles.git
+Copy-Item -Recurse -Force .\HelsincyPlanWithFiles\.codex .\your-project\
 ```
+
+### Option C: Download Source ZIP
+
+You can also use `Code` -> `Download ZIP` on GitHub to download the full source. After extracting it, copy only `.codex/` into the target project root. For normal use, prefer the release `codex.zip` package.
 
 ## Agent Slash Commands
 
@@ -82,29 +111,36 @@ apply_patch | Edit | Write
 
 Reading files, searching, browsing web pages, viewing images, or reading PDFs does not automatically write to `progress.md`. The agent should summarize important external context into `findings.md` after understanding it.
 
-## Installation
+## Verify and Use
 
-Copy the `.codex/` directory into the target project root:
+After installation and a Codex restart, verify with the slash command first:
 
 ```text
-your-project/
-  .codex/
-    hooks.json
-    hooks/
-    skills/
+/pwf-doctor
 ```
 
-Make sure Codex hooks are enabled, and approve the hooks when Codex asks for trust. The current configuration runs hooks with `python`, so it does not require `python3` or `sh` on Windows.
-
-## Usage
-
-Run diagnostics first to confirm hook, active plan, and attestation state:
+If `/pwf-*` commands are not visible yet, use the terminal fallback from the target project root:
 
 ```powershell
+cd your-project
 python .codex\skills\planning-with-files\scripts\plan.py doctor
 ```
 
-Initialize planning files with the bundled skill scripts, or create them manually:
+Create a task with:
+
+```text
+/pwf-init My Task
+/pwf-status
+```
+
+The terminal fallback is:
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py init "My Task"
+python .codex\skills\planning-with-files\scripts\plan.py status
+```
+
+After initialization, the planning files are:
 
 ```text
 .planning/<plan-id>/task_plan.md
