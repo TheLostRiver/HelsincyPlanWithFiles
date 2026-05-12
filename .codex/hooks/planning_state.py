@@ -4,10 +4,19 @@ import os
 import re
 import subprocess
 import hashlib
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
+
+
+CODEX_DIR = Path(__file__).resolve().parents[1]
+SCRIPTS_DIR = CODEX_DIR / "skills" / "planning-with-files" / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+import progress_lifecycle  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -46,6 +55,7 @@ PLAN_TAMPERED_MESSAGE = (
     "not match attestation. Review task_plan.md and re-run plan attestation only if "
     "the current plan is trusted."
 )
+DEFAULT_COMPACT_THRESHOLD = 100
 
 
 def resolve_plan_dir(root: Path) -> Path | None:
@@ -109,8 +119,37 @@ def read_tail(path: Path, limit: int) -> str:
     return "\n".join(lines[-limit:])
 
 
+def read_progress_tail(path: Path, limit: int) -> str:
+    if not path.is_file():
+        return ""
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    cleaned: list[str] = []
+    skipping_summary = False
+    for line in lines:
+        if line.strip() == progress_lifecycle.SUMMARY_START:
+            skipping_summary = True
+            continue
+        if skipping_summary:
+            if line.strip() == progress_lifecycle.SUMMARY_END:
+                skipping_summary = False
+            continue
+        cleaned.append(line)
+    return "\n".join(cleaned[-limit:])
+
+
 def _truthy_env(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def compact_threshold() -> int:
+    raw = os.environ.get("PWF_COMPACT_THRESHOLD", "").strip()
+    if not raw:
+        return DEFAULT_COMPACT_THRESHOLD
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_COMPACT_THRESHOLD
+    return value if value >= 1 else DEFAULT_COMPACT_THRESHOLD
 
 
 def findings_injection_enabled() -> bool:
@@ -139,6 +178,24 @@ def _data_block(name: str, content: str) -> str:
         lines.append(text)
     lines.append(f"---END {name} DATA---")
     return "\n".join(lines)
+
+
+def progress_summary_block(path: Path) -> str:
+    return progress_lifecycle.extract_compaction_summary(path)
+
+
+def progress_compaction_notice(root: Path) -> str:
+    paths = planning_paths(root)
+    if paths is None:
+        return ""
+    count = progress_lifecycle.count_auto_records(paths.progress)
+    threshold = compact_threshold()
+    if count < threshold or count % threshold != 0:
+        return ""
+    return (
+        f"[planning-with-files] progress.md has {count} auto records. "
+        "Consider running /pwf-compact to archive old objective records."
+    )
 
 
 def _attestation_path(project_root: Path, paths: PlanningPaths) -> Path:
@@ -219,12 +276,23 @@ def render_prompt_context(root: Path) -> str:
     if plan_context == PLAN_TAMPERED_MESSAGE:
         return plan_context
 
-    parts = [
-        plan_context,
-        "",
-        "=== recent progress ===",
-        _data_block("PROGRESS", read_tail(paths.progress, 80)),
-    ]
+    parts = [plan_context]
+    progress_summary = progress_summary_block(paths.progress)
+    if progress_summary:
+        parts.extend(
+            [
+                "",
+                "=== compacted progress summary ===",
+                _data_block("PROGRESS SUMMARY", progress_summary),
+            ]
+        )
+    parts.extend(
+        [
+            "",
+            "=== recent progress ===",
+            _data_block("PROGRESS", read_progress_tail(paths.progress, 80)),
+        ]
+    )
     if findings_injection_enabled():
         parts.extend(
             [
