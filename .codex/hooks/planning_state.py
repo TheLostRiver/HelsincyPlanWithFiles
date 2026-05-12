@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import re
-import subprocess
 import hashlib
 import sys
 from dataclasses import dataclass
@@ -56,6 +55,7 @@ PLAN_TAMPERED_MESSAGE = (
     "the current plan is trusted."
 )
 DEFAULT_COMPACT_THRESHOLD = 100
+POST_TOOL_RECORD_TOOLS = {"apply_patch", "Edit", "Write"}
 
 
 def resolve_plan_dir(root: Path) -> Path | None:
@@ -433,35 +433,9 @@ def log_command_enabled() -> bool:
     return _truthy_env("PWF_LOG_COMMAND")
 
 
-def _git_status(root: Path) -> list[str]:
-    try:
-        probe = subprocess.run(
-            ["git", "rev-parse", "--is-inside-work-tree"],
-            cwd=str(root),
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if probe.returncode != 0 or probe.stdout.strip() != "true":
-            return []
-        status = subprocess.run(
-            ["git", "status", "--short"],
-            cwd=str(root),
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-    except OSError:
-        return []
-
-    if status.returncode != 0:
-        return []
-    return [line for line in status.stdout.splitlines() if line.strip()]
-
-
 def append_progress(root: Path, payload: dict[str, Any]) -> bool:
     tool_name = str(payload.get("tool_name") or payload.get("hook_event_name") or "tool")
-    if tool_name == "Bash":
+    if tool_name not in POST_TOOL_RECORD_TOOLS:
         return False
 
     paths = planning_paths(root)
@@ -486,12 +460,6 @@ def append_progress(root: Path, payload: dict[str, Any]) -> bool:
 
     if command and log_command_enabled():
         lines.append(f"- Command: `{_command_summary(command)}`")
-
-    if tool_name == "Bash":
-        status_lines = _git_status(root)
-        if status_lines:
-            lines.append("- Git status:")
-            lines.extend(f"  - `{line}`" for line in status_lines[:20])
 
     paths.progress.parent.mkdir(parents=True, exist_ok=True)
     with paths.progress.open("a", encoding="utf-8", newline="\n") as handle:

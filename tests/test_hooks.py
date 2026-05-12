@@ -231,6 +231,25 @@ class HookTests(unittest.TestCase):
             progress = (root / "progress.md").read_text(encoding="utf-8")
             self.assertNotIn("Tool: Bash", progress)
 
+    def test_post_tool_use_ignores_read_when_called_directly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+
+            payload = {
+                "hook_event_name": "PostToolUse",
+                "tool_name": "Read",
+                "tool_input": {"file_path": "README.md"},
+                "tool_response": {"success": True},
+            }
+
+            result = run_hook("post_tool_use.py", root, payload)
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), "")
+            progress = (root / "progress.md").read_text(encoding="utf-8")
+            self.assertNotIn("Tool: Read", progress)
+
     def test_post_tool_use_resolves_active_plan_directory(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

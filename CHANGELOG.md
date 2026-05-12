@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Hardened `post_tool_use.py` so direct calls only record supported mutating tools: `apply_patch`, `Edit`, and `Write`.
+
 ## 0.1.3 - 2026-05-12
 
 - Added `plan.py compact` and `/pwf-compact` to archive old objective auto records from `progress.md`.
