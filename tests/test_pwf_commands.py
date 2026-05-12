@@ -55,6 +55,18 @@ class PwfCommandTests(unittest.TestCase):
                 self.assertIn("plan.py", text)
                 self.assertIn(subcommand, text)
 
+    def test_pwf_compact_skill_wrapper_routes_to_plan_cli(self):
+        path = SKILL_ROOT / "pwf-compact" / "SKILL.md"
+
+        self.assertTrue(path.is_file(), f"missing {path}")
+        text = path.read_text(encoding="utf-8")
+        self.assertTrue(text.startswith("---\n"), f"{path} needs YAML frontmatter")
+        self.assertIn("name: pwf-compact", text)
+        self.assertIn("user-invocable: true", text)
+        self.assertIn("/pwf-compact", text)
+        self.assertIn("plan.py", text)
+        self.assertIn("compact", text)
+
     def test_readmes_document_local_skill_location(self):
         readme_cn = read_repo_text("README.md")
         readme_en = read_repo_text("README.en.md")
