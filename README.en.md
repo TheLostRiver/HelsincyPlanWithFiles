@@ -6,7 +6,9 @@ Helsincy Plan With Files is a Codex skill + hook tool. It stores task plans, res
 
 ## Version
 
-Current version: `0.1.0`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current version: `0.1.1`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+
+Important: please do not use `v0.1.0` or earlier anymore. Older versions include the incorrect `/plw-*` command prefix and briefly introduced a global prompts installation route, which can make migration and uninstall confusing. Upgrade to `v0.1.1` and use `/pwf-*` commands instead.
 
 ## Project Plans
 
