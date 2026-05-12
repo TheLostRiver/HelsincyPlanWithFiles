@@ -13,6 +13,7 @@ Important: please do not use `v0.1.0` or earlier anymore. Older versions include
 ## Project Plans
 
 - [Chinese Localization Plan](docs/CHINESE_LOCALIZATION_PLAN.md): plans the in-repo Chinese language mode, Chinese templates, Chinese CLI/hook messages, and the future `v0.2.0` release path.
+- [Progress Compaction Plan](docs/PROGRESS_COMPACTION_PLAN.md): plans `progress.md` compaction, archival, summary injection, and the future `/pwf-compact` command for long-running tasks.
 
 ## Installation
 
