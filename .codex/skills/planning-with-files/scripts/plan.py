@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import sys
 from datetime import datetime
@@ -17,6 +18,7 @@ if str(HOOKS_DIR) not in sys.path:
     sys.path.insert(0, str(HOOKS_DIR))
 
 import planning_state  # noqa: E402
+import progress_lifecycle  # noqa: E402
 
 
 REQUIRED_HOOK_ENTRYPOINTS = [
@@ -26,6 +28,7 @@ REQUIRED_HOOK_ENTRYPOINTS = [
     ".codex/hooks/post_tool_use.py",
     ".codex/hooks/stop.py",
 ]
+DEFAULT_COMPACT_THRESHOLD = 100
 
 
 def _collect_hook_commands(value: Any) -> list[str]:
@@ -84,6 +87,36 @@ def _current_phase(paths: planning_state.PlanningPaths) -> str | None:
                 return candidate
         return None
     return None
+
+
+def _compact_threshold() -> int:
+    raw = os.environ.get("PWF_COMPACT_THRESHOLD", "").strip()
+    if not raw:
+        return DEFAULT_COMPACT_THRESHOLD
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_COMPACT_THRESHOLD
+    return value if value >= 1 else DEFAULT_COMPACT_THRESHOLD
+
+
+def _progress_record_count(paths: planning_state.PlanningPaths | None) -> int:
+    if paths is None:
+        return 0
+    return progress_lifecycle.count_auto_records(paths.progress)
+
+
+def _progress_status_line(paths: planning_state.PlanningPaths | None) -> str:
+    count = _progress_record_count(paths)
+    suffix = ", compact recommended" if count >= _compact_threshold() else ""
+    return f"progress: {count} auto records{suffix}"
+
+
+def _progress_doctor_warning(paths: planning_state.PlanningPaths | None) -> str:
+    count = _progress_record_count(paths)
+    if count < _compact_threshold():
+        return ""
+    return f"[warn] progress.md has {count} auto records; run /pwf-compact or plan.py compact"
 
 
 def _slugify(value: str) -> str:
@@ -206,6 +239,10 @@ def doctor(root: Path) -> int:
     lines.append(attestation_line)
     ok = ok and attestation_ok
 
+    warning = _progress_doctor_warning(paths)
+    if warning:
+        lines.append(warning)
+
     print("\n".join(lines))
     return 0 if ok else 1
 
@@ -234,6 +271,7 @@ def status(root: Path) -> int:
 
     attestation_line, attestation_ok = _attestation_status(root, paths)
     print(attestation_line)
+    print(_progress_status_line(paths))
     return 0 if planning_ok and attestation_ok else 1
 
 
@@ -358,6 +396,45 @@ def capture(root: Path, kind: str, source: str, summary: str, trust: str = "untr
     return 0
 
 
+def compact(root: Path, keep_records: int = 30, dry_run: bool = False, archive: str = "progress.archive.md") -> int:
+    paths = planning_state.planning_paths(root)
+    if paths is None:
+        print("No active plan found. Create or switch to a plan before compacting progress.")
+        return 1
+
+    archive_path = Path(archive)
+    if not archive_path.is_absolute():
+        archive_path = paths.root / archive_path
+
+    try:
+        result = progress_lifecycle.compact_progress(
+            paths.progress,
+            archive_path,
+            keep_records=keep_records,
+            dry_run=dry_run,
+        )
+    except ValueError as exc:
+        print(str(exc))
+        return 1
+
+    if result.archived_count == 0:
+        print("progress compaction not needed")
+        print(f"auto records: {result.total_auto_records}")
+        print(f"keep records: {keep_records}")
+        return 0
+
+    if dry_run:
+        print("progress compaction dry run")
+        print(f"would archive auto records: {result.archived_count}")
+        print(f"would keep recent auto records: {result.kept_count}")
+    else:
+        print("compacted progress.md")
+        print(f"archived auto records: {result.archived_count}")
+        print(f"kept recent auto records: {result.kept_count}")
+    print(f"archive: {result.archive_path}")
+    return 0
+
+
 def main(argv: Iterable[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="plan.py")
     parser.add_argument("--root", default=".", help="Project root to inspect")
@@ -384,6 +461,11 @@ def main(argv: Iterable[str] | None = None) -> int:
     capture_parser.add_argument("--summary", required=True)
     capture_parser.add_argument("--trust", default="untrusted")
 
+    compact_parser = subparsers.add_parser("compact", help="Archive old progress.md auto records")
+    compact_parser.add_argument("--keep-records", type=int, default=30)
+    compact_parser.add_argument("--dry-run", action="store_true")
+    compact_parser.add_argument("--archive", default="progress.archive.md")
+
     args = parser.parse_args(list(argv) if argv is not None else None)
     root = Path(args.root).resolve()
 
@@ -399,6 +481,8 @@ def main(argv: Iterable[str] | None = None) -> int:
         return attest(root, show=args.show, clear=args.clear)
     if args.command == "capture":
         return capture(root, args.kind, args.source, args.summary, trust=args.trust)
+    if args.command == "compact":
+        return compact(root, keep_records=args.keep_records, dry_run=args.dry_run, archive=args.archive)
     return 2
 
 
