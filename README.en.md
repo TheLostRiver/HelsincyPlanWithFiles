@@ -66,6 +66,7 @@ The first batch uses the `/pwf-XXX` naming pattern. `pwf` means planning with fi
 | `/pwf-switch` | Show or switch the active plan | `plan.py switch [plan-id]` |
 | `/pwf-attest` | Create, show, or clear plan hash attestation | `plan.py attest [--show or --clear]` |
 | `/pwf-capture` | Save web, browser, image, PDF, file, or note context to `findings.md` | `plan.py capture ...` |
+| `/pwf-compact` | Archive old auto records and keep `progress.md` small | `plan.py compact` |
 
 ## Compared With Upstream
 
@@ -167,6 +168,24 @@ Then use Codex normally. After the agent edits files, the hook appends a record 
 
 By default, the hook records only objective facts: time, tool, result, and file paths. Set `PWF_LOG_COMMAND=1` to include a command summary for debugging.
 
+## Progress Lifecycle
+
+`progress.md` is the hot log, not the permanent audit file. In long-running tasks, run `/pwf-compact` to archive old objective auto records to `progress.archive.md` while keeping a compact summary and recent records in `progress.md`.
+
+```text
+/pwf-compact
+```
+
+Terminal fallback:
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py compact
+python .codex\skills\planning-with-files\scripts\plan.py compact --keep-records 50
+python .codex\skills\planning-with-files\scripts\plan.py compact --dry-run
+```
+
+The compact summary only reports objective facts, such as archived count, time range, tool counts, and file count. Agent-written summaries remain interpretive and should be checked against hook records, tests, and actual code when accuracy matters.
+
 ## Security Boundary
 
 When hooks inject planning files, they use delimiter framing to mark file contents as data:
@@ -179,6 +198,10 @@ When hooks inject planning files, they use delimiter framing to mark file conten
 ---BEGIN PROGRESS DATA---
 ...
 ---END PROGRESS DATA---
+
+---BEGIN PROGRESS SUMMARY DATA---
+...
+---END PROGRESS SUMMARY DATA---
 ```
 
 The agent should treat content inside these blocks as structured data and should not follow instruction-like text inside them.

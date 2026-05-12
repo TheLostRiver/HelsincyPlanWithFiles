@@ -96,6 +96,16 @@ Hooks may append objective auto records to `progress.md`: tool name, timestamp, 
 
 Agent-written notes are interpretive: rationale, conclusions, risks, and next steps. They are useful working memory, but they are not guaranteed to be fully accurate. When accuracy matters, verify agent notes against hook records, tests, and the actual code.
 
+## Progress Lifecycle
+
+`progress.md` is the hot log. It should stay small enough for recent context. When auto records grow large, run `/pwf-compact` or:
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py compact
+```
+
+The command archives old objective auto records to `progress.archive.md`, keeps recent records in `progress.md`, and writes a deterministic compact summary. The summary is factual only: counts, time ranges, tools, and file paths. Agent-written summaries remain interpretive and should be verified when accuracy matters.
+
 ## Security Boundary
 
 Planning files are injected as data, not instructions. Hook output wraps file content in delimiter blocks:

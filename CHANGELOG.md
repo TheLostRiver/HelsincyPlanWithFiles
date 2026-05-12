@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Added `plan.py compact` and `/pwf-compact` to archive old objective auto records from `progress.md`.
+- Added compacted progress summary injection so long-running tasks keep bounded context without losing audit history.
+- Added `status` and `doctor` compact recommendations when `progress.md` grows past the threshold.
+
 ## 0.1.2 - 2026-05-12
 
 - Expanded injected recent `progress.md` context from 20 lines to 80 lines so objective hook records are less likely to hide important recent file changes.

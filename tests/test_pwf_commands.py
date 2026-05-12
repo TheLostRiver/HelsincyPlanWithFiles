@@ -17,6 +17,7 @@ COMMANDS = {
     "pwf-switch": "switch",
     "pwf-attest": "attest",
     "pwf-capture": "capture",
+    "pwf-compact": "compact",
 }
 
 
@@ -84,9 +85,10 @@ class PwfCommandTests(unittest.TestCase):
         for command_name in COMMANDS:
             with self.subTest(command=command_name):
                 slash_command = f"/{command_name}"
+                table_row = f"| `{slash_command}` |"
 
-                self.assertIn(slash_command, readme_cn)
-                self.assertIn(slash_command, readme_en)
+                self.assertIn(table_row, readme_cn)
+                self.assertIn(table_row, readme_en)
 
 
 if __name__ == "__main__":
