@@ -22,7 +22,13 @@ python .codex\skills\planning-with-files\scripts\plan.py status
 
 ## Agent Slash Commands
 
-仓库提供 `.codex/commands/` 目录中的 agent command prompt，可安装为 Codex slash commands。第一批命令都使用 `/plw-XXX` 命名；复制 `.codex/` 到目标项目时会一并带上这些命令。
+仓库提供 `.codex/commands/` 目录中的 agent command prompt。复制 `.codex/` 到目标项目时会一并带上这些命令，但 Codex Desktop 需要把它们安装到用户级 prompts 目录后才会显示为 slash commands：
+
+```powershell
+powershell -ExecutionPolicy RemoteSigned -File .codex\skills\planning-with-files\scripts\install-commands.ps1
+```
+
+第一批命令都使用 `/plw-XXX` 命名，注意前缀是 `plw`，不是 `pwl`：
 
 | 命令 | 作用 | 等价 CLI |
 |------|------|----------|
@@ -92,6 +98,12 @@ your-project/
 ```
 
 确保 Codex hooks 已启用，并在 Codex 提示信任 hook 时批准。当前配置使用 `python` 运行 hook，因此 Windows 环境下不依赖 `python3` 或 `sh`。
+
+如果需要 `/plw-*` slash commands，安装后重启 Codex：
+
+```powershell
+powershell -ExecutionPolicy RemoteSigned -File .codex\skills\planning-with-files\scripts\install-commands.ps1
+```
 
 ## 使用
 

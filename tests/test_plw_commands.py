@@ -52,6 +52,20 @@ class PlwCommandTests(unittest.TestCase):
 
         self.assertIn(".codex/commands/", readme_cn)
         self.assertIn(".codex/commands/", readme_en)
+        self.assertIn("install-commands.ps1", readme_cn)
+        self.assertIn("install-commands.ps1", readme_en)
+
+    def test_install_commands_script_exists(self):
+        script = (
+            REPO_ROOT
+            / ".codex"
+            / "skills"
+            / "planning-with-files"
+            / "scripts"
+            / "install-commands.ps1"
+        )
+
+        self.assertTrue(script.is_file())
 
     def test_readmes_document_plw_commands(self):
         readme_cn = read_repo_text("README.md")

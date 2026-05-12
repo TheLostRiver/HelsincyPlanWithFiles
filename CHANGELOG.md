@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Moved `/plw-*` agent slash command prompts into `.codex/commands/` so copying `.codex/` installs them with hooks and skills.
+- Added `install-commands.ps1` to copy `/plw-*` prompts into the user-level Codex prompts directory.
 
 ## 0.1.0 - 2026-05-11
 
