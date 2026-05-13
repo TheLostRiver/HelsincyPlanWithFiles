@@ -2,11 +2,65 @@
 
 [简体中文](README.md) | [English](README.en.md)
 
-Helsincy Plan With Files is a Codex skill + hook tool. It stores task plans, research findings, and progress logs as local project files so an agent can keep working after long tasks, context compaction, or session recovery.
+Helsincy Plan With Files gives Codex a project-local working memory based on files. It stores plans, research findings, and execution progress in local planning files, then uses hooks to inject that context and record file changes at the right moments, so long-running work is not trapped inside the current chat context.
+
+## What Is This?
+
+This is a project-local skill + hook tool for Codex. After installation, your project gets `/pwf-*` commands, Codex hooks, and local planning files:
+
+```text
+.planning/<plan-id>/task_plan.md
+.planning/<plan-id>/findings.md
+.planning/<plan-id>/progress.md
+```
+
+These files store the task plan, research findings, and execution records. When Codex starts a session, receives a user prompt, uses tools, or prepares to stop, the hooks can use these files to recover the current task state.
+
+## What Problem Does It Solve?
+
+Codex can execute complex work, but long tasks have a few recurring failure modes:
+
+- After context compaction, early decisions, completed phases, and remaining work can disappear.
+- After a session interruption or recovery, the agent often has to reread a large amount of context.
+- Files may have changed, but there is no stable objective record of which files were touched.
+- Research notes, test results, and temporary judgments get scattered across chat history.
+
+Helsincy Plan With Files moves this fragile state into project files, turning task memory from chat-only context into durable local work records.
+
+## Why Use It?
+
+This tool is useful for Codex workflows that need multiple rounds, session recovery, or stronger traceability, such as:
+
+- Debugging complex issues while preserving investigation notes and decisions.
+- Implementing features in phases with a clear current phase, completed work, and next steps.
+- Editing multiple files while automatically recording the actual file changes.
+- Continuing work after context compaction, session recovery, or task switching.
+
+The value is not simply creating a few `.md` files. The value is giving Codex a recoverable, traceable, and diagnosable task memory.
+
+## Without It vs With It
+
+| Scenario | Without This Tool | With Helsincy Plan With Files |
+|----------|-------------------|-------------------------------|
+| Long task progress | Depends on the current chat context, so goals and phases are easy to lose after compaction | `task_plan.md` stores goals, phases, and current status |
+| Research context | Findings and judgments are scattered through the conversation | `findings.md` keeps discoveries, decisions, and external context summaries together |
+| File changes | The agent must summarize manually, which can miss details or become subjective | Hooks automatically append objective write-tool records to `progress.md` |
+| Session recovery | A new session must rebuild task context from scratch | Hooks inject the active plan on session start and user prompt submit |
+| Troubleshooting | Users inspect hooks, scripts, and state files manually | `/pwf-doctor` diagnoses install, active plan, and attestation state |
+| Safety boundary | Planning content can blend into normal prompt context | Delimiter framing marks planning content explicitly as data |
+
+## Core Workflow
+
+1. Install `.codex/` into the target project root.
+2. Run `/pwf-doctor` to check hooks and commands.
+3. Create a planning task with `/pwf-init <task name>`.
+4. Let Codex research, edit, test, and summarize normally.
+5. Hooks maintain the active `progress.md`; the agent summarizes important external context into `findings.md`.
+6. Use `/pwf-switch`, `/pwf-compact`, or `/pwf-attest` when you need task switching, progress compaction, or plan locking.
 
 ## Version
 
-Current version: `0.1.3`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current version: `0.1.4`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 Important: please do not use `v0.1.0` or earlier anymore. Older versions include the incorrect `/plw-*` command prefix and briefly introduced a global prompts installation route, which can make migration and uninstall confusing. Upgrade to the current version and use `/pwf-*` commands instead.
 
@@ -17,12 +71,12 @@ Important: please do not use `v0.1.0` or earlier anymore. Older versions include
 
 ## Installation
 
-For regular users, download `HelsincyPlanWithFiles-v0.1.3-codex.zip` from the release page. This package contains only the project-local `.codex/`, hooks, `/pwf-*` commands, and basic docs needed for installation.
+For regular users, download `HelsincyPlanWithFiles-v0.1.4-codex.zip` from the release page. This package contains only the project-local `.codex/`, hooks, `/pwf-*` commands, and basic docs needed for installation.
 
 ### Option A: Download From Release
 
 1. Open the [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest).
-2. Download `HelsincyPlanWithFiles-v0.1.3-codex.zip`.
+2. Download `HelsincyPlanWithFiles-v0.1.4-codex.zip`.
 3. Unzip it and copy the `.codex/` directory into your target project root.
 4. Restart Codex and approve the hooks when Codex asks for trust.
 5. Run `/pwf-doctor` in Codex to check the installation.

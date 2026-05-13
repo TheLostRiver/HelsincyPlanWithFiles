@@ -2,7 +2,10 @@
 
 ## Unreleased
 
+## 0.1.4 - 2026-05-13
+
 - Hardened `post_tool_use.py` so direct calls only record supported mutating tools: `apply_patch`, `Edit`, and `Write`.
+- Improved the Chinese and English README introductions with clearer product positioning, use cases, and before/after workflow comparisons.
 
 ## 0.1.3 - 2026-05-12
 
