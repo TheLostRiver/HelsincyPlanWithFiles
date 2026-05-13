@@ -492,10 +492,7 @@ def stop_message(root: Path) -> str | None:
         return None
     total, complete, _in_progress, _pending = counts
     if total > 0 and complete == total:
-        return (
-            f"[planning-with-files] ALL PHASES COMPLETE ({complete}/{total}). "
-            "If the user has additional work, add new phases to task_plan.md before starting."
-        )
+        return None
     return (
         f"[planning-with-files] Task incomplete ({complete}/{total} phases done). "
         "Update progress.md, then read task_plan.md and continue working on the remaining phases."

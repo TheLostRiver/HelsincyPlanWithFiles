@@ -534,6 +534,20 @@ class HookTests(unittest.TestCase):
             self.assertEqual(payload["decision"], "block")
             self.assertIn("Task incomplete", payload["reason"])
 
+    def test_stop_is_silent_when_all_phases_complete(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root, complete=True)
+
+            result = run_hook(
+                "stop.py",
+                root,
+                {"hook_event_name": "Stop", "stop_hook_active": False},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), "")
+
     def test_hooks_are_silent_without_plan(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

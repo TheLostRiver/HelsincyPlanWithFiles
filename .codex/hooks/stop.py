@@ -16,10 +16,6 @@ def main() -> None:
     if not message:
         return
 
-    if "ALL PHASES COMPLETE" in message:
-        adapter.emit_json({"systemMessage": message})
-        return
-
     if bool(payload.get("stop_hook_active")):
         adapter.emit_json({"systemMessage": message})
         return

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Stop hook now stays silent when all phases are complete, avoiding a misleading warning for finished plans.
+
 ## 0.1.4 - 2026-05-13
 
 - Hardened `post_tool_use.py` so direct calls only record supported mutating tools: `apply_patch`, `Edit`, and `Write`.
