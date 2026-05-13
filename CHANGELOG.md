@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.5 - 2026-05-13
+
 - Stop hook now stays silent when all phases are complete, avoiding a misleading warning for finished plans.
 
 ## 0.1.4 - 2026-05-13
