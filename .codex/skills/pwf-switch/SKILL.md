@@ -15,4 +15,6 @@ Run:
 python .codex\skills\planning-with-files\scripts\plan.py switch <optional plan-id>
 ```
 
+中文模式：如果用户希望中文输出，先设置 `PWF_LANG=zh-CN`，再运行相同命令。
+
 If no plan id was provided, report the current active plan. If a plan id was provided, confirm the newly active plan.

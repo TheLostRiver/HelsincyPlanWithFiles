@@ -15,6 +15,8 @@ Run:
 python .codex\skills\planning-with-files\scripts\plan.py compact
 ```
 
+中文模式：如果用户希望中文输出，先设置 `PWF_LANG=zh-CN`，再运行相同命令。
+
 If the user asks for a custom keep count, pass `--keep-records <N>`.
 If the user asks to preview only, pass `--dry-run`.
 
