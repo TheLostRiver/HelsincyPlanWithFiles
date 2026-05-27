@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Hardened `plan.py compact` to reject unsafe archive targets and preserve `progress.md` when archive writes fail.
+- Improved progress compaction parsing so manual bullet notes are not accidentally archived with objective auto records.
+- Isolated CLI and hook tests from inherited `PWF_*` environment variables.
+
 ## 0.2.0 - 2026-05-25
 
 - Added optional Simplified Chinese mode with `PWF_LANG=zh-CN` for hook prompts, CLI output, and generated planning templates.
