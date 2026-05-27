@@ -12,6 +12,12 @@ from typing import Iterable
 SUMMARY_START = "<!-- PWF_COMPACT_SUMMARY_START -->"
 SUMMARY_END = "<!-- PWF_COMPACT_SUMMARY_END -->"
 AUTO_RECORD_PREFIX = "### Auto Record: "
+AUTO_RECORD_FIELDS = (
+    "- Tool:",
+    "- Phase:",
+    "- Result:",
+    "- Command:",
+)
 
 
 @dataclass(frozen=True)
@@ -62,6 +68,8 @@ def compact_progress(
     if keep_records < 1:
         raise ValueError("keep_records must be at least 1")
 
+    _validate_archive_path(progress_path, archive_path)
+
     if not progress_path.is_file():
         return CompactResult(
             archived_count=0,
@@ -97,8 +105,8 @@ def compact_progress(
         archived_indexes = {record.index for record in archived_records}
         kept_lines = _render_nodes(nodes, archived_indexes)
         updated_lines = _insert_summary(kept_lines, summary.splitlines())
-        _write_lines(progress_path, updated_lines)
         _append_archive(archive_path, compact_time, progress_path, archived_records, kept_count)
+        _write_lines(progress_path, updated_lines)
 
     return CompactResult(
         archived_count=archived_count,
@@ -118,6 +126,17 @@ def _read_lines(path: Path) -> list[str]:
 def _write_lines(path: Path, lines: Iterable[str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8", newline="\n")
+
+
+def _validate_archive_path(progress_path: Path, archive_path: Path) -> None:
+    if archive_path.exists() and archive_path.is_dir():
+        raise ValueError("archive path must be a file, not a directory")
+    try:
+        if progress_path.resolve() == archive_path.resolve():
+            raise ValueError("archive path must be different from progress.md")
+    except FileNotFoundError:
+        if progress_path.absolute() == archive_path.absolute():
+            raise ValueError("archive path must be different from progress.md")
 
 
 def _find_line(lines: list[str], needle: str) -> int | None:
@@ -174,6 +193,7 @@ def _parse_nodes(lines: list[str]) -> tuple[list[tuple[str, object]], list[AutoR
             text_buffer = []
 
         record_lines = [line]
+        in_files = False
         line_index += 1
         while line_index < len(lines):
             candidate = lines[line_index]
@@ -181,9 +201,13 @@ def _parse_nodes(lines: list[str]) -> tuple[list[tuple[str, object]], list[AutoR
                 break
             if candidate.startswith("#") and candidate.strip():
                 break
-            if candidate.strip() and not candidate.startswith("- ") and not candidate.startswith("  - "):
+            if not _is_auto_record_body_line(candidate, in_files=in_files):
                 break
             record_lines.append(candidate)
+            if candidate.startswith("- Files:"):
+                in_files = True
+            elif candidate.strip() and not candidate.startswith("  - "):
+                in_files = False
             line_index += 1
 
         record = _make_record(index, record_lines)
@@ -194,6 +218,16 @@ def _parse_nodes(lines: list[str]) -> tuple[list[tuple[str, object]], list[AutoR
     if text_buffer:
         nodes.append(("text", tuple(text_buffer)))
     return nodes, records
+
+
+def _is_auto_record_body_line(line: str, *, in_files: bool) -> bool:
+    if not line.strip():
+        return True
+    if in_files and line.startswith("  - "):
+        return True
+    if line.startswith("- Files:"):
+        return True
+    return line.startswith(AUTO_RECORD_FIELDS)
 
 
 def _make_record(index: int, lines: list[str]) -> AutoRecord:

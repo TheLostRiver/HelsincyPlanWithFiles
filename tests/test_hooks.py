@@ -13,8 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 def run_hook(script_name, project_root, payload, env=None):
     script = REPO_ROOT / ".codex" / "hooks" / script_name
-    run_env = dict(os.environ)
-    run_env.pop("PWF_LOG_COMMAND", None)
+    run_env = {key: value for key, value in os.environ.items() if not key.startswith("PWF_")}
     if env is not None:
         run_env.update(env)
     result = subprocess.run(

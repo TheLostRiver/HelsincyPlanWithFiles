@@ -13,7 +13,7 @@ PLAN_SCRIPT = REPO_ROOT / ".codex" / "skills" / "planning-with-files" / "scripts
 
 
 def run_plan(project_root, *args, env=None):
-    run_env = dict(os.environ)
+    run_env = {key: value for key, value in os.environ.items() if not key.startswith("PWF_")}
     run_env.pop("PLAN_ID", None)
     if env is not None:
         run_env.update(env)
@@ -78,6 +78,20 @@ def auto_records(count):
 
 
 class PlanCliTests(unittest.TestCase):
+    def test_help_reports_chinese_output_when_enabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            result = run_plan(root, "--help", env={"PWF_LANG": "zh-CN"})
+            init_help = run_plan(root, "init", "--help", env={"PWF_LANG": "zh-CN"})
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("要检查的项目根目录", result.stdout)
+            self.assertIn("创建新的 planning 会话", result.stdout)
+            self.assertEqual(init_help.returncode, 0, init_help.stderr)
+            self.assertIn("创建根目录级 planning 文件", init_help.stdout)
+            self.assertIn("覆盖已有 planning 文件", init_help.stdout)
+
     def test_status_reports_active_plan_summary(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

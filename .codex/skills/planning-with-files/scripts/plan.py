@@ -64,6 +64,16 @@ CLI_MESSAGES = {
         "created": "created {label}: {plan_id}",
         "current_phase": "current phase: {phase}",
         "findings_path": "findings: {path}",
+        "help_attest": "Lock, show, or clear plan attestation",
+        "help_capture": "Append external context to findings.md",
+        "help_compact": "Archive old progress.md auto records",
+        "help_doctor": "Diagnose hooks, active plan, and attestation",
+        "help_force": "Overwrite existing planning files",
+        "help_init": "Create a new planning session",
+        "help_legacy": "Create root-level planning files",
+        "help_root": "Project root to inspect",
+        "help_status": "Show active plan status",
+        "help_switch": "Set or show active plan",
         "hook_files_missing": "hook files: missing {paths}",
         "hook_files_ok": "hook files: ok",
         "hooks_json": "hooks.json: {status}",
@@ -113,6 +123,16 @@ CLI_MESSAGES = {
         "created": "已创建{label}: {plan_id}",
         "current_phase": "当前阶段: {phase}",
         "findings_path": "findings: {path}",
+        "help_attest": "锁定、查看或清除计划 attestation",
+        "help_capture": "将外部上下文追加到 findings.md",
+        "help_compact": "归档旧的 progress.md auto records",
+        "help_doctor": "诊断 hooks、当前计划和 attestation",
+        "help_force": "覆盖已有 planning 文件",
+        "help_init": "创建新的 planning 会话",
+        "help_legacy": "创建根目录级 planning 文件",
+        "help_root": "要检查的项目根目录",
+        "help_status": "显示当前计划状态",
+        "help_switch": "设置或显示当前计划",
         "hook_files_missing": "hook 文件: 缺失 {paths}",
         "hook_files_ok": "hook 文件: ok",
         "hooks_json": "hooks.json: {status}",
@@ -139,6 +159,10 @@ CLI_MESSAGES = {
 def _message(key: str, **values: object) -> str:
     text = CLI_MESSAGES[planning_state.current_lang()][key]
     return text.format(**values) if values else text
+
+
+def _help(key: str) -> str:
+    return _message(f"help_{key}")
 
 
 def _unsupported_language_warning() -> str:
@@ -629,31 +653,31 @@ def compact(root: Path, keep_records: int = 30, dry_run: bool = False, archive: 
 
 def main(argv: Iterable[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="plan.py")
-    parser.add_argument("--root", default=".", help="Project root to inspect")
+    parser.add_argument("--root", default=".", help=_help("root"))
     subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser("doctor", help="Diagnose hooks, active plan, and attestation")
-    subparsers.add_parser("status", help="Show active plan status")
+    subparsers.add_parser("doctor", help=_help("doctor"))
+    subparsers.add_parser("status", help=_help("status"))
 
-    init_parser = subparsers.add_parser("init", help="Create a new planning session")
+    init_parser = subparsers.add_parser("init", help=_help("init"))
     init_parser.add_argument("name")
-    init_parser.add_argument("--legacy", action="store_true", help="Create root-level planning files")
-    init_parser.add_argument("--force", action="store_true", help="Overwrite existing planning files")
+    init_parser.add_argument("--legacy", action="store_true", help=_help("legacy"))
+    init_parser.add_argument("--force", action="store_true", help=_help("force"))
 
-    switch_parser = subparsers.add_parser("switch", help="Set or show active plan")
+    switch_parser = subparsers.add_parser("switch", help=_help("switch"))
     switch_parser.add_argument("plan_id", nargs="?")
 
-    attest_parser = subparsers.add_parser("attest", help="Lock, show, or clear plan attestation")
+    attest_parser = subparsers.add_parser("attest", help=_help("attest"))
     attest_group = attest_parser.add_mutually_exclusive_group()
     attest_group.add_argument("--show", action="store_true")
     attest_group.add_argument("--clear", action="store_true")
 
-    capture_parser = subparsers.add_parser("capture", help="Append external context to findings.md")
+    capture_parser = subparsers.add_parser("capture", help=_help("capture"))
     capture_parser.add_argument("--kind", required=True, choices=["web", "browser", "image", "pdf", "file", "note"])
     capture_parser.add_argument("--source", required=True)
     capture_parser.add_argument("--summary", required=True)
     capture_parser.add_argument("--trust", default="untrusted")
 
-    compact_parser = subparsers.add_parser("compact", help="Archive old progress.md auto records")
+    compact_parser = subparsers.add_parser("compact", help=_help("compact"))
     compact_parser.add_argument("--keep-records", type=int, default=30)
     compact_parser.add_argument("--dry-run", action="store_true")
     compact_parser.add_argument("--archive", default="progress.archive.md")
