@@ -160,6 +160,124 @@ class ProgressCompactionTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 MODULE.compact_progress(progress, root / "archive.md", keep_records=0)
 
+    def test_compact_rejects_archive_path_matching_progress(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            progress = root / "progress.md"
+            progress.write_text(
+                "\n".join(
+                    [
+                        "# Progress Log",
+                        "",
+                        "### Auto Record: 2026-05-12 10:00:00",
+                        "- Tool: Write",
+                        "",
+                        "### Auto Record: 2026-05-12 10:01:00",
+                        "- Tool: Edit",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(ValueError):
+                MODULE.compact_progress(progress, progress, keep_records=1)
+
+    def test_compact_rejects_directory_archive_without_modifying_progress(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            progress = root / "progress.md"
+            archive = root / "archive-dir"
+            archive.mkdir()
+            original = "\n".join(
+                [
+                    "# Progress Log",
+                    "",
+                    "### Auto Record: 2026-05-12 10:00:00",
+                    "- Tool: Write",
+                    "- Files:",
+                    "  - `old.md` (write)",
+                    "",
+                    "### Auto Record: 2026-05-12 10:01:00",
+                    "- Tool: Edit",
+                    "- Files:",
+                    "  - `new.md` (edit)",
+                    "",
+                ]
+            )
+            progress.write_text(original, encoding="utf-8")
+
+            with self.assertRaises(ValueError):
+                MODULE.compact_progress(progress, archive, keep_records=1)
+
+            self.assertEqual(progress.read_text(encoding="utf-8"), original)
+
+    def test_compact_keeps_manual_bullet_after_archived_record(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            progress = root / "progress.md"
+            archive = root / "progress.archive.md"
+            progress.write_text(
+                "\n".join(
+                    [
+                        "# Progress Log",
+                        "",
+                        "### Auto Record: 2026-05-12 10:00:00",
+                        "- Tool: apply_patch",
+                        "- Files:",
+                        "  - `src/file_0.py` (update)",
+                        "",
+                        "- Manual bullet note that should stay hot",
+                        "",
+                        "### Auto Record: 2026-05-12 10:01:00",
+                        "- Tool: apply_patch",
+                        "- Files:",
+                        "  - `src/file_1.py` (update)",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            MODULE.compact_progress(progress, archive, keep_records=1, now="2026-05-12 22:10:00")
+
+            updated = progress.read_text(encoding="utf-8")
+            archived = archive.read_text(encoding="utf-8")
+            self.assertIn("- Manual bullet note that should stay hot", updated)
+            self.assertNotIn("- Manual bullet note that should stay hot", archived)
+
+    def test_compact_keeps_indented_manual_bullet_after_record(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            progress = root / "progress.md"
+            archive = root / "progress.archive.md"
+            progress.write_text(
+                "\n".join(
+                    [
+                        "# Progress Log",
+                        "",
+                        "### Auto Record: 2026-05-12 10:00:00",
+                        "- Tool: apply_patch",
+                        "",
+                        "  - Indented manual note that should stay hot",
+                        "",
+                        "### Auto Record: 2026-05-12 10:01:00",
+                        "- Tool: apply_patch",
+                        "- Files:",
+                        "  - `src/file_1.py` (update)",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            MODULE.compact_progress(progress, archive, keep_records=1, now="2026-05-12 22:10:00")
+
+            updated = progress.read_text(encoding="utf-8")
+            archived = archive.read_text(encoding="utf-8")
+            self.assertIn("  - Indented manual note that should stay hot", updated)
+            self.assertNotIn("Indented manual note that should stay hot", archived)
+
 
 if __name__ == "__main__":
     unittest.main()

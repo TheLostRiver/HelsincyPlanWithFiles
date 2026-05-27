@@ -12,8 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 def run_hook(script_name, project_root, payload):
     script = REPO_ROOT / ".codex" / "hooks" / script_name
-    env = dict(os.environ)
-    env.pop("PWF_LOG_COMMAND", None)
+    env = {key: value for key, value in os.environ.items() if not key.startswith("PWF_")}
     return subprocess.run(
         [sys.executable, str(script)],
         cwd=str(REPO_ROOT),

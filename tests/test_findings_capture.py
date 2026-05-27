@@ -11,7 +11,7 @@ PLAN_SCRIPT = REPO_ROOT / ".codex" / "skills" / "planning-with-files" / "scripts
 
 
 def run_plan(project_root, *args):
-    env = dict(os.environ)
+    env = {key: value for key, value in os.environ.items() if not key.startswith("PWF_")}
     env.pop("PLAN_ID", None)
     return subprocess.run(
         [sys.executable, str(PLAN_SCRIPT), "--root", str(project_root), *args],

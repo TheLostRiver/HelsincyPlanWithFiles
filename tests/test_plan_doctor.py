@@ -20,7 +20,7 @@ REQUIRED_HOOKS = [
 
 
 def run_plan(project_root, *args, env=None):
-    run_env = dict(os.environ)
+    run_env = {key: value for key, value in os.environ.items() if not key.startswith("PWF_")}
     run_env.pop("PLAN_ID", None)
     if env is not None:
         run_env.update(env)
