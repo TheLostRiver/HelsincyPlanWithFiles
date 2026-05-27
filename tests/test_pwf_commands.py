@@ -56,6 +56,14 @@ class PwfCommandTests(unittest.TestCase):
                 self.assertIn("plan.py", text)
                 self.assertIn(subcommand, text)
 
+    def test_pwf_skill_wrappers_document_chinese_mode(self):
+        for command_name in COMMANDS:
+            with self.subTest(command=command_name):
+                text = read_repo_text(f".codex/skills/{command_name}/SKILL.md")
+
+                self.assertIn("中文模式", text)
+                self.assertIn("PWF_LANG=zh-CN", text)
+
     def test_pwf_compact_skill_wrapper_routes_to_plan_cli(self):
         path = SKILL_ROOT / "pwf-compact" / "SKILL.md"
 

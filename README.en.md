@@ -60,9 +60,27 @@ The value is not simply creating a few `.md` files. The value is giving Codex a 
 
 ## Version
 
-Current version: `0.1.5`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current version: `0.2.0`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 Important: please do not use `v0.1.0` or earlier anymore. Older versions include the incorrect `/plw-*` command prefix and briefly introduced a global prompts installation route, which can make migration and uninstall confusing. Upgrade to the current version and use `/pwf-*` commands instead.
+
+## Chinese Mode
+
+By default, Helsincy Plan With Files keeps English output for compatibility with existing scripts and workflows. The language switch supports `PWF_LANG=zh-CN` and `PWF_LANG=en`. To enable Simplified Chinese hook messages, CLI output, and initialization templates, set:
+
+```powershell
+$env:PWF_LANG="zh-CN"
+python .codex\skills\planning-with-files\scripts\plan.py status
+python .codex\skills\planning-with-files\scripts\plan.py init "Chinese Task"
+```
+
+To force English output, set:
+
+```powershell
+$env:PWF_LANG="en"
+```
+
+Other `PWF_LANG` values fall back to English; `plan.py doctor` reports `language: warning unsupported PWF_LANG=<value>`. Safety delimiters, hashes, file paths, tool names, and `progress.md` auto record field names remain stable ASCII.
 
 ## Project Plans
 
@@ -71,12 +89,12 @@ Important: please do not use `v0.1.0` or earlier anymore. Older versions include
 
 ## Installation
 
-For regular users, download `HelsincyPlanWithFiles-v0.1.5-codex.zip` from the release page. This package contains only the project-local `.codex/`, hooks, `/pwf-*` commands, and basic docs needed for installation.
+For regular users, download `HelsincyPlanWithFiles-v0.2.0-codex.zip` from the release page. This package contains only the project-local `.codex/`, hooks, `/pwf-*` commands, and basic docs needed for installation.
 
 ### Option A: Download From Release
 
 1. Open the [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest).
-2. Download `HelsincyPlanWithFiles-v0.1.5-codex.zip`.
+2. Download `HelsincyPlanWithFiles-v0.2.0-codex.zip`.
 3. Unzip it and copy the `.codex/` directory into your target project root.
 4. Restart Codex and approve the hooks when Codex asks for trust.
 5. Run `/pwf-doctor` in Codex to check the installation.

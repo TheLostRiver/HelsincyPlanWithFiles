@@ -73,6 +73,12 @@ Before ANY complex task:
 
 > **Note:** Planning files go in your project root, not the skill installation folder.
 
+## Language Mode
+
+Default behavior uses English output for compatibility. Set `PWF_LANG=zh-CN` to use Simplified Chinese hook prompts, CLI output, and generated planning templates. Set `PWF_LANG=en` to force English. Unsupported `PWF_LANG` values fall back to English and are reported by `plan.py doctor`.
+
+Safety delimiters such as `---BEGIN PLAN DATA---`, hash values, file paths, tool names, and objective auto-record field names remain stable ASCII in every language.
+
 ## The Core Pattern
 
 ```

@@ -19,16 +19,18 @@ REQUIRED_HOOKS = [
 ]
 
 
-def run_plan(project_root, *args):
-    env = dict(os.environ)
-    env.pop("PLAN_ID", None)
+def run_plan(project_root, *args, env=None):
+    run_env = dict(os.environ)
+    run_env.pop("PLAN_ID", None)
+    if env is not None:
+        run_env.update(env)
     return subprocess.run(
         [sys.executable, str(PLAN_SCRIPT), "--root", str(project_root), *args],
         cwd=str(REPO_ROOT),
         text=True,
         capture_output=True,
         check=False,
-        env=env,
+        env=run_env,
     )
 
 
@@ -190,6 +192,17 @@ class PlanDoctorTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("[warn] progress.md has 101 auto records", result.stdout)
             self.assertIn("run /pwf-compact or plan.py compact", result.stdout)
+
+    def test_doctor_warns_about_unsupported_language(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_hooks(root)
+            write_active_plan(root)
+
+            result = run_plan(root, "doctor", env={"PWF_LANG": "fr-FR"})
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("language: warning unsupported PWF_LANG=fr-FR", result.stdout)
 
 
 if __name__ == "__main__":

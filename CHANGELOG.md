@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.2.0 - 2026-05-25
+
+- Added optional Simplified Chinese mode with `PWF_LANG=zh-CN` for hook prompts, CLI output, and generated planning templates.
+- Added Chinese template files under `.codex/skills/planning-with-files/templates/zh-CN/`.
+- Added Chinese mode guidance to `/pwf-*` skill wrappers and both README files.
+- Kept default English behavior and stable ASCII delimiters, hashes, file paths, tool names, and auto-record fields for compatibility.
+
 ## 0.1.5 - 2026-05-13
 
 - Stop hook now stays silent when all phases are complete, avoiding a misleading warning for finished plans.

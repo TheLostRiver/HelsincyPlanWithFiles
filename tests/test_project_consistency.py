@@ -44,6 +44,17 @@ class ProjectConsistencyTests(unittest.TestCase):
         self.assertIn("docs/CHINESE_LOCALIZATION_PLAN.md", readme_cn)
         self.assertIn("docs/CHINESE_LOCALIZATION_PLAN.md", readme_en)
 
+    def test_readmes_document_chinese_language_mode(self):
+        readme_cn = read_text("README.md")
+        readme_en = read_text("README.en.md")
+        skill = read_text(".codex/skills/planning-with-files/SKILL.md")
+
+        self.assertIn("PWF_LANG=zh-CN", readme_cn)
+        self.assertIn("PWF_LANG=zh-CN", readme_en)
+        self.assertIn("PWF_LANG=en", readme_cn)
+        self.assertIn("PWF_LANG=en", readme_en)
+        self.assertIn("PWF_LANG=zh-CN", skill)
+
     def test_hooks_json_references_existing_hook_files(self):
         hooks = json.loads(read_text(".codex/hooks.json"))
         commands = collect_commands(hooks)
