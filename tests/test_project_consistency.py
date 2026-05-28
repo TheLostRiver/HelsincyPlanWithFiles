@@ -74,11 +74,10 @@ class ProjectConsistencyTests(unittest.TestCase):
         self.assertRegex(version, r"^\d+\.\d+\.\d+$")
         self.assertIn(version, changelog)
 
-    def test_released_compaction_hardening_is_recorded_in_current_version(self):
-        version = read_text("VERSION").strip()
+    def test_released_compaction_hardening_is_recorded_in_0_2_0(self):
         changelog = read_text("CHANGELOG.md")
         match = re.search(
-            rf"^## {re.escape(version)}\b(?P<body>.*?)(?=^## |\Z)",
+            r"^## 0\.2\.0\b(?P<body>.*?)(?=^## |\Z)",
             changelog,
             flags=re.MULTILINE | re.DOTALL,
         )

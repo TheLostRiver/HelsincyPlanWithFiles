@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.2.1 - 2026-05-28
+
+- 中文：修复英文默认模板初始化后 `plan.py status` 把 HTML 注释误识别为当前阶段的问题。
+- 中文：修复 `plan.py compact` 摘要把 `- Command:` 里的反引号文本误统计为文件路径的问题。
+- 中文：修正 `0.2.0` changelog 归属，确保已发布的压缩加固说明记录在对应版本条目中。
+- English: Fixed default English template initialization so `plan.py status` reports `Phase 1` instead of an HTML comment.
+- English: Fixed `plan.py compact` summaries so backtick text in `- Command:` is not counted as a file path.
+- English: Corrected the `0.2.0` changelog section so released compaction hardening notes are recorded under the released version.
+
 ## 0.2.0 - 2026-05-25
 
 - Added optional Simplified Chinese mode with `PWF_LANG=zh-CN` for hook prompts, CLI output, and generated planning templates.
