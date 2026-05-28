@@ -74,6 +74,20 @@ class ProjectConsistencyTests(unittest.TestCase):
         self.assertRegex(version, r"^\d+\.\d+\.\d+$")
         self.assertIn(version, changelog)
 
+    def test_released_compaction_hardening_is_recorded_in_0_2_0(self):
+        changelog = read_text("CHANGELOG.md")
+        match = re.search(
+            r"^## 0\.2\.0\b(?P<body>.*?)(?=^## |\Z)",
+            changelog,
+            flags=re.MULTILINE | re.DOTALL,
+        )
+
+        self.assertIsNotNone(match)
+        section = match.group("body")
+        self.assertIn("Hardened `plan.py compact`", section)
+        self.assertIn("manual bullet notes", section)
+        self.assertIn("PWF_*", section)
+
 
 if __name__ == "__main__":
     unittest.main()

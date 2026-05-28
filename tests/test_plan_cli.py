@@ -147,6 +147,18 @@ class PlanCliTests(unittest.TestCase):
             self.assertEqual((root / ".planning" / ".active_plan").read_text(encoding="utf-8"), plan_id)
             self.assertIn(f"created plan: {plan_id}", result.stdout.lower())
 
+    def test_init_default_template_reports_phase_one_status(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            init_result = run_plan(root, "init", "Hook Security")
+            status_result = run_plan(root, "status")
+
+            self.assertEqual(init_result.returncode, 0, init_result.stderr)
+            self.assertEqual(status_result.returncode, 0, status_result.stderr)
+            self.assertIn("current phase: Phase 1", status_result.stdout)
+            self.assertNotIn("current phase: <!--", status_result.stdout)
+
     def test_init_creates_chinese_templates_when_enabled(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
