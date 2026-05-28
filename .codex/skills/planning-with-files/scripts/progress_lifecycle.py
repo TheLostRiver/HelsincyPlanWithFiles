@@ -234,9 +234,18 @@ def _make_record(index: int, lines: list[str]) -> AutoRecord:
     timestamp = lines[0][len(AUTO_RECORD_PREFIX) :].strip()
     tool = ""
     files: list[str] = []
+    in_files = False
     for line in lines[1:]:
         if line.startswith("- Tool:"):
             tool = line.split(":", 1)[1].strip()
+            in_files = False
+            continue
+        if line.startswith("- Files:"):
+            in_files = True
+            continue
+        if line.startswith("- ") and not line.startswith("  - "):
+            in_files = False
+        if not in_files:
             continue
         match = re.search(r"`([^`]+)`", line)
         if match:

@@ -136,6 +136,40 @@ class ProgressCompactionTests(unittest.TestCase):
             self.assertIn("new.md", updated)
             self.assertNotIn("old.md", updated)
 
+    def test_compact_summary_counts_only_file_list_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            progress = root / "progress.md"
+            archive = root / "progress.archive.md"
+            progress.write_text(
+                "\n".join(
+                    [
+                        "# Progress Log",
+                        "",
+                        "### Auto Record: 2026-05-12 10:00:00",
+                        "- Tool: apply_patch",
+                        "- Files:",
+                        "  - `src/only_file.py` (update)",
+                        "- Command: `apply_patch mentioning docs/not_a_file.md`",
+                        "",
+                        "### Auto Record: 2026-05-12 10:01:00",
+                        "- Tool: apply_patch",
+                        "- Files:",
+                        "  - `src/recent.py` (update)",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            MODULE.compact_progress(progress, archive, keep_records=1, now="2026-05-12 22:10:00")
+
+            archived = archive.read_text(encoding="utf-8")
+            summary = progress.read_text(encoding="utf-8")
+            self.assertIn("- Unique Files: 1", summary)
+            self.assertIn("- Unique Files: 1", archived)
+            self.assertIn("docs/not_a_file.md", archived)
+
     def test_count_and_summary_handle_missing_progress_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

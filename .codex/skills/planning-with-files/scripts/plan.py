@@ -219,11 +219,21 @@ def _current_phase(paths: planning_state.PlanningPaths) -> str | None:
     if not paths.task_plan.is_file():
         return None
     lines = paths.task_plan.read_text(encoding="utf-8", errors="replace").splitlines()
+    in_comment = False
     for index, line in enumerate(lines):
         if line.strip() != "## Current Phase":
             continue
         for value in lines[index + 1 :]:
             candidate = value.strip()
+            if candidate.startswith("<!--"):
+                in_comment = True
+                if candidate.endswith("-->"):
+                    in_comment = False
+                continue
+            if in_comment:
+                if candidate.endswith("-->"):
+                    in_comment = False
+                continue
             if candidate:
                 return candidate
         return None
