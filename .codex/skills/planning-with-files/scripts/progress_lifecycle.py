@@ -18,6 +18,8 @@ AUTO_RECORD_FIELDS = (
     "- Result:",
     "- Command:",
 )
+DATA_BLOCK_DELIMITER_RE = re.compile(r"^---(?:BEGIN|END) [A-Z ][A-Z ]* DATA---$")
+PROGRESS_TRUNCATION_NOTE = "[planning-with-files] progress context truncated; oldest content omitted."
 
 
 @dataclass(frozen=True)
@@ -56,6 +58,42 @@ def extract_compaction_summary(progress_path: Path, line_limit: int = 20) -> str
         return ""
     summary_lines = lines[start + 1 : end]
     return "\n".join(summary_lines[:line_limit]).strip()
+
+
+def extract_recent_progress_context(
+    progress_path: Path,
+    record_limit: int,
+    manual_tail_lines: int,
+    max_chars: int,
+) -> str:
+    if not progress_path.is_file() or max_chars < 1:
+        return ""
+
+    lines = _remove_managed_summary(_read_lines(progress_path))
+    if not any(line.strip() for line in lines):
+        return ""
+
+    nodes, records = _parse_nodes(lines)
+    kept_record_indexes = {record.index for record in records[-max(0, record_limit) :]}
+    manual_keys = _recent_manual_line_keys(nodes, max(0, manual_tail_lines))
+
+    units: list[tuple[str, ...]] = []
+    for node_index, (kind, payload) in enumerate(nodes):
+        if kind == "record":
+            record = payload
+            if isinstance(record, AutoRecord) and record.index in kept_record_indexes:
+                units.append(tuple(_record_context_lines(record, max_chars)))
+            continue
+
+        text_lines = [
+            line
+            for line_index, line in enumerate(payload)  # type: ignore[arg-type]
+            if (node_index, line_index) in manual_keys
+        ]
+        if text_lines:
+            units.append(tuple(text_lines))
+
+    return _escape_data_block_content(_render_context_units_with_budget(units, max_chars))
 
 
 def compact_progress(
@@ -251,6 +289,74 @@ def _make_record(index: int, lines: list[str]) -> AutoRecord:
         if match:
             files.append(match.group(1))
     return AutoRecord(index=index, lines=tuple(lines), timestamp=timestamp, tool=tool, files=tuple(files))
+
+
+def _recent_manual_line_keys(nodes: list[tuple[str, object]], limit: int) -> set[tuple[int, int]]:
+    if limit < 1:
+        return set()
+
+    keys: list[tuple[int, int]] = []
+    for node_index, (kind, payload) in enumerate(nodes):
+        if kind != "text":
+            continue
+        for line_index, line in enumerate(payload):  # type: ignore[arg-type]
+            if line.strip():
+                keys.append((node_index, line_index))
+    return set(keys[-limit:])
+
+
+def _record_context_lines(record: AutoRecord, max_chars: int) -> tuple[str, ...]:
+    text = "\n".join(record.lines)
+    if len(text) <= max_chars:
+        return record.lines
+    return _safe_record_summary_lines(record)
+
+
+def _safe_record_summary_lines(record: AutoRecord) -> tuple[str, ...]:
+    tool = record.tool or "unknown"
+    timestamp = record.timestamp or "unknown"
+    file_count = len(record.files)
+    return (
+        f"{AUTO_RECORD_PREFIX}{timestamp}",
+        f"- Tool: {tool}",
+        f"- Files: {file_count} paths omitted due to size",
+        "- Note: oversized auto record summarized for prompt safety",
+    )
+
+
+def _render_context_units_with_budget(units: list[tuple[str, ...]], max_chars: int) -> str:
+    kept = list(units)
+    truncated = False
+    while kept and len(_join_units(kept)) > max_chars:
+        kept.pop(0)
+        truncated = True
+
+    if not kept:
+        return PROGRESS_TRUNCATION_NOTE if truncated else ""
+
+    text = _join_units(kept)
+    if truncated:
+        text = f"{PROGRESS_TRUNCATION_NOTE}\n\n{text}"
+    return text
+
+
+def _join_units(units: list[tuple[str, ...]]) -> str:
+    rendered: list[str] = []
+    for unit in units:
+        if rendered and rendered[-1].strip():
+            rendered.append("")
+        rendered.extend(unit)
+    return "\n".join(rendered).strip()
+
+
+def _escape_data_block_content(content: str) -> str:
+    escaped: list[str] = []
+    for line in content.splitlines():
+        if DATA_BLOCK_DELIMITER_RE.fullmatch(line.strip()):
+            escaped.append(f"[escaped delimiter] {line}")
+        else:
+            escaped.append(line)
+    return "\n".join(escaped)
 
 
 def _render_nodes(nodes: list[tuple[str, object]], archived_indexes: set[int]) -> list[str]:

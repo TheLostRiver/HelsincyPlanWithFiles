@@ -177,14 +177,14 @@ def _help(key: str) -> str:
 def _unsupported_language_warning() -> str:
     lang = os.environ.get("PWF_LANG", "").strip()
     if lang and lang not in planning_state.SUPPORTED_LANGS:
-        return CLI_MESSAGES["en"]["language_unsupported"].format(lang=lang)
+        return CLI_MESSAGES["en"]["language_unsupported"].format(lang=planning_state.safe_env_value(lang))
     return ""
 
 
 def _unsupported_session_mode_warning() -> str:
     mode = os.environ.get("PWF_SESSION_MODE", "").strip()
     if mode and mode.lower() not in codex_hook_adapter.SESSION_MODES:
-        return _message("session_mode_unsupported", mode=mode)
+        return _message("session_mode_unsupported", mode=planning_state.safe_env_value(mode))
     return ""
 
 
@@ -305,6 +305,58 @@ def _progress_doctor_warning(paths: planning_state.PlanningPaths | None) -> str:
     if count < _compact_threshold():
         return ""
     return _message("progress_warning", count=count)
+
+
+def _findings_context_enabled() -> tuple[bool, str | None]:
+    return planning_state.env_bool("PWF_INCLUDE_FINDINGS", default=False)
+
+
+def _context_progress_text(limits: planning_state.ContextLimits) -> str:
+    if limits.progress_recent_records > 0:
+        return f"{limits.progress_recent_records} records"
+    return f"tail {limits.progress_tail_lines} lines"
+
+
+def _context_findings_text(limits: planning_state.ContextLimits) -> str:
+    enabled, _warning = _findings_context_enabled()
+    if not enabled:
+        return "off"
+    return f"tail {limits.findings_tail_lines}"
+
+
+def _context_status_line() -> str:
+    limits = planning_state.context_limits()
+    return (
+        f"context: profile={limits.profile}, "
+        f"plan=head {limits.plan_head_lines} tail {limits.plan_tail_lines}, "
+        f"progress={_context_progress_text(limits)}, "
+        f"findings={_context_findings_text(limits)}, "
+        f"max={limits.context_max_chars} chars"
+    )
+
+
+def _context_doctor_lines() -> list[str]:
+    limits = planning_state.context_limits()
+    findings_enabled, findings_warning = _findings_context_enabled()
+    lines = [
+        f"context profile: {limits.profile}",
+        (
+            f"context findings: on tail {limits.findings_tail_lines}"
+            if findings_enabled
+            else "context findings: off"
+        ),
+        (
+            f"context progress mode: record-aware {limits.progress_recent_records} records"
+            if limits.progress_recent_records > 0
+            else f"context progress mode: line tail {limits.progress_tail_lines}"
+        ),
+    ]
+    if limits.profile == "custom" and not any(name in os.environ for name in planning_state.NUMERIC_OVERRIDE_FIELDS):
+        lines.append("context custom: no overrides; using default limits")
+    lines.extend(limits.warnings)
+    if findings_warning:
+        lines.append(findings_warning)
+    return lines
 
 
 def _slugify(value: str) -> str:
@@ -504,6 +556,8 @@ def doctor(root: Path) -> int:
     lines.append(attestation_line)
     ok = ok and attestation_ok
 
+    lines.extend(_context_doctor_lines())
+
     warning = _progress_doctor_warning(paths)
     if warning:
         lines.append(warning)
@@ -537,6 +591,7 @@ def status(root: Path) -> int:
     attestation_line, attestation_ok = _attestation_status(root, paths)
     print(attestation_line)
     print(_progress_status_line(paths))
+    print(_context_status_line())
     return 0 if planning_ok and attestation_ok else 1
 
 

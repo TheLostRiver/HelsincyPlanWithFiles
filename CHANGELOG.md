@@ -2,7 +2,12 @@
 
 ## Unreleased
 
-- No unreleased changes.
+- 中文：新增可配置 context injection profiles：`PWF_CONTEXT_PROFILE=lean/default/expanded/deep/custom`，默认行为保持兼容；`expanded` 和 `deep` 会注入计划头尾，并以完整 auto record 方式注入最近 progress。
+- 中文：保留 findings 显式 opt-in；只有设置 `PWF_INCLUDE_FINDINGS=1` 后才会注入 findings，并继续使用 delimiter framing 和不可信内容提示。
+- 中文：增强 context 配置安全性和可诊断性，包括严格 `PWF_*` 数值/布尔解析、环境变量诊断值清理、delimiter-looking 内容转义、总 context budget 兜底，以及 `/pwf-status`、`/pwf-doctor` 的 profile/limits 输出。
+- English: Added configurable context injection profiles through `PWF_CONTEXT_PROFILE=lean/default/expanded/deep/custom`. Default behavior stays compatible; `expanded` and `deep` inject plan head/tail context and recent progress as complete auto records.
+- English: Kept findings explicitly opt-in. Findings are injected only when `PWF_INCLUDE_FINDINGS=1` is set, with delimiter framing and untrusted-content warnings preserved.
+- English: Hardened context configuration and diagnostics with strict `PWF_*` numeric/boolean parsing, sanitized environment diagnostics, delimiter-looking content escaping, total context budget fallback, and profile/limit output in `/pwf-status` and `/pwf-doctor`.
 
 ## 0.2.2 - 2026-06-06
 

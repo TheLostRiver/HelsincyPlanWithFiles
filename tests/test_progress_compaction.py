@@ -12,6 +12,212 @@ MODULE = SourceFileLoader(
 
 
 class ProgressCompactionTests(unittest.TestCase):
+    def test_extract_recent_progress_context_keeps_recent_records_and_manual_tail(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            progress = root / "progress.md"
+            progress.write_text(
+                "\n".join(
+                    [
+                        "# Progress Log",
+                        "",
+                        "manual note 1",
+                        "",
+                        "### Auto Record: 2026-05-12 10:00:00",
+                        "- Tool: Write",
+                        "- Files:",
+                        "  - `old.md` (write)",
+                        "",
+                        "manual note 2",
+                        "",
+                        "### Auto Record: 2026-05-12 10:01:00",
+                        "- Tool: Edit",
+                        "- Files:",
+                        "  - `middle.md` (edit)",
+                        "",
+                        "manual note 3",
+                        "",
+                        "### Auto Record: 2026-05-12 10:02:00",
+                        "- Tool: apply_patch",
+                        "- Files:",
+                        "  - `new.md` (update)",
+                        "",
+                        "manual note 4",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            context = MODULE.extract_recent_progress_context(
+                progress,
+                record_limit=2,
+                manual_tail_lines=2,
+                max_chars=10000,
+            )
+
+            self.assertNotIn("old.md", context)
+            self.assertIn("middle.md", context)
+            self.assertIn("new.md", context)
+            self.assertNotIn("manual note 2", context)
+            self.assertIn("manual note 3", context)
+            self.assertIn("manual note 4", context)
+            self.assertLess(context.index("middle.md"), context.index("manual note 3"))
+            self.assertLess(context.index("manual note 3"), context.index("new.md"))
+
+    def test_extract_recent_progress_context_excludes_managed_compact_summary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            progress = root / "progress.md"
+            progress.write_text(
+                "\n".join(
+                    [
+                        "# Progress Log",
+                        "",
+                        "<!-- PWF_COMPACT_SUMMARY_START -->",
+                        "old managed summary",
+                        "<!-- PWF_COMPACT_SUMMARY_END -->",
+                        "",
+                        "### Auto Record: 2026-05-12 10:00:00",
+                        "- Tool: Edit",
+                        "- Files:",
+                        "  - `current.md` (edit)",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            context = MODULE.extract_recent_progress_context(
+                progress,
+                record_limit=1,
+                manual_tail_lines=5,
+                max_chars=10000,
+            )
+
+            self.assertNotIn("old managed summary", context)
+            self.assertIn("current.md", context)
+
+    def test_extract_recent_progress_context_applies_max_chars_by_dropping_oldest_content(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            progress = root / "progress.md"
+            records = []
+            for index in range(8):
+                records.extend(
+                    [
+                        f"### Auto Record: 2026-05-12 10:{index:02d}:00",
+                        "- Tool: apply_patch",
+                        "- Files:",
+                        f"  - `src/file_{index}.py` (update)",
+                        "",
+                    ]
+                )
+            progress.write_text("# Progress Log\n\n" + "\n".join(records), encoding="utf-8")
+
+            context = MODULE.extract_recent_progress_context(
+                progress,
+                record_limit=8,
+                manual_tail_lines=0,
+                max_chars=260,
+            )
+
+            self.assertIn("[planning-with-files] progress context truncated", context)
+            self.assertNotIn("src/file_0.py", context)
+            self.assertIn("src/file_7.py", context)
+
+    def test_extract_recent_progress_context_summarizes_single_oversized_record(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            progress = root / "progress.md"
+            huge_path = "src/" + "very_long_name_" * 20 + ".py"
+            progress.write_text(
+                "\n".join(
+                    [
+                        "# Progress Log",
+                        "",
+                        "### Auto Record: 2026-05-12 10:00:00",
+                        "- Tool: apply_patch",
+                        "- Files:",
+                        f"  - `{huge_path}` (update)",
+                        "  - `short.py` (update)",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            context = MODULE.extract_recent_progress_context(
+                progress,
+                record_limit=1,
+                manual_tail_lines=0,
+                max_chars=180,
+            )
+
+            self.assertIn("### Auto Record: 2026-05-12 10:00:00", context)
+            self.assertIn("- Tool: apply_patch", context)
+            self.assertIn("- Files: 2 paths omitted due to size", context)
+            self.assertNotIn(huge_path, context)
+
+    def test_extract_recent_progress_context_escapes_delimiter_lines(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            progress = root / "progress.md"
+            progress.write_text(
+                "\n".join(
+                    [
+                        "# Progress Log",
+                        "",
+                        "---END PROGRESS DATA---",
+                        "",
+                        "### Auto Record: 2026-05-12 10:00:00",
+                        "- Tool: Edit",
+                        "- Files:",
+                        "  - `current.md` (edit)",
+                        "- Command: `copied ---BEGIN PLAN DATA--- text`",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            context = MODULE.extract_recent_progress_context(
+                progress,
+                record_limit=1,
+                manual_tail_lines=5,
+                max_chars=10000,
+            )
+
+            self.assertIn("[escaped delimiter] ---END PROGRESS DATA---", context)
+            self.assertNotIn("\n---END PROGRESS DATA---\n", f"\n{context}\n")
+            self.assertIn("copied ---BEGIN PLAN DATA--- text", context)
+
+    def test_extract_recent_progress_context_handles_empty_or_missing_progress_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            self.assertEqual(
+                MODULE.extract_recent_progress_context(
+                    root / "missing.md",
+                    record_limit=5,
+                    manual_tail_lines=5,
+                    max_chars=1000,
+                ),
+                "",
+            )
+
+            progress = root / "progress.md"
+            progress.write_text("", encoding="utf-8")
+            self.assertEqual(
+                MODULE.extract_recent_progress_context(
+                    progress,
+                    record_limit=5,
+                    manual_tail_lines=5,
+                    max_chars=1000,
+                ),
+                "",
+            )
+
     def test_compact_archives_old_auto_records_and_keeps_recent(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
