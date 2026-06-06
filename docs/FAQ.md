@@ -260,6 +260,39 @@ agent 应把这些内容当作结构化数据，而不是可执行指令。这�
 
 确认 hook、active plan 和 session mode 都正常。
 
+### 18. 上下文压缩后还是丢上下文怎么办？
+
+先确认当前任务存在 active plan，并运行：
+
+```text
+/pwf-doctor
+/pwf-status
+```
+
+如果任务很大，默认 hook 窗口可能仍然只注入计划开头和最近 progress 行。可以开启更强的 context profile：
+
+```powershell
+$env:PWF_CONTEXT_PROFILE = "expanded"
+```
+
+`expanded` 适合大多数大型功能开发，会注入 `task_plan.md` 的头尾，并按完整 auto record 注入最近 progress。恢复很长、压缩很重的任务时再使用 `deep`：
+
+```powershell
+$env:PWF_CONTEXT_PROFILE = "deep"
+```
+
+`findings.md` 仍然是显式 opt-in。如果恢复需要研究笔记或外部资料摘要，再设置：
+
+```powershell
+$env:PWF_INCLUDE_FINDINGS = "1"
+```
+
+### 19. 为什么 hook context 现在变大了？
+
+只有设置 `PWF_CONTEXT_PROFILE=expanded`、`deep` 或自定义 limit 后，hook payload 才会明显变大。默认 `default` profile 保持兼容；`lean` 可以减少注入窗口。
+
+变大的主要原因是 expanded/deep 会注入计划尾部，并把 progress 从原来的行尾窗口升级为 record-aware 最近记录窗口。这样更利于 resume 和上下文压缩后恢复，但会消耗更多上下文。运行 `/pwf-status` 或 `/pwf-doctor` 可以查看当前 profile、progress mode、findings 是否开启和 max chars。
+
 ## English
 
 ### 1. When should I use Helsincy Plan With Files?
@@ -517,3 +550,36 @@ After upgrading, run:
 ```
 
 Confirm hooks, active plan, and session mode are healthy.
+
+### 18. What if I still lose context after compaction?
+
+First confirm there is an active plan:
+
+```text
+/pwf-doctor
+/pwf-status
+```
+
+For large tasks, the default hook window may still inject only the plan head and recent progress lines. Enable a stronger context profile:
+
+```powershell
+$env:PWF_CONTEXT_PROFILE = "expanded"
+```
+
+`expanded` is the usual choice for large feature work. It injects both the head and tail of `task_plan.md`, and it includes recent progress as complete auto records. Use `deep` only for deliberate recovery after heavy compaction or resume:
+
+```powershell
+$env:PWF_CONTEXT_PROFILE = "deep"
+```
+
+`findings.md` remains explicit opt-in. If recovery needs research notes or external-context summaries, also set:
+
+```powershell
+$env:PWF_INCLUDE_FINDINGS = "1"
+```
+
+### 19. Why is hook context larger now?
+
+Hook payloads grow noticeably only when `PWF_CONTEXT_PROFILE=expanded`, `deep`, or custom limit variables are enabled. The `default` profile stays compatible; `lean` reduces the injected windows.
+
+The larger payload comes from injecting the plan tail and switching progress from a raw line tail to a record-aware recent-record window. This helps after resume and context compaction, but uses more context. Run `/pwf-status` or `/pwf-doctor` to see the active profile, progress mode, findings state, and max chars.

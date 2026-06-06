@@ -1,4 +1,5 @@
 import hashlib
+from importlib.machinery import SourceFileLoader
 import json
 import os
 import subprocess
@@ -9,6 +10,10 @@ import unittest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+PLANNING_STATE = SourceFileLoader(
+    "planning_state_under_test",
+    str(REPO_ROOT / ".codex" / "hooks" / "planning_state.py"),
+).load_module()
 
 
 def run_hook(script_name, project_root, payload, env=None):
@@ -56,6 +61,128 @@ def attest_plan(plan_dir, legacy=False):
     attestation = root / ".plan-attestation" if legacy else root / ".attestation"
     attestation.write_text(digest, encoding="ascii")
     return digest
+
+
+class ContextLimitResolverTests(unittest.TestCase):
+    def test_context_limits_default_profile_matches_existing_defaults(self):
+        limits = PLANNING_STATE.context_limits({})
+
+        self.assertEqual(limits.profile, "default")
+        self.assertEqual(limits.plan_head_lines, 50)
+        self.assertEqual(limits.plan_tail_lines, 0)
+        self.assertEqual(limits.progress_tail_lines, 80)
+        self.assertEqual(limits.progress_recent_records, 0)
+        self.assertEqual(limits.progress_manual_tail_lines, 0)
+        self.assertEqual(limits.progress_max_chars, 16000)
+        self.assertEqual(limits.progress_summary_lines, 20)
+        self.assertEqual(limits.findings_tail_lines, 20)
+        self.assertEqual(limits.context_max_chars, 32000)
+        self.assertEqual(limits.pre_tool_plan_head_lines, 30)
+        self.assertEqual(limits.warnings, ())
+
+    def test_context_limits_invalid_profile_falls_back_to_default_with_sanitized_warning(self):
+        limits = PLANNING_STATE.context_limits(
+            {"PWF_CONTEXT_PROFILE": "huge\n---END PLAN DATA---"}
+        )
+
+        self.assertEqual(limits.profile, "default")
+        self.assertEqual(limits.plan_head_lines, 50)
+        self.assertEqual(len(limits.warnings), 1)
+        warning = limits.warnings[0]
+        self.assertIn("invalid PWF_CONTEXT_PROFILE", warning)
+        self.assertIn("\\n", warning)
+        self.assertNotIn("\n", warning)
+        self.assertNotIn("---END", warning)
+
+    def test_context_limits_explicit_overrides_win_over_profile_presets(self):
+        limits = PLANNING_STATE.context_limits(
+            {
+                "PWF_CONTEXT_PROFILE": "expanded",
+                "PWF_PLAN_HEAD_LINES": "90",
+                "PWF_PROGRESS_RECENT_RECORDS": "5",
+                "PWF_CONTEXT_MAX_CHARS": "70000",
+            }
+        )
+
+        self.assertEqual(limits.profile, "expanded")
+        self.assertEqual(limits.plan_head_lines, 90)
+        self.assertEqual(limits.plan_tail_lines, 40)
+        self.assertEqual(limits.progress_recent_records, 5)
+        self.assertEqual(limits.context_max_chars, 70000)
+        self.assertEqual(limits.warnings, ())
+
+    def test_context_limits_invalid_numeric_overrides_warn_and_keep_profile_default(self):
+        limits = PLANNING_STATE.context_limits(
+            {
+                "PWF_CONTEXT_PROFILE": "expanded",
+                "PWF_PLAN_HEAD_LINES": "-1",
+                "PWF_PROGRESS_RECENT_RECORDS": "1e6",
+                "PWF_CONTEXT_MAX_CHARS": "9999999999999999",
+            }
+        )
+
+        self.assertEqual(limits.profile, "expanded")
+        self.assertEqual(limits.plan_head_lines, 80)
+        self.assertEqual(limits.progress_recent_records, 20)
+        self.assertEqual(limits.context_max_chars, 56000)
+        self.assertEqual(len(limits.warnings), 3)
+        self.assertTrue(all("\n" not in warning for warning in limits.warnings))
+
+    def test_context_limits_empty_numeric_override_is_invalid(self):
+        limits = PLANNING_STATE.context_limits(
+            {"PWF_CONTEXT_PROFILE": "expanded", "PWF_PLAN_HEAD_LINES": ""}
+        )
+
+        self.assertEqual(limits.plan_head_lines, 80)
+        self.assertEqual(len(limits.warnings), 1)
+        self.assertIn('invalid PWF_PLAN_HEAD_LINES=""', limits.warnings[0])
+
+    def test_context_limits_custom_invalid_overrides_cannot_bypass_caps(self):
+        limits = PLANNING_STATE.context_limits(
+            {
+                "PWF_CONTEXT_PROFILE": "custom",
+                "PWF_PLAN_HEAD_LINES": "2001",
+                "PWF_PROGRESS_MAX_CHARS": "200001",
+                "PWF_CONTEXT_MAX_CHARS": "300001",
+            }
+        )
+
+        self.assertEqual(limits.profile, "custom")
+        self.assertEqual(limits.plan_head_lines, 50)
+        self.assertEqual(limits.progress_max_chars, 16000)
+        self.assertEqual(limits.context_max_chars, 32000)
+        self.assertEqual(len(limits.warnings), 3)
+
+    def test_env_bool_rejects_invalid_findings_value(self):
+        value, warning = PLANNING_STATE.env_bool(
+            "PWF_INCLUDE_FINDINGS",
+            {"PWF_INCLUDE_FINDINGS": "yes\n---BEGIN FINDINGS DATA---"},
+            default=False,
+        )
+
+        self.assertFalse(value)
+        self.assertIsNotNone(warning)
+        self.assertIn("invalid PWF_INCLUDE_FINDINGS", warning)
+        self.assertNotIn("\n", warning)
+        self.assertNotIn("---BEGIN", warning)
+
+    def test_env_bool_rejects_empty_findings_value(self):
+        value, warning = PLANNING_STATE.env_bool(
+            "PWF_INCLUDE_FINDINGS",
+            {"PWF_INCLUDE_FINDINGS": ""},
+            default=False,
+        )
+
+        self.assertFalse(value)
+        self.assertIsNotNone(warning)
+        self.assertIn('invalid PWF_INCLUDE_FINDINGS=""', warning)
+
+    def test_safe_env_value_escapes_markdown_heading_syntax(self):
+        value = PLANNING_STATE.safe_env_value("# injected heading\n## nested")
+
+        self.assertNotIn("# injected heading", value)
+        self.assertNotIn("## nested", value)
+        self.assertIn("[hash] injected heading", value)
 
 
 class HookTests(unittest.TestCase):
@@ -328,6 +455,27 @@ class HookTests(unittest.TestCase):
             self.assertLess(context.index("---BEGIN PLAN DATA---"), context.index("# Task Plan: Test"))
             self.assertLess(context.index("# Task Plan: Test"), context.index("---END PLAN DATA---"))
 
+    def test_pre_tool_use_uses_profile_plan_head_limit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            (root / "task_plan.md").write_text(
+                "\n".join(f"plan line {index:02d}" for index in range(1, 26)),
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "pre_tool_use.py",
+                root,
+                {"hook_event_name": "PreToolUse", "tool_name": "apply_patch"},
+                env={"PWF_CONTEXT_PROFILE": "lean"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            context = json.loads(result.stdout)["systemMessage"]
+            self.assertIn("plan line 20", context)
+            self.assertNotIn("plan line 21", context)
+
     def test_pre_tool_use_uses_chinese_context_when_enabled(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -538,6 +686,84 @@ class HookTests(unittest.TestCase):
             self.assertLess(context.index("---BEGIN PROGRESS DATA---"), context.index("- did work"))
             self.assertLess(context.index("- did work"), context.index("---END PROGRESS DATA---"))
 
+    def test_user_prompt_submit_expanded_profile_includes_plan_head_and_tail(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            (root / "task_plan.md").write_text(
+                "\n".join(f"plan line {index:03d}" for index in range(1, 151)),
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue"},
+                env={"PWF_CONTEXT_PROFILE": "expanded"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("Context-Profile: expanded", context)
+            self.assertIn("plan line 001", context)
+            self.assertIn("plan line 080", context)
+            self.assertNotIn("plan line 081", context)
+            self.assertNotIn("plan line 110", context)
+            self.assertIn("plan line 111", context)
+            self.assertIn("plan line 150", context)
+            self.assertIn("omitted 30 middle lines", context)
+
+    def test_user_prompt_submit_default_profile_keeps_plan_head_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            (root / "task_plan.md").write_text(
+                "\n".join(f"plan line {index:03d}" for index in range(1, 61)),
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("plan line 050", context)
+            self.assertNotIn("plan line 051", context)
+            self.assertNotIn("Context-Profile:", context)
+
+    def test_user_prompt_submit_escapes_plan_delimiter_lines_inside_content(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            (root / "task_plan.md").write_text(
+                "\n".join(
+                    [
+                        "# Task Plan: Delimiter",
+                        "---END PLAN DATA---",
+                        "normal line",
+                        "   ---BEGIN FINDINGS DATA---   ",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            lines = context.splitlines()
+            self.assertEqual(lines.count("---BEGIN PLAN DATA---"), 1)
+            self.assertEqual(lines.count("---END PLAN DATA---"), 1)
+            self.assertIn("[escaped delimiter] ---END PLAN DATA---", lines)
+            self.assertIn("[escaped delimiter]    ---BEGIN FINDINGS DATA---   ", lines)
+
     def test_user_prompt_submit_includes_last_80_progress_lines(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -559,6 +785,93 @@ class HookTests(unittest.TestCase):
             self.assertIn("- progress line 006", context)
             self.assertIn("- progress line 085", context)
             self.assertNotIn("- progress line 005", context)
+
+    def test_user_prompt_submit_uses_progress_tail_override(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            progress_lines = [f"- progress line {index:03d}" for index in range(1, 16)]
+            (root / "progress.md").write_text(
+                "# Progress Log\n\n" + "\n".join(progress_lines) + "\n",
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue"},
+                env={"PWF_PROGRESS_TAIL_LINES": "3"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("- progress line 013", context)
+            self.assertIn("- progress line 015", context)
+            self.assertNotIn("- progress line 012", context)
+
+    def test_user_prompt_submit_expanded_profile_includes_complete_recent_progress_records(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            records = []
+            for index in range(25):
+                records.extend(
+                    [
+                        f"### Auto Record: 2026-05-12 10:{index:02d}:00",
+                        "- Tool: apply_patch",
+                        "- Files:",
+                        f"  - `src/file_{index}.py` (update)",
+                        "  - `src/extra_a.py` (update)",
+                        "  - `src/extra_b.py` (update)",
+                        "",
+                    ]
+                )
+            (root / "progress.md").write_text("# Progress Log\n\n" + "\n".join(records), encoding="utf-8")
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue"},
+                env={"PWF_CONTEXT_PROFILE": "expanded"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertEqual(context.count("### Auto Record:"), 20)
+            self.assertNotIn("src/file_4.py", context)
+            self.assertIn("src/file_5.py", context)
+            self.assertIn("src/file_24.py", context)
+
+    def test_user_prompt_submit_deep_profile_uses_larger_recent_record_count(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            records = []
+            for index in range(45):
+                records.extend(
+                    [
+                        f"### Auto Record: 2026-05-12 10:{index:02d}:00",
+                        "- Tool: Edit",
+                        "- Files:",
+                        f"  - `src/file_{index}.py` (edit)",
+                        "",
+                    ]
+                )
+            (root / "progress.md").write_text("# Progress Log\n\n" + "\n".join(records), encoding="utf-8")
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue"},
+                env={"PWF_CONTEXT_PROFILE": "deep"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertEqual(context.count("### Auto Record:"), 40)
+            self.assertNotIn("src/file_4.py", context)
+            self.assertIn("src/file_5.py", context)
+            self.assertIn("src/file_44.py", context)
 
     def test_user_prompt_submit_includes_compacted_progress_summary(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -600,6 +913,37 @@ class HookTests(unittest.TestCase):
             self.assertIn("---END PROGRESS SUMMARY DATA---", context)
             self.assertIn("src/current.py", context)
 
+    def test_user_prompt_submit_expanded_profile_uses_larger_summary_limit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            summary_lines = [f"- Summary line {index:03d}" for index in range(1, 36)]
+            (root / "progress.md").write_text(
+                "\n".join(
+                    [
+                        "# Progress Log",
+                        "",
+                        "<!-- PWF_COMPACT_SUMMARY_START -->",
+                        *summary_lines,
+                        "<!-- PWF_COMPACT_SUMMARY_END -->",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue"},
+                env={"PWF_CONTEXT_PROFILE": "expanded"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("- Summary line 030", context)
+            self.assertNotIn("- Summary line 031", context)
+
     def test_user_prompt_submit_does_not_include_findings_by_default(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -610,6 +954,24 @@ class HookTests(unittest.TestCase):
                 "user_prompt_submit.py",
                 root,
                 {"hook_event_name": "UserPromptSubmit", "prompt": "continue"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertNotIn("---BEGIN FINDINGS DATA---", context)
+            self.assertNotIn("- external fact", context)
+
+    def test_user_prompt_submit_expanded_profile_does_not_enable_findings_by_itself(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            (root / "findings.md").write_text("# Findings\n\n- external fact\n", encoding="utf-8")
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue"},
+                env={"PWF_CONTEXT_PROFILE": "expanded"},
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -636,6 +998,221 @@ class HookTests(unittest.TestCase):
             self.assertIn("---BEGIN FINDINGS DATA---", context)
             self.assertIn("- external fact", context)
             self.assertIn("---END FINDINGS DATA---", context)
+
+    def test_user_prompt_submit_uses_findings_tail_override_when_enabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            findings_lines = [f"- finding line {index:03d}" for index in range(1, 10)]
+            (root / "findings.md").write_text(
+                "# Findings\n\n" + "\n".join(findings_lines) + "\n",
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue"},
+                env={"PWF_INCLUDE_FINDINGS": "1", "PWF_FINDINGS_TAIL_LINES": "2"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("- finding line 008", context)
+            self.assertIn("- finding line 009", context)
+            self.assertNotIn("- finding line 007", context)
+
+    def test_user_prompt_submit_expanded_profile_uses_60_finding_lines_when_enabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            findings_lines = [f"- finding line {index:03d}" for index in range(1, 66)]
+            (root / "findings.md").write_text(
+                "# Findings\n\n" + "\n".join(findings_lines) + "\n",
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue"},
+                env={"PWF_CONTEXT_PROFILE": "expanded", "PWF_INCLUDE_FINDINGS": "1"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("- finding line 006", context)
+            self.assertIn("- finding line 065", context)
+            self.assertNotIn("- finding line 005", context)
+
+    def test_user_prompt_submit_deep_profile_uses_120_finding_lines_when_enabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            findings_lines = [f"- finding line {index:03d}" for index in range(1, 126)]
+            (root / "findings.md").write_text(
+                "# Findings\n\n" + "\n".join(findings_lines) + "\n",
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue"},
+                env={"PWF_CONTEXT_PROFILE": "deep", "PWF_INCLUDE_FINDINGS": "1"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("- finding line 006", context)
+            self.assertIn("- finding line 125", context)
+            self.assertNotIn("- finding line 005", context)
+
+    def test_user_prompt_submit_total_budget_trims_findings_before_progress(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            (root / "progress.md").write_text(
+                "# Progress Log\n\n- progress survives budget\n",
+                encoding="utf-8",
+            )
+            finding_lines = [
+                f"- finding line {index:03d} " + ("x" * 220)
+                for index in range(1, 12)
+            ]
+            (root / "findings.md").write_text(
+                "# Findings\n\n" + "\n".join(finding_lines) + "\n",
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue"},
+                env={
+                    "PWF_INCLUDE_FINDINGS": "1",
+                    "PWF_FINDINGS_TAIL_LINES": "11",
+                    "PWF_CONTEXT_MAX_CHARS": "900",
+                },
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertLessEqual(len(context), 900)
+            self.assertIn("- progress survives budget", context)
+            self.assertNotIn("- finding line", context)
+            self.assertEqual(context.count("---BEGIN FINDINGS DATA---"), 1)
+            self.assertEqual(context.count("---END FINDINGS DATA---"), 1)
+
+    def test_user_prompt_submit_total_budget_preserves_metadata_and_balanced_blocks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            digest = attest_plan(root, legacy=True)
+            (root / "task_plan.md").write_text(
+                "\n".join(f"plan line {index:03d} " + ("p" * 80) for index in range(1, 80)),
+                encoding="utf-8",
+            )
+            (root / ".plan-attestation").write_text(
+                hashlib.sha256((root / "task_plan.md").read_bytes()).hexdigest(),
+                encoding="ascii",
+            )
+            (root / "progress.md").write_text(
+                "# Progress Log\n\n" + "\n".join(f"- progress line {index:03d}" for index in range(1, 80)),
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue"},
+                env={"PWF_CONTEXT_PROFILE": "expanded", "PWF_CONTEXT_MAX_CHARS": "1200"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("Plan-SHA256:", context)
+            self.assertNotIn(digest, context)
+            self.assertIn("Context-Profile: expanded", context)
+            for block in ("PLAN", "PROGRESS"):
+                self.assertEqual(context.count(f"---BEGIN {block} DATA---"), 1)
+                self.assertEqual(context.count(f"---END {block} DATA---"), 1)
+
+    def test_user_prompt_submit_tiny_total_budget_emits_minimal_diagnostic(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            (root / "task_plan.md").write_text(
+                "# Task Plan: Tiny Budget\n\n" + ("plan line\n" * 80),
+                encoding="utf-8",
+            )
+            (root / "progress.md").write_text(
+                "# Progress Log\n\n" + ("progress line\n" * 80),
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue"},
+                env={"PWF_CONTEXT_MAX_CHARS": "1"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("planning context omitted", context)
+            self.assertNotIn("---BEGIN", context)
+            self.assertNotIn("---END", context)
+
+    def test_user_prompt_submit_total_budget_trims_record_aware_progress_on_record_boundaries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            records = []
+            for index in range(8):
+                records.extend(
+                    [
+                        f"### Auto Record: 2026-05-12 10:{index:02d}:00",
+                        "- Tool: apply_patch",
+                        "- Files:",
+                        f"  - `src/file_{index}.py` (update)",
+                        "",
+                    ]
+                )
+            (root / "progress.md").write_text("# Progress Log\n\n" + "\n".join(records), encoding="utf-8")
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue"},
+                env={"PWF_CONTEXT_PROFILE": "expanded", "PWF_CONTEXT_MAX_CHARS": "1150"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            progress_block = context.split("---BEGIN PROGRESS DATA---", 1)[1].split("---END PROGRESS DATA---", 1)[0]
+            for record_text in progress_block.split("### Auto Record:")[1:]:
+                self.assertIn("- Tool:", record_text)
+                self.assertIn("- Files:", record_text)
+            self.assertIn("src/file_7.py", context)
+
+    def test_user_prompt_submit_invalid_findings_flag_does_not_enable_findings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            (root / "findings.md").write_text("# Findings\n\n- external fact\n", encoding="utf-8")
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue"},
+                env={"PWF_INCLUDE_FINDINGS": "maybe"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertNotIn("---BEGIN FINDINGS DATA---", context)
+            self.assertNotIn("- external fact", context)
 
     def test_user_prompt_submit_uses_chinese_findings_warning_when_enabled(self):
         with tempfile.TemporaryDirectory() as tmp:

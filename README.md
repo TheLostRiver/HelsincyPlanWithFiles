@@ -92,6 +92,7 @@ $env:PWF_LANG="en"
 
 - [中文化实现方案](docs/CHINESE_LOCALIZATION_PLAN.md)：规划项目内中文模式、中文模板、中文 CLI/hook 文案和后续 `v0.2.0` 发布路线。
 - [Progress compaction 实现方案](docs/PROGRESS_COMPACTION_PLAN.md)：规划 `progress.md` 长期增长后的 compact、归档、summary 注入和 `/pwf-compact` 命令。
+- [Context injection profiles 实现方案](docs/CONTEXT_INJECTION_PROFILES_PLAN.md)：规划可配置 hook 上下文注入窗口、record-aware progress 注入和诊断输出。
 
 ## 安装
 
@@ -200,6 +201,27 @@ $env:PWF_SESSION_MODE = "strict"
 ```
 
 strict 模式下，hook payload 必须包含已 attach 的 `session_id`；否则 hook 会输出诊断消息，而不是静默跳过 planning 上下文。运行 `/pwf-doctor` 可以查看当前 session mode。
+
+### Context Profiles
+
+默认 hook 上下文保持兼容：计划开头、最近 progress 和 opt-in findings 都使用原来的紧凑窗口。大型任务或上下文压缩后恢复时，可以开启更大的上下文注入 profile：
+
+```powershell
+$env:PWF_CONTEXT_PROFILE = "expanded"
+$env:PWF_INCLUDE_FINDINGS = "1"
+```
+
+`PWF_CONTEXT_PROFILE` 支持：
+
+| Profile | 适合场景 |
+|---------|----------|
+| `lean` | 小任务、噪声多或想减少 hook payload |
+| `default` | 默认兼容模式 |
+| `expanded` | 推荐的大型功能开发模式，会注入计划尾部和 record-aware 最近 progress |
+| `deep` | 上下文压缩或 resume 后需要更强恢复信息的刻意恢复模式 |
+| `custom` | 高级用户用显式 `PWF_*` limit 变量调参 |
+
+`findings.md` 始终需要显式开启：只有设置 `PWF_INCLUDE_FINDINGS=1` 后才会注入 findings。运行 `/pwf-status` 或 `/pwf-doctor` 可以查看当前 profile、progress 注入模式、findings 是否开启和有效预算。
 
 `PostToolUse` 只记录真正的写文件/改文件工具：
 

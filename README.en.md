@@ -92,6 +92,7 @@ Other `PWF_LANG` values fall back to English; `plan.py doctor` reports `language
 
 - [Chinese Localization Plan](docs/CHINESE_LOCALIZATION_PLAN.md): plans the in-repo Chinese language mode, Chinese templates, Chinese CLI/hook messages, and the future `v0.2.0` release path.
 - [Progress Compaction Plan](docs/PROGRESS_COMPACTION_PLAN.md): plans `progress.md` compaction, archival, summary injection, and the future `/pwf-compact` command for long-running tasks.
+- [Context Injection Profiles Plan](docs/CONTEXT_INJECTION_PROFILES_PLAN.md): plans configurable hook context windows, record-aware progress injection, and diagnostics.
 
 ## Installation
 
@@ -200,6 +201,27 @@ or create `.planning/session-policy.json`:
 ```
 
 In strict mode, hook payloads must include an attached `session_id`; otherwise the hook emits a diagnostic message instead of silently skipping planning context. Run `/pwf-doctor` to inspect the current session mode.
+
+### Context Profiles
+
+Default hook context stays compatible: the plan head, recent progress, and opt-in findings use the original compact windows. For large tasks or recovery after context compaction, enable a larger injection profile:
+
+```powershell
+$env:PWF_CONTEXT_PROFILE = "expanded"
+$env:PWF_INCLUDE_FINDINGS = "1"
+```
+
+`PWF_CONTEXT_PROFILE` supports:
+
+| Profile | Best For |
+|---------|----------|
+| `lean` | Small tasks, noisy repos, or smaller hook payloads |
+| `default` | The compatible default behavior |
+| `expanded` | Recommended large-feature mode with plan tail and record-aware recent progress |
+| `deep` | Deliberate recovery after heavy context compaction or resume |
+| `custom` | Advanced tuning through explicit `PWF_*` limit variables |
+
+`findings.md` always stays opt-in: findings are injected only when `PWF_INCLUDE_FINDINGS=1` is set. Run `/pwf-status` or `/pwf-doctor` to see the active profile, progress mode, findings state, and effective context budget.
 
 `PostToolUse` only records tools that write or edit files:
 

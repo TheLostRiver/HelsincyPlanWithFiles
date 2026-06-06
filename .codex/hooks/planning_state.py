@@ -40,7 +40,93 @@ class ChangedPath:
     operation: str
 
 
+@dataclass(frozen=True)
+class ContextLimits:
+    profile: str
+    plan_head_lines: int
+    plan_tail_lines: int
+    progress_tail_lines: int
+    progress_recent_records: int
+    progress_manual_tail_lines: int
+    progress_max_chars: int
+    progress_summary_lines: int
+    findings_tail_lines: int
+    context_max_chars: int
+    pre_tool_plan_head_lines: int
+    warnings: tuple[str, ...] = ()
+
+
 SUPPORTED_LANGS = {"en", "zh-CN"}
+CONTEXT_PROFILES = {"lean", "default", "expanded", "deep", "custom"}
+MAX_LINE_COUNT = 2000
+MAX_AUTO_RECORD_COUNT = 200
+MAX_BLOCK_CHARS = 200000
+MAX_CONTEXT_CHARS = 300000
+NUMERIC_OVERRIDE_FIELDS = {
+    "PWF_PLAN_HEAD_LINES": ("plan_head_lines", 1, MAX_LINE_COUNT, False),
+    "PWF_PLAN_TAIL_LINES": ("plan_tail_lines", 0, MAX_LINE_COUNT, True),
+    "PWF_PROGRESS_TAIL_LINES": ("progress_tail_lines", 0, MAX_LINE_COUNT, True),
+    "PWF_PROGRESS_RECENT_RECORDS": ("progress_recent_records", 0, MAX_AUTO_RECORD_COUNT, True),
+    "PWF_PROGRESS_MANUAL_TAIL_LINES": ("progress_manual_tail_lines", 0, MAX_LINE_COUNT, True),
+    "PWF_PROGRESS_MAX_CHARS": ("progress_max_chars", 1, MAX_BLOCK_CHARS, False),
+    "PWF_PROGRESS_SUMMARY_LINES": ("progress_summary_lines", 0, MAX_LINE_COUNT, True),
+    "PWF_FINDINGS_TAIL_LINES": ("findings_tail_lines", 0, MAX_LINE_COUNT, True),
+    "PWF_CONTEXT_MAX_CHARS": ("context_max_chars", 1, MAX_CONTEXT_CHARS, False),
+}
+PROFILE_PRESETS = {
+    "lean": ContextLimits(
+        profile="lean",
+        plan_head_lines=40,
+        plan_tail_lines=0,
+        progress_tail_lines=40,
+        progress_recent_records=0,
+        progress_manual_tail_lines=20,
+        progress_max_chars=8000,
+        progress_summary_lines=10,
+        findings_tail_lines=10,
+        context_max_chars=16000,
+        pre_tool_plan_head_lines=20,
+    ),
+    "default": ContextLimits(
+        profile="default",
+        plan_head_lines=50,
+        plan_tail_lines=0,
+        progress_tail_lines=80,
+        progress_recent_records=0,
+        progress_manual_tail_lines=0,
+        progress_max_chars=16000,
+        progress_summary_lines=20,
+        findings_tail_lines=20,
+        context_max_chars=32000,
+        pre_tool_plan_head_lines=30,
+    ),
+    "expanded": ContextLimits(
+        profile="expanded",
+        plan_head_lines=80,
+        plan_tail_lines=40,
+        progress_tail_lines=0,
+        progress_recent_records=20,
+        progress_manual_tail_lines=40,
+        progress_max_chars=24000,
+        progress_summary_lines=30,
+        findings_tail_lines=60,
+        context_max_chars=56000,
+        pre_tool_plan_head_lines=30,
+    ),
+    "deep": ContextLimits(
+        profile="deep",
+        plan_head_lines=120,
+        plan_tail_lines=80,
+        progress_tail_lines=0,
+        progress_recent_records=40,
+        progress_manual_tail_lines=80,
+        progress_max_chars=40000,
+        progress_summary_lines=50,
+        findings_tail_lines=120,
+        context_max_chars=96000,
+        pre_tool_plan_head_lines=40,
+    ),
+}
 MESSAGES = {
     "en": {
         "plan_context_header": (
@@ -116,12 +202,138 @@ PLAN_CONTEXT_FOOTER = MESSAGES["en"]["plan_context_footer"]
 PLAN_TAMPERED_MESSAGE = MESSAGES["en"]["plan_tampered"]
 DEFAULT_COMPACT_THRESHOLD = 100
 POST_TOOL_RECORD_TOOLS = {"apply_patch", "Edit", "Write"}
+DATA_BLOCK_DELIMITER_RE = re.compile(r"^---(?:BEGIN|END) [A-Z ][A-Z ]* DATA---$")
 
 
 def current_lang(env: Mapping[str, str] | None = None) -> str:
     source = env if env is not None else os.environ
     lang = source.get("PWF_LANG", "en").strip()
     return lang if lang in SUPPORTED_LANGS else "en"
+
+
+def safe_env_value(value: str | None, limit: int = 80) -> str:
+    if value is None:
+        return ""
+    visible: list[str] = []
+    for char in value:
+        code = ord(char)
+        if char == "\n":
+            visible.append("\\n")
+        elif char == "\r":
+            visible.append("\\r")
+        elif char == "\t":
+            visible.append("\\t")
+        elif code < 32 or code == 127:
+            visible.append(f"\\x{code:02x}")
+        else:
+            visible.append(char)
+    text = "".join(visible)
+    text = text.replace("#", "[hash]")
+    if len(text) > limit:
+        text = text[:limit] + "..."
+    return (
+        text.replace("---BEGIN", "-\\-\\-BEGIN")
+        .replace("---END", "-\\-\\-END")
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+    )
+
+
+def env_int(
+    name: str,
+    default: int,
+    minimum: int,
+    maximum: int,
+    allow_zero: bool = False,
+    env: Mapping[str, str] | None = None,
+) -> tuple[int, str | None]:
+    source = env if env is not None else os.environ
+    raw = source.get(name)
+    if raw is None:
+        return default, None
+    value_text = raw.strip(" \t\r\n")
+    min_value = 0 if allow_zero else max(1, minimum)
+    if (
+        not re.fullmatch(r"[0-9]+", value_text)
+        or len(value_text) > 12
+    ):
+        return default, f'[warn] invalid {name}="{safe_env_value(raw)}"; using profile default {default}'
+    value = int(value_text)
+    if value < min_value or value > maximum:
+        return default, f'[warn] invalid {name}="{safe_env_value(raw)}"; using profile default {default}'
+    return value, None
+
+
+def env_bool(
+    name: str,
+    env: Mapping[str, str] | None = None,
+    default: bool = False,
+) -> tuple[bool, str | None]:
+    source = env if env is not None else os.environ
+    raw = source.get(name)
+    if raw is None:
+        return default, None
+    value = raw.strip(" \t\r\n").lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True, None
+    if value in {"0", "false", "no", "off"}:
+        return False, None
+    return default, f'[warn] invalid {name}="{safe_env_value(raw)}"; using default {str(default).lower()}'
+
+
+def _resolved_context_profile(env: Mapping[str, str] | None = None) -> tuple[str, list[str]]:
+    source = env if env is not None else os.environ
+    raw = source.get("PWF_CONTEXT_PROFILE", "")
+    normalized = raw.strip(" \t\r\n").lower()
+    if not normalized:
+        return "default", []
+    if normalized in CONTEXT_PROFILES:
+        return normalized, []
+    warning = f'[warn] invalid PWF_CONTEXT_PROFILE="{safe_env_value(raw)}"; using default'
+    return "default", [warning]
+
+
+def current_context_profile(env: Mapping[str, str] | None = None) -> str:
+    profile, _warnings = _resolved_context_profile(env)
+    return profile
+
+
+def context_limits(env: Mapping[str, str] | None = None) -> ContextLimits:
+    profile, warnings = _resolved_context_profile(env)
+    base_profile = "default" if profile == "custom" else profile
+    base = PROFILE_PRESETS[base_profile]
+    values = {
+        "plan_head_lines": base.plan_head_lines,
+        "plan_tail_lines": base.plan_tail_lines,
+        "progress_tail_lines": base.progress_tail_lines,
+        "progress_recent_records": base.progress_recent_records,
+        "progress_manual_tail_lines": base.progress_manual_tail_lines,
+        "progress_max_chars": base.progress_max_chars,
+        "progress_summary_lines": base.progress_summary_lines,
+        "findings_tail_lines": base.findings_tail_lines,
+        "context_max_chars": base.context_max_chars,
+        "pre_tool_plan_head_lines": base.pre_tool_plan_head_lines,
+    }
+
+    source = env if env is not None else os.environ
+    for name, (field, minimum, maximum, allow_zero) in NUMERIC_OVERRIDE_FIELDS.items():
+        value, warning = env_int(
+            name,
+            values[field],
+            minimum,
+            maximum,
+            allow_zero=allow_zero,
+            env=source,
+        )
+        values[field] = value
+        if warning:
+            warnings.append(warning)
+
+    return ContextLimits(profile=profile, warnings=tuple(warnings), **values)
+
+
+def context_profile_warnings(env: Mapping[str, str] | None = None) -> tuple[str, ...]:
+    return context_limits(env).warnings
 
 
 def message(key: str, env: Mapping[str, str] | None = None, **values: object) -> str:
@@ -177,21 +389,44 @@ def planning_paths(root: Path) -> PlanningPaths | None:
 
 
 def read_head(path: Path, limit: int) -> str:
-    if not path.is_file():
+    if not path.is_file() or limit < 1:
         return ""
     lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     return "\n".join(lines[:limit])
 
 
 def read_tail(path: Path, limit: int) -> str:
-    if not path.is_file():
+    if not path.is_file() or limit < 1:
         return ""
     lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     return "\n".join(lines[-limit:])
 
 
+def read_head_tail(path: Path, head_limit: int, tail_limit: int) -> str:
+    if not path.is_file() or (head_limit < 1 and tail_limit < 1):
+        return ""
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    if tail_limit < 1:
+        return "\n".join(lines[:head_limit])
+    if head_limit < 1:
+        return "\n".join(lines[-tail_limit:])
+    if head_limit + tail_limit >= len(lines):
+        return "\n".join(lines)
+
+    omitted = len(lines) - head_limit - tail_limit
+    return "\n".join(
+        [
+            *lines[:head_limit],
+            "",
+            f"[planning-with-files] ... omitted {omitted} middle lines ...",
+            "",
+            *lines[-tail_limit:],
+        ]
+    )
+
+
 def read_progress_tail(path: Path, limit: int) -> str:
-    if not path.is_file():
+    if not path.is_file() or limit < 1:
         return ""
     lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     cleaned: list[str] = []
@@ -224,7 +459,8 @@ def compact_threshold() -> int:
 
 
 def findings_injection_enabled() -> bool:
-    return _truthy_env("PWF_INCLUDE_FINDINGS")
+    enabled, _warning = env_bool("PWF_INCLUDE_FINDINGS", default=False)
+    return enabled
 
 
 def current_phase(path: Path) -> str:
@@ -242,17 +478,136 @@ def current_phase(path: Path) -> str:
     return ""
 
 
+def escape_data_block_content(content: str) -> str:
+    escaped: list[str] = []
+    for line in content.splitlines():
+        if DATA_BLOCK_DELIMITER_RE.fullmatch(line.strip()):
+            escaped.append(f"[escaped delimiter] {line}")
+        else:
+            escaped.append(line)
+    return "\n".join(escaped)
+
+
 def _data_block(name: str, content: str) -> str:
     lines = [f"---BEGIN {name} DATA---"]
-    text = content.rstrip()
+    text = escape_data_block_content(content.rstrip("\r\n"))
     if text:
         lines.append(text)
     lines.append(f"---END {name} DATA---")
     return "\n".join(lines)
 
 
-def progress_summary_block(path: Path) -> str:
-    return progress_lifecycle.extract_compaction_summary(path)
+def _data_block_content(rendered: str, name: str) -> str:
+    begin = f"---BEGIN {name} DATA---"
+    end = f"---END {name} DATA---"
+    start = rendered.find(begin)
+    if start < 0:
+        return ""
+    content_start = start + len(begin)
+    if rendered[content_start : content_start + 1] == "\n":
+        content_start += 1
+    content_end = rendered.find(end, content_start)
+    if content_end < 0:
+        return ""
+    if content_end > content_start and rendered[content_end - 1] == "\n":
+        content_end -= 1
+    return rendered[content_start:content_end]
+
+
+def _replace_data_block_content(rendered: str, name: str, content: str) -> str:
+    begin = f"---BEGIN {name} DATA---"
+    end = f"---END {name} DATA---"
+    start = rendered.find(begin)
+    if start < 0:
+        return rendered
+    block_end = rendered.find(end, start)
+    if block_end < 0:
+        return rendered
+    block_end += len(end)
+    return rendered[:start] + _data_block(name, content) + rendered[block_end:]
+
+
+def _minimal_context_diagnostic(rendered: str) -> str:
+    lines = [
+        "[planning-with-files] planning context omitted because "
+        "PWF_CONTEXT_MAX_CHARS is too small for safe data blocks."
+    ]
+    for line in rendered.splitlines():
+        if line.startswith(("Plan-SHA256:", "Context-Profile:")):
+            lines.append(line)
+    return "\n".join(lines)
+
+
+def _drop_oldest_line(content: str) -> str:
+    lines = content.splitlines()
+    if not lines:
+        return ""
+    return "\n".join(lines[1:])
+
+
+def _drop_oldest_progress_unit(content: str) -> str:
+    lines = content.splitlines()
+    if not lines:
+        return ""
+    if not any(line.startswith(progress_lifecycle.AUTO_RECORD_PREFIX) for line in lines):
+        return _drop_oldest_line(content)
+    if not lines[0].startswith(progress_lifecycle.AUTO_RECORD_PREFIX):
+        first_record = next(
+            index
+            for index, line in enumerate(lines)
+            if line.startswith(progress_lifecycle.AUTO_RECORD_PREFIX)
+        )
+        return "\n".join(lines[first_record:])
+
+    next_record = None
+    for index, line in enumerate(lines[1:], start=1):
+        if line.startswith(progress_lifecycle.AUTO_RECORD_PREFIX):
+            next_record = index
+            break
+    if next_record is None:
+        return ""
+    return "\n".join(lines[next_record:])
+
+
+def apply_total_context_budget(rendered: str, limits: ContextLimits) -> str:
+    if len(rendered) <= limits.context_max_chars:
+        return rendered
+
+    trim_order = [
+        ("FINDINGS", _drop_oldest_line),
+        ("PROGRESS", _drop_oldest_progress_unit if limits.progress_recent_records > 0 else _drop_oldest_line),
+        ("PROGRESS SUMMARY", _drop_oldest_line),
+        ("PLAN", _drop_oldest_line),
+    ]
+    for name, dropper in trim_order:
+        while len(rendered) > limits.context_max_chars:
+            content = _data_block_content(rendered, name)
+            if not content:
+                break
+            trimmed = dropper(content)
+            if trimmed == content:
+                break
+            rendered = _replace_data_block_content(rendered, name, trimmed)
+
+    if len(rendered) > limits.context_max_chars:
+        return _minimal_context_diagnostic(rendered)
+
+    return rendered
+
+
+def progress_summary_block(path: Path, line_limit: int = 20) -> str:
+    return progress_lifecycle.extract_compaction_summary(path, line_limit=line_limit)
+
+
+def progress_context_block(path: Path, limits: ContextLimits) -> str:
+    if limits.progress_recent_records > 0:
+        return progress_lifecycle.extract_recent_progress_context(
+            path,
+            record_limit=limits.progress_recent_records,
+            manual_tail_lines=limits.progress_manual_tail_lines,
+            max_chars=limits.progress_max_chars,
+        )
+    return read_progress_tail(path, limits.progress_tail_lines)
 
 
 def progress_compaction_notice(root: Path) -> str:
@@ -316,7 +671,14 @@ def verify_plan_attestation(project_root: Path, paths: PlanningPaths) -> tuple[b
 
 
 
-def _render_plan_data(root: Path, paths: PlanningPaths, limit: int) -> str:
+def _render_plan_data(
+    root: Path,
+    paths: PlanningPaths,
+    head_limit: int,
+    tail_limit: int = 0,
+    profile: str = "default",
+    show_profile: bool = False,
+) -> str:
     valid, digest = verify_plan_attestation(root, paths)
     if not valid:
         return message("plan_tampered")
@@ -324,7 +686,9 @@ def _render_plan_data(root: Path, paths: PlanningPaths, limit: int) -> str:
     parts = [message("plan_context_header")]
     if digest:
         parts.append(f"Plan-SHA256: {digest}")
-    parts.append(_data_block("PLAN", read_head(paths.task_plan, limit)))
+    if show_profile and profile != "default":
+        parts.append(f"Context-Profile: {profile}")
+    parts.append(_data_block("PLAN", read_head_tail(paths.task_plan, head_limit, tail_limit)))
     return "\n".join(parts).rstrip()
 
 
@@ -332,7 +696,8 @@ def render_pre_tool_context(root: Path) -> str:
     paths = planning_paths(root)
     if paths is None:
         return ""
-    return _render_plan_data(root, paths, 30)
+    limits = context_limits()
+    return _render_plan_data(root, paths, limits.pre_tool_plan_head_lines)
 
 
 def render_prompt_context(root: Path) -> str:
@@ -340,12 +705,20 @@ def render_prompt_context(root: Path) -> str:
     if paths is None:
         return ""
 
-    plan_context = _render_plan_data(root, paths, 50)
+    limits = context_limits()
+    plan_context = _render_plan_data(
+        root,
+        paths,
+        limits.plan_head_lines,
+        limits.plan_tail_lines,
+        profile=limits.profile,
+        show_profile=True,
+    )
     if plan_context == message("plan_tampered"):
         return plan_context
 
     parts = [plan_context]
-    progress_summary = progress_summary_block(paths.progress)
+    progress_summary = progress_summary_block(paths.progress, limits.progress_summary_lines)
     if progress_summary:
         parts.extend(
             [
@@ -358,7 +731,7 @@ def render_prompt_context(root: Path) -> str:
         [
             "",
             message("recent_progress_heading"),
-            _data_block("PROGRESS", read_progress_tail(paths.progress, 80)),
+            _data_block("PROGRESS", progress_context_block(paths.progress, limits)),
         ]
     )
     if findings_injection_enabled():
@@ -367,11 +740,11 @@ def render_prompt_context(root: Path) -> str:
                 "",
                 message("recent_findings_heading"),
                 message("findings_warning"),
-                _data_block("FINDINGS", read_tail(paths.findings, 20)),
+                _data_block("FINDINGS", read_tail(paths.findings, limits.findings_tail_lines)),
             ]
         )
     parts.extend(["", message("plan_context_footer")])
-    return "\n".join(parts).rstrip()
+    return apply_total_context_budget("\n".join(parts).rstrip(), limits)
 
 
 def _operation_from_change_value(value: Any) -> str:

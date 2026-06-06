@@ -105,6 +105,27 @@ class PlanCliTests(unittest.TestCase):
             self.assertIn("phases: 1/2 complete", result.stdout)
             self.assertIn("attestation: not set", result.stdout)
             self.assertIn("progress: 0 auto records", result.stdout)
+            self.assertIn(
+                "context: profile=default, plan=head 50 tail 0, progress=tail 80 lines, findings=off, max=32000 chars",
+                result.stdout,
+            )
+
+    def test_status_reports_expanded_context_profile_summary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_active_plan(root)
+
+            result = run_plan(
+                root,
+                "status",
+                env={"PWF_CONTEXT_PROFILE": "expanded", "PWF_INCLUDE_FINDINGS": "1"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(
+                "context: profile=expanded, plan=head 80 tail 40, progress=20 records, findings=tail 60, max=56000 chars",
+                result.stdout,
+            )
 
     def test_status_reports_chinese_output_when_enabled(self):
         with tempfile.TemporaryDirectory() as tmp:

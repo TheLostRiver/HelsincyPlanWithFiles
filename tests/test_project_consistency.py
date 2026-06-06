@@ -65,6 +65,18 @@ class ProjectConsistencyTests(unittest.TestCase):
             self.assertIn("workspace", text)
             self.assertIn("strict", text)
 
+    def test_docs_document_context_profiles(self):
+        readme_cn = read_text("README.md")
+        readme_en = read_text("README.en.md")
+        faq = read_text("docs/FAQ.md")
+        changelog = read_text("CHANGELOG.md")
+
+        for text in (readme_cn, readme_en, faq, changelog):
+            self.assertIn("PWF_CONTEXT_PROFILE", text)
+            self.assertIn("expanded", text)
+            self.assertIn("deep", text)
+            self.assertIn("PWF_INCLUDE_FINDINGS", text)
+
     def test_hooks_json_references_existing_hook_files(self):
         hooks = json.loads(read_text(".codex/hooks.json"))
         commands = collect_commands(hooks)
