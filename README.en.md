@@ -177,6 +177,24 @@ newest .planning/<plan-id>/task_plan.md
 root-level task_plan.md
 ```
 
+### Session Policy
+
+By default, hooks use workspace session mode. The current `.planning/.active_plan` is the source of truth, and planning context is injected even if `.planning/sessions/` exists. This keeps context recovery reliable after Codex compaction, resume, and the next user prompt.
+
+Strict per-session isolation is opt-in. Enable `PWF_SESSION_MODE=strict` only when multiple Codex sessions in the same project must not share the active plan:
+
+```powershell
+$env:PWF_SESSION_MODE = "strict"
+```
+
+or create `.planning/session-policy.json`:
+
+```json
+{"mode":"strict"}
+```
+
+In strict mode, hook payloads must include an attached `session_id`; otherwise the hook emits a diagnostic message instead of silently skipping planning context. Run `/pwf-doctor` to inspect the current session mode.
+
 `PostToolUse` only records tools that write or edit files:
 
 ```text

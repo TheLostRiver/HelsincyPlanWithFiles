@@ -204,6 +204,46 @@ class PlanDoctorTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("language: warning unsupported PWF_LANG=fr-FR", result.stdout)
 
+    def test_doctor_reports_workspace_session_mode_when_sessions_dir_exists(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_hooks(root)
+            write_active_plan(root)
+            (root / ".planning" / "sessions").mkdir(parents=True)
+
+            result = run_plan(root, "doctor")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("session mode: workspace", result.stdout)
+            self.assertIn("sessions directory ignored unless PWF_SESSION_MODE=strict", result.stdout)
+
+    def test_doctor_reports_strict_session_mode_from_env(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_hooks(root)
+            write_active_plan(root)
+            sessions = root / ".planning" / "sessions"
+            sessions.mkdir(parents=True)
+            (sessions / "abc.attached").write_text("attached\n", encoding="utf-8")
+
+            result = run_plan(root, "doctor", env={"PWF_SESSION_MODE": "strict"})
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("session mode: strict", result.stdout)
+            self.assertIn("attached sessions: 1", result.stdout)
+
+    def test_doctor_warns_about_unsupported_session_mode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_hooks(root)
+            write_active_plan(root)
+
+            result = run_plan(root, "doctor", env={"PWF_SESSION_MODE": "surprise"})
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("session mode: workspace", result.stdout)
+            self.assertIn("unsupported PWF_SESSION_MODE=surprise", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

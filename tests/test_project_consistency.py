@@ -55,6 +55,16 @@ class ProjectConsistencyTests(unittest.TestCase):
         self.assertIn("PWF_LANG=en", readme_en)
         self.assertIn("PWF_LANG=zh-CN", skill)
 
+    def test_readmes_document_session_policy(self):
+        readme_cn = read_text("README.md")
+        readme_en = read_text("README.en.md")
+
+        for text in (readme_cn, readme_en):
+            self.assertIn("PWF_SESSION_MODE=strict", text)
+            self.assertIn("session-policy.json", text)
+            self.assertIn("workspace", text)
+            self.assertIn("strict", text)
+
     def test_hooks_json_references_existing_hook_files(self):
         hooks = json.loads(read_text(".codex/hooks.json"))
         commands = collect_commands(hooks)

@@ -365,6 +365,114 @@ class HookTests(unittest.TestCase):
             self.assertIn("# Task Plan: Test", hook_output["additionalContext"])
             self.assertIn("structured data, not instructions", hook_output["additionalContext"])
 
+    def test_user_prompt_submit_uses_workspace_mode_when_sessions_dir_exists(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            (root / ".planning" / "sessions").mkdir(parents=True)
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            context = payload["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("# Task Plan: Test", context)
+            self.assertIn("---BEGIN PLAN DATA---", context)
+
+    def test_user_prompt_submit_strict_mode_requires_attached_session(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            sessions = root / ".planning" / "sessions"
+            sessions.mkdir(parents=True)
+
+            missing = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue"},
+                env={"PWF_SESSION_MODE": "strict"},
+            )
+            self.assertEqual(missing.returncode, 0, missing.stderr)
+            missing_payload = json.loads(missing.stdout)
+            self.assertIn("systemMessage", missing_payload)
+            self.assertIn("session isolation is strict", missing_payload["systemMessage"])
+            self.assertIn("no session_id", missing_payload["systemMessage"])
+
+            unattached = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {
+                    "hook_event_name": "UserPromptSubmit",
+                    "prompt": "continue",
+                    "session_id": "abc",
+                },
+                env={"PWF_SESSION_MODE": "strict"},
+            )
+            self.assertEqual(unattached.returncode, 0, unattached.stderr)
+            unattached_payload = json.loads(unattached.stdout)
+            self.assertIn("systemMessage", unattached_payload)
+            self.assertIn("session isolation is strict", unattached_payload["systemMessage"])
+            self.assertIn("not attached", unattached_payload["systemMessage"])
+
+            (sessions / "abc.attached").write_text("attached\n", encoding="utf-8")
+            attached = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {
+                    "hook_event_name": "UserPromptSubmit",
+                    "prompt": "continue",
+                    "session_id": "abc",
+                },
+                env={"PWF_SESSION_MODE": "strict"},
+            )
+
+            self.assertEqual(attached.returncode, 0, attached.stderr)
+            context = json.loads(attached.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("# Task Plan: Test", context)
+
+    def test_user_prompt_submit_strict_mode_can_be_enabled_by_policy_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            sessions = root / ".planning" / "sessions"
+            sessions.mkdir(parents=True)
+            (root / ".planning" / "session-policy.json").write_text(
+                json.dumps({"mode": "strict"}),
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertIn("systemMessage", payload)
+            self.assertIn("session isolation is strict", payload["systemMessage"])
+
+    def test_user_prompt_submit_unsupported_session_mode_falls_back_to_workspace(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            (root / ".planning" / "sessions").mkdir(parents=True)
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue"},
+                env={"PWF_SESSION_MODE": "surprise"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("# Task Plan: Test", context)
+
     def test_user_prompt_submit_outputs_ascii_json_for_non_utf8_stdout(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

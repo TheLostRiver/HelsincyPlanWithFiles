@@ -21,6 +21,7 @@ if str(HOOKS_DIR) not in sys.path:
 
 import planning_state  # noqa: E402
 import progress_lifecycle  # noqa: E402
+import codex_hook_adapter  # noqa: E402
 
 
 REQUIRED_HOOK_ENTRYPOINTS = [
@@ -93,6 +94,10 @@ CLI_MESSAGES = {
         "progress_warning": "[warn] progress.md has {count} auto records; run /pwf-compact or plan.py compact",
         "python_runtime_ok": "python runtime: ok",
         "python_runtime_warning": "python runtime: warning python3 command in hooks.json",
+        "session_attached_count": "attached sessions: {count}",
+        "session_dir_ignored": "session mode: sessions directory ignored unless PWF_SESSION_MODE=strict",
+        "session_mode": "session mode: {mode}",
+        "session_mode_unsupported": "session mode: warning unsupported PWF_SESSION_MODE={mode}",
     },
     "zh-CN": {
         "active_plan_missing": "当前计划: 缺失",
@@ -152,6 +157,10 @@ CLI_MESSAGES = {
         "progress_warning": "[warn] progress.md 已有 {count} 条 auto records；请运行 /pwf-compact 或 plan.py compact",
         "python_runtime_ok": "Python runtime: ok",
         "python_runtime_warning": "Python runtime: warning hooks.json 中存在 python3 command",
+        "session_attached_count": "attached sessions: {count}",
+        "session_dir_ignored": "session mode: sessions directory ignored unless PWF_SESSION_MODE=strict",
+        "session_mode": "session mode: {mode}",
+        "session_mode_unsupported": "session mode: warning unsupported PWF_SESSION_MODE={mode}",
     },
 }
 
@@ -170,6 +179,34 @@ def _unsupported_language_warning() -> str:
     if lang and lang not in planning_state.SUPPORTED_LANGS:
         return CLI_MESSAGES["en"]["language_unsupported"].format(lang=lang)
     return ""
+
+
+def _unsupported_session_mode_warning() -> str:
+    mode = os.environ.get("PWF_SESSION_MODE", "").strip()
+    if mode and mode.lower() not in codex_hook_adapter.SESSION_MODES:
+        return _message("session_mode_unsupported", mode=mode)
+    return ""
+
+
+def _attached_session_count(root: Path) -> int:
+    sessions_dir = root / ".planning" / "sessions"
+    if not sessions_dir.is_dir():
+        return 0
+    return len(list(sessions_dir.glob("*.attached")))
+
+
+def _session_status_lines(root: Path) -> list[str]:
+    mode = codex_hook_adapter.session_mode(root)
+    lines = [_message("session_mode", mode=mode)]
+    warning = _unsupported_session_mode_warning()
+    if warning:
+        lines.append(warning)
+    sessions_dir = root / ".planning" / "sessions"
+    if mode == "strict":
+        lines.append(_message("session_attached_count", count=_attached_session_count(root)))
+    elif sessions_dir.is_dir():
+        lines.append(_message("session_dir_ignored"))
+    return lines
 
 
 def _collect_hook_commands(value: Any) -> list[str]:
@@ -449,6 +486,8 @@ def doctor(root: Path) -> int:
         lines.append(_message("python_runtime_warning"))
     else:
         lines.append(_message("python_runtime_ok"))
+
+    lines.extend(_session_status_lines(root))
 
     paths = planning_state.planning_paths(root)
     if paths is None:
