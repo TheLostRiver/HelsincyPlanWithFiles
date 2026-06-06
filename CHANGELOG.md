@@ -2,8 +2,16 @@
 
 ## Unreleased
 
-- Changed session isolation to an explicit policy: workspace mode is now the default, while strict per-session isolation requires `PWF_SESSION_MODE=strict` or `.planning/session-policy.json`.
-- Added diagnostics for strict session mode so hooks explain missing or unattached `session_id` instead of silently skipping planning context.
+- No unreleased changes.
+
+## 0.2.2 - 2026-06-06
+
+- 中文：将 session isolation 明确为显式策略；默认 `workspace` 模式始终使用 `.planning/.active_plan` 恢复上下文，避免 Codex 上下文压缩或 resume 后因为历史 `.planning/sessions/` 目录而静默跳过 planning context。
+- 中文：保留 opt-in 的 `strict` 模式，可通过 `PWF_SESSION_MODE=strict` 或 `.planning/session-policy.json` 开启；strict 模式缺少或未 attach `session_id` 时会输出诊断消息，而不是静默失败。
+- 中文：增强 `/pwf-doctor` 的 session policy 诊断，并新增用户 FAQ 文档，解释安装、命令、上下文压缩、workspace/strict 选择、progress compaction、attestation 和中文模式等常见问题。
+- English: Made session isolation an explicit policy. The default `workspace` mode now always uses `.planning/.active_plan` for context recovery, preventing stale `.planning/sessions/` state from silently suppressing planning context after Codex context compaction or resume.
+- English: Preserved opt-in `strict` mode through `PWF_SESSION_MODE=strict` or `.planning/session-policy.json`; strict mode now emits diagnostics for missing or unattached `session_id` values instead of failing silently.
+- English: Improved `/pwf-doctor` session policy diagnostics and added a user FAQ covering installation, commands, context compaction, workspace/strict mode selection, progress compaction, attestation, and Chinese mode.
 
 ## 0.2.1 - 2026-05-28
 
