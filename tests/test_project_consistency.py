@@ -80,9 +80,61 @@ class ProjectConsistencyTests(unittest.TestCase):
     def test_version_is_recorded_in_changelog(self):
         version = read_text("VERSION").strip()
         changelog = read_text("CHANGELOG.md")
+        readme_cn = read_text("README.md")
+        readme_en = read_text("README.en.md")
 
         self.assertRegex(version, r"^\d+\.\d+\.\d+$")
         self.assertIn(version, changelog)
+        self.assertIn(f"Current version: `{version}`", readme_en)
+        self.assertIn(f"当前版本：`{version}`", readme_cn)
+        self.assertIn(f"HelsincyPlanWithFiles-v{version}-codex.zip", readme_cn)
+        self.assertIn(f"HelsincyPlanWithFiles-v{version}-codex.zip", readme_en)
+
+    def test_faq_document_is_linked_and_covers_user_questions(self):
+        readme_cn = read_text("README.md")
+        readme_en = read_text("README.en.md")
+        faq = read_text("docs/FAQ.md")
+
+        self.assertIn("docs/FAQ.md", readme_cn)
+        self.assertIn("docs/FAQ.md", readme_en)
+
+        for phrase in (
+            "上下文压缩",
+            "context compaction",
+            "PWF_SESSION_MODE=strict",
+            "session-policy.json",
+            "/pwf-doctor",
+            "/pwf-init",
+            "/pwf-compact",
+            "/pwf-attest",
+            "PWF_LANG=zh-CN",
+        ):
+            self.assertIn(phrase, faq)
+
+    def test_release_notes_are_bilingual_for_current_version(self):
+        version = read_text("VERSION").strip()
+        changelog = read_text("CHANGELOG.md")
+        release_notes = read_text(f"docs/RELEASE_NOTES_{version}.md")
+
+        match = re.search(
+            rf"^## {re.escape(version)}\b(?P<body>.*?)(?=^## |\Z)",
+            changelog,
+            flags=re.MULTILINE | re.DOTALL,
+        )
+
+        self.assertIsNotNone(match)
+        section = match.group("body")
+        self.assertIn("中文：", section)
+        self.assertIn("English:", section)
+        self.assertIn("workspace", section)
+        self.assertIn("strict", section)
+        self.assertIn("FAQ", section)
+
+        self.assertIn("中文", release_notes)
+        self.assertIn("English", release_notes)
+        self.assertIn("HelsincyPlanWithFiles-v", release_notes)
+        self.assertIn("context compaction", release_notes)
+        self.assertIn("上下文压缩", release_notes)
 
     def test_released_compaction_hardening_is_recorded_in_0_2_0(self):
         changelog = read_text("CHANGELOG.md")
