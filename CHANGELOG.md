@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Changed session isolation to an explicit policy: workspace mode is now the default, while strict per-session isolation requires `PWF_SESSION_MODE=strict` or `.planning/session-policy.json`.
+- Added diagnostics for strict session mode so hooks explain missing or unattached `session_id` instead of silently skipping planning context.
+
 ## 0.2.1 - 2026-05-28
 
 - 中文：修复英文默认模板初始化后 `plan.py status` 把 HTML 注释误识别为当前阶段的问题。

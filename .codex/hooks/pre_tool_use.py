@@ -9,7 +9,8 @@ def main() -> None:
     payload = adapter.load_payload()
     root = adapter.cwd_from_payload(payload)
 
-    if not adapter.is_session_attached(root, adapter.session_id_from_payload(payload)):
+    session_id = adapter.session_id_from_payload(payload)
+    if adapter.emit_session_denial_if_needed(root, session_id):
         return
 
     context = planning_state.render_pre_tool_context(root)

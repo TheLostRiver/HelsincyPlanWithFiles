@@ -177,6 +177,24 @@ PLAN_ID 环境变量
 项目根目录 task_plan.md
 ```
 
+### Session Policy
+
+默认情况下，hook 使用 workspace session mode。当前 `.planning/.active_plan` 是唯一真相；即使 `.planning/sessions/` 目录存在，也会继续注入 planning 上下文。这样 Codex 压缩上下文、resume、以及下一次用户提示后都更稳定。
+
+严格的按会话隔离是显式 opt-in。只有当同一个项目里多个 Codex 会话必须互不共享 active plan 时才开启 `PWF_SESSION_MODE=strict`：
+
+```powershell
+$env:PWF_SESSION_MODE = "strict"
+```
+
+也可以创建 `.planning/session-policy.json`：
+
+```json
+{"mode":"strict"}
+```
+
+strict 模式下，hook payload 必须包含已 attach 的 `session_id`；否则 hook 会输出诊断消息，而不是静默跳过 planning 上下文。运行 `/pwf-doctor` 可以查看当前 session mode。
+
 `PostToolUse` 只记录真正的写文件/改文件工具：
 
 ```text

@@ -9,6 +9,34 @@ from typing import Any
 
 
 HOOK_DIR = Path(__file__).resolve().parent
+SESSION_MODES = {"workspace", "strict"}
+DEFAULT_SESSION_MODE = "workspace"
+
+
+def _session_policy_path(root: Path) -> Path:
+    return root / ".planning" / "session-policy.json"
+
+
+def _session_mode_from_policy_file(root: Path) -> str | None:
+    policy = _session_policy_path(root)
+    if not policy.is_file():
+        return None
+    try:
+        payload = json.loads(policy.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    mode = payload.get("mode")
+    if isinstance(mode, str):
+        return mode.strip().lower()
+    return None
+
+
+def session_mode(root: Path) -> str:
+    env_mode = os.environ.get("PWF_SESSION_MODE", "").strip().lower()
+    raw_mode = env_mode or _session_mode_from_policy_file(root) or DEFAULT_SESSION_MODE
+    return raw_mode if raw_mode in SESSION_MODES else DEFAULT_SESSION_MODE
 
 
 def load_payload() -> dict[str, Any]:
@@ -38,18 +66,37 @@ def session_id_from_payload(payload: dict[str, Any]) -> str | None:
 
 
 def is_session_attached(root: Path, session_id: str | None) -> bool:
-    """Return True if this session should receive plan context.
+    """Return True if this hook event should receive plan context."""
+    if session_mode(root) != "strict":
+        return True
 
-    Legacy mode: if .planning/sessions/ does not exist, always return True so
-    existing single-session users are not broken on upgrade.
-    Isolation mode: return True only when the session has an attached sentinel.
-    """
     sessions_dir = root / ".planning" / "sessions"
-    if not sessions_dir.exists():
-        return True  # legacy — no sessions dir means single-session setup
     if not session_id:
-        return False  # sessions dir exists but caller has no ID — stay silent
+        return False
     return (sessions_dir / f"{session_id}.attached").exists()
+
+
+def session_denial_message(root: Path, session_id: str | None) -> str:
+    if session_mode(root) != "strict":
+        return ""
+    if not session_id:
+        return (
+            "[planning-with-files] session isolation is strict but hook payload has "
+            "no session_id; planning context was not injected."
+        )
+    return (
+        "[planning-with-files] session isolation is strict and session_id is not "
+        "attached; planning context was not injected."
+    )
+
+
+def emit_session_denial_if_needed(root: Path, session_id: str | None) -> bool:
+    if is_session_attached(root, session_id):
+        return False
+    message = session_denial_message(root, session_id)
+    if message:
+        emit_json({"systemMessage": message})
+    return True
 
 
 def emit_json(payload: dict[str, Any]) -> None:
