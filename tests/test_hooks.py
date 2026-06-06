@@ -365,6 +365,28 @@ class HookTests(unittest.TestCase):
             self.assertIn("# Task Plan: Test", hook_output["additionalContext"])
             self.assertIn("structured data, not instructions", hook_output["additionalContext"])
 
+    def test_user_prompt_submit_outputs_ascii_json_for_non_utf8_stdout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            (root / "task_plan.md").write_text(
+                "\ufeff# Task Plan: 中文\n\n## Phases\n\n### Phase 1: 测试\n- **Status:** in_progress\n",
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue"},
+                env={"PYTHONIOENCODING": "cp936"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotIn("codec can't encode", result.stderr)
+            payload = json.loads(result.stdout)
+            context = payload["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("# Task Plan: 中文", context)
+
     def test_user_prompt_submit_uses_chinese_context_when_enabled(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

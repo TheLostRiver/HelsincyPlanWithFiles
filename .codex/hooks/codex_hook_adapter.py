@@ -55,7 +55,7 @@ def is_session_attached(root: Path, session_id: str | None) -> bool:
 def emit_json(payload: dict[str, Any]) -> None:
     if not payload:
         return
-    json.dump(payload, sys.stdout, ensure_ascii=False)
+    json.dump(payload, sys.stdout, ensure_ascii=True)
     sys.stdout.write("\n")
 
 
