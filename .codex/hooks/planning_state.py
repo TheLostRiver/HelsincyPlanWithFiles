@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import hashlib
@@ -24,6 +25,15 @@ class PlanningPaths:
     task_plan: Path
     progress: Path
     findings: Path
+
+
+@dataclass(frozen=True)
+class PlanResolution:
+    source: str
+    plan_id: str
+    paths: PlanningPaths
+    session_key: str | None = None
+    warning: str | None = None
 
 
 @dataclass(frozen=True)
@@ -203,6 +213,7 @@ PLAN_TAMPERED_MESSAGE = MESSAGES["en"]["plan_tampered"]
 DEFAULT_COMPACT_THRESHOLD = 100
 POST_TOOL_RECORD_TOOLS = {"apply_patch", "Edit", "Write"}
 DATA_BLOCK_DELIMITER_RE = re.compile(r"^---(?:BEGIN|END) [A-Z ][A-Z ]* DATA---$")
+VALID_PLAN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$")
 
 
 def current_lang(env: Mapping[str, str] | None = None) -> str:
@@ -237,6 +248,31 @@ def safe_env_value(value: str | None, limit: int = 80) -> str:
         .replace("\n", "\\n")
         .replace("\r", "\\r")
     )
+
+
+def session_key(session_id: str) -> str:
+    return hashlib.sha256(session_id.encode("utf-8")).hexdigest()[:12]
+
+
+def valid_plan_id(plan_id: str) -> bool:
+    if not VALID_PLAN_ID_RE.fullmatch(plan_id):
+        return False
+    if plan_id in {".", ".."}:
+        return False
+    return "/" not in plan_id and "\\" not in plan_id
+
+
+def _paths_for_plan_dir(plan_dir: Path) -> PlanningPaths:
+    return PlanningPaths(
+        root=plan_dir,
+        task_plan=plan_dir / "task_plan.md",
+        progress=plan_dir / "progress.md",
+        findings=plan_dir / "findings.md",
+    )
+
+
+def _session_binding_path(root: Path, session_id: str) -> Path:
+    return root / ".planning" / "session-bindings" / f"{session_key(session_id)}.json"
 
 
 def env_int(
@@ -341,23 +377,84 @@ def message(key: str, env: Mapping[str, str] | None = None, **values: object) ->
     return text.format(**values) if values else text
 
 
-def resolve_plan_dir(root: Path) -> Path | None:
+def _resolution_from_plan_id(
+    root: Path,
+    plan_id: str,
+    source: str,
+    session_key_value: str | None = None,
+    warning: str | None = None,
+) -> PlanResolution | None:
+    if not valid_plan_id(plan_id):
+        return None
+    candidate = root / ".planning" / plan_id
+    if not (candidate / "task_plan.md").is_file():
+        return None
+    return PlanResolution(
+        source=source,
+        plan_id=plan_id,
+        paths=_paths_for_plan_dir(candidate),
+        session_key=session_key_value,
+        warning=warning,
+    )
+
+
+def _read_session_plan_id(root: Path, session_id: str) -> tuple[str | None, str | None, str | None]:
+    key = session_key(session_id)
+    path = _session_binding_path(root, session_id)
+    if not path.is_file():
+        return None, key, None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return None, key, f"[warn] ignored session binding {key}: invalid json"
+    if not isinstance(payload, dict):
+        return None, key, f"[warn] ignored session binding {key}: not an object"
+    if payload.get("version") != 1:
+        return None, key, f"[warn] ignored session binding {key}: unsupported version"
+    plan_id = payload.get("plan_id")
+    if not isinstance(plan_id, str) or not valid_plan_id(plan_id):
+        return None, key, f"[warn] ignored session binding {key}: invalid plan_id"
+    return plan_id, key, None
+
+
+def resolve_planning_context(
+    root: Path,
+    env: Mapping[str, str] | None = None,
+    session_id: str | None = None,
+) -> PlanResolution | None:
     root = root.resolve()
+    source = env if env is not None else os.environ
     plan_root = root / ".planning"
 
-    env_plan = os.environ.get("PLAN_ID", "").strip()
+    env_plan = source.get("PLAN_ID", "").strip()
     if env_plan:
-        candidate = plan_root / env_plan
-        if (candidate / "task_plan.md").is_file():
-            return candidate
+        resolution = _resolution_from_plan_id(root, env_plan, "env")
+        if resolution is not None:
+            return resolution
+
+    binding_warning: str | None = None
+    if session_id:
+        bound_plan, key, warning = _read_session_plan_id(root, session_id)
+        binding_warning = warning
+        if bound_plan:
+            resolution = _resolution_from_plan_id(
+                root,
+                bound_plan,
+                "session",
+                session_key_value=key,
+                warning=warning,
+            )
+            if resolution is not None:
+                return resolution
+            binding_warning = f"[warn] ignored session binding {key}: missing plan"
 
     active_file = plan_root / ".active_plan"
     if active_file.is_file():
         plan_id = active_file.read_text(encoding="utf-8", errors="replace").strip()
         if plan_id:
-            candidate = plan_root / plan_id
-            if (candidate / "task_plan.md").is_file():
-                return candidate
+            resolution = _resolution_from_plan_id(root, plan_id, "workspace", warning=binding_warning)
+            if resolution is not None:
+                return resolution
 
     if plan_root.is_dir():
         candidates = [
@@ -365,27 +462,37 @@ def resolve_plan_dir(root: Path) -> Path | None:
             for item in plan_root.iterdir()
             if item.is_dir()
             and not item.name.startswith(".")
+            and valid_plan_id(item.name)
             and (item / "task_plan.md").is_file()
         ]
         if candidates:
-            return max(candidates, key=lambda item: item.stat().st_mtime)
+            newest = max(candidates, key=lambda item: item.stat().st_mtime)
+            return PlanResolution(
+                source="newest",
+                plan_id=newest.name,
+                paths=_paths_for_plan_dir(newest),
+                warning=binding_warning,
+            )
 
     if (root / "task_plan.md").is_file():
-        return root
+        return PlanResolution(
+            source="legacy",
+            plan_id="legacy",
+            paths=_paths_for_plan_dir(root),
+            warning=binding_warning,
+        )
 
     return None
 
 
-def planning_paths(root: Path) -> PlanningPaths | None:
-    plan_dir = resolve_plan_dir(root)
-    if plan_dir is None:
-        return None
-    return PlanningPaths(
-        root=plan_dir,
-        task_plan=plan_dir / "task_plan.md",
-        progress=plan_dir / "progress.md",
-        findings=plan_dir / "findings.md",
-    )
+def resolve_plan_dir(root: Path) -> Path | None:
+    resolution = resolve_planning_context(root)
+    return resolution.paths.root if resolution is not None else None
+
+
+def planning_paths(root: Path, session_id: str | None = None) -> PlanningPaths | None:
+    resolution = resolve_planning_context(root, session_id=session_id)
+    return resolution.paths if resolution is not None else None
 
 
 def read_head(path: Path, limit: int) -> str:

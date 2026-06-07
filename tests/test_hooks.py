@@ -185,6 +185,112 @@ class ContextLimitResolverTests(unittest.TestCase):
         self.assertIn("[hash] injected heading", value)
 
 
+class PlanResolutionTests(unittest.TestCase):
+    def write_named_plan(self, root, plan_id, title):
+        plan_dir = root / ".planning" / plan_id
+        write_plan(plan_dir)
+        (plan_dir / "task_plan.md").write_text(
+            f"# Task Plan: {title}\n\n## Phases\n\n### Phase 1: Test\n- **Status:** in_progress\n",
+            encoding="utf-8",
+        )
+        return plan_dir
+
+    def write_session_binding(self, root, session_id, plan_id):
+        key = PLANNING_STATE.session_key(session_id)
+        bindings = root / ".planning" / "session-bindings"
+        bindings.mkdir(parents=True, exist_ok=True)
+        (bindings / f"{key}.json").write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "session_id": session_id,
+                    "plan_id": plan_id,
+                    "created_at": "2026-06-07T00:00:00Z",
+                    "updated_at": "2026-06-07T00:00:00Z",
+                    "source": "test",
+                }
+            ),
+            encoding="utf-8",
+        )
+        return key
+
+    def test_session_binding_precedes_workspace_active_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bound = self.write_named_plan(root, "2026-06-07-bound", "Bound")
+            self.write_named_plan(root, "2026-06-07-workspace", "Workspace")
+            (root / ".planning" / ".active_plan").write_text(
+                "2026-06-07-workspace\n",
+                encoding="utf-8",
+            )
+            key = self.write_session_binding(root, "session-a", "2026-06-07-bound")
+
+            resolution = PLANNING_STATE.resolve_planning_context(
+                root,
+                env={},
+                session_id="session-a",
+            )
+
+            self.assertIsNotNone(resolution)
+            self.assertEqual(resolution.source, "session")
+            self.assertEqual(resolution.plan_id, "2026-06-07-bound")
+            self.assertEqual(resolution.session_key, key)
+            self.assertEqual(resolution.paths.root, bound)
+
+    def test_plan_id_env_precedes_session_binding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env_plan = self.write_named_plan(root, "2026-06-07-env", "Env")
+            self.write_named_plan(root, "2026-06-07-bound", "Bound")
+            self.write_session_binding(root, "session-a", "2026-06-07-bound")
+
+            resolution = PLANNING_STATE.resolve_planning_context(
+                root,
+                env={"PLAN_ID": "2026-06-07-env"},
+                session_id="session-a",
+            )
+
+            self.assertIsNotNone(resolution)
+            self.assertEqual(resolution.source, "env")
+            self.assertEqual(resolution.plan_id, "2026-06-07-env")
+            self.assertEqual(resolution.paths.root, env_plan)
+
+    def test_invalid_session_binding_falls_back_to_workspace_with_warning(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = self.write_named_plan(root, "2026-06-07-workspace", "Workspace")
+            (root / ".planning" / ".active_plan").write_text(
+                "2026-06-07-workspace\n",
+                encoding="utf-8",
+            )
+            key = PLANNING_STATE.session_key("session-a")
+            bindings = root / ".planning" / "session-bindings"
+            bindings.mkdir(parents=True, exist_ok=True)
+            (bindings / f"{key}.json").write_text(
+                json.dumps({"version": 1, "session_id": "session-a", "plan_id": "../escape"}),
+                encoding="utf-8",
+            )
+
+            resolution = PLANNING_STATE.resolve_planning_context(
+                root,
+                env={},
+                session_id="session-a",
+            )
+
+            self.assertIsNotNone(resolution)
+            self.assertEqual(resolution.source, "workspace")
+            self.assertEqual(resolution.plan_id, "2026-06-07-workspace")
+            self.assertEqual(resolution.paths.root, workspace)
+            self.assertIn("ignored session binding", resolution.warning)
+
+    def test_session_key_is_short_digest_not_raw_session_id(self):
+        key = PLANNING_STATE.session_key("raw/session id with spaces")
+
+        self.assertRegex(key, r"^[0-9a-f]{12}$")
+        self.assertNotIn("raw", key)
+        self.assertNotIn("/", key)
+
+
 class HookTests(unittest.TestCase):
     def test_hooks_json_does_not_run_post_tool_use_for_bash(self):
         hooks = json.loads((REPO_ROOT / ".codex" / "hooks.json").read_text(encoding="utf-8"))
