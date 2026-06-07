@@ -300,6 +300,33 @@ class PlanDoctorTests(unittest.TestCase):
             self.assertIn("session mode: workspace", result.stdout)
             self.assertIn("unsupported PWF_SESSION_MODE=surprise", result.stdout)
 
+    def test_doctor_reports_workspace_active_task_owned_by_another_session(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_hooks(root)
+            plan_dir = write_active_plan(root)
+            owner_key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            (plan_dir / ".task-lease.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "plan_id": plan_dir.name,
+                        "owner_session_key": owner_key,
+                        "owner_status": "active",
+                        "shared": False,
+                        "claimed_at": "2026-06-07T10:00:00Z",
+                        "updated_at": "2999-01-01T00:00:00Z",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_plan(root, "doctor", env={"PWF_SESSION_ID": "session-b"})
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(f"task lease: conflict owner={owner_key} status=active shared=false", result.stdout)
+            self.assertIn("workspace active plan is owned by another session", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

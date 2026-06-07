@@ -13,6 +13,11 @@ def main() -> None:
     if adapter.emit_session_denial_if_needed(root, session_id):
         return
 
+    ownership_denial = planning_state.planning_access_denial(root, session_id)
+    if ownership_denial:
+        adapter.emit_json({"systemMessage": ownership_denial})
+        return
+
     if planning_state.append_progress(root, payload, session_id=session_id):
         message = planning_state.message("post_tool_recorded")
         notice = planning_state.progress_compaction_notice(root, session_id=session_id)

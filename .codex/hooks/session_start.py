@@ -37,6 +37,7 @@ def main() -> None:
     if adapter.emit_session_denial_if_needed(root, session_id):
         return
 
+    planning_state.refresh_session_lease(root, session_id)
     resolution = planning_state.resolve_planning_context(root, session_id=session_id)
     planning_dir = resolution.paths.root if resolution is not None else None
     parts = [
