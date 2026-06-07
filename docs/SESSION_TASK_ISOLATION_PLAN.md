@@ -30,6 +30,7 @@ root-level task_plan.md
 | 上下文混入 | 对话 A 看到了对话 B 的 recent progress | 两个对话都解析到同一个 `.planning/.active_plan` |
 | progress 混入 | 多个对话的 `PostToolUse` auto records 追加到同一个 `progress.md` | `append_progress()` 使用 workspace 解析出的 plan |
 | 切换竞态 | 对话 A 开始时使用 plan X；对话 B 运行 `/pwf-switch plan-y` 后，对话 A 下一次 hook 可能改用 plan Y | `.planning/.active_plan` 是项目全局状态 |
+| 自动接管 | 第二个对话开始使用 PWF 时，静默继承了上一个对话正在使用或曾经使用的任务 | 缺少任务占用门禁，无法区分 workspace fallback 和“当前 session 有权使用此 plan” |
 | strict 模式误解 | `PWF_SESSION_MODE=strict` 可以阻止未 attach 的 session 注入上下文，但不会把某个 session 绑定到某个 plan | strict 当前只是访问门禁，不是任务归属解析器 |
 
 只加文件锁不能解决这个问题。锁可以防止两个 append 把文本写坏，但它不能判断“这个对话应该读写哪个任务”。真正缺少的是“会话级任务归属”。
@@ -38,8 +39,10 @@ root-level task_plan.md
 
 - 保留现有单项目单任务的默认工作流。
 - 支持同项目多个对话分别绑定不同 PWF 任务并发工作。
+- 新会话开始使用 PWF 时，先检测同项目中是否已有其他会话正在或曾经占用 PWF 任务。
 - 对同一个 hook 事件，确保上下文注入和 progress 追加使用同一个 effective task。
 - 一旦 session binding 存在，不再把 `.planning/.active_plan` 当作唯一真相。
+- 阻止新会话或未绑定会话自动接管其他会话的 PWF 任务，即使旧会话已经停止运行或心跳过期。
 - 在 `status` 和 `doctor` 中显示 workspace active plan、当前 session binding 和 effective plan。
 - 保持 strict session isolation 显式、可诊断。
 - 增加轻量 append lock，让多个对话有意共享同一任务时 `progress.md` 仍保持记录边界完整。
@@ -52,6 +55,7 @@ root-level task_plan.md
 - 不移除 `.planning/.active_plan`；它仍然是兼容 fallback。
 - 不静默为所有项目开启 strict mode。
 - 不要求用户提交 `.planning/session-bindings/`。
+- 不因为 Codex 对话停止、压缩上下文、断开或心跳过期，就自动释放任务所有权。
 - 第一轮实现不把 `progress.md` 拆成 per-session 日志。
 - 不降低 `PLAN_ID` 优先级；显式环境变量覆盖仍然是最高优先级。
 - 不依赖 Codex UI 专属能力；CLI fallback 必须能表达同样状态。
@@ -76,6 +80,19 @@ workspace active plan 继续作为默认值和迁移路径。只要 hook payload
 
 这个不变量比具体存储格式更重要。如果用户看到 hook 注入的是 plan A，那么这一轮文件修改的 auto record 也必须写到 plan A 的 `progress.md`。
 
+### 4.1 Session Lease 与 Task Ownership Gate
+
+session binding 只回答“当前 session 想使用哪个 plan”。它还不能回答“当前 session 是否有权使用这个 plan”。因此需要增加第二层门禁：session lease 和 task lease。
+
+- session lease 记录某个 Codex session 在当前项目里使用过 PWF。
+- task lease 记录某个 plan 当前由哪个 session 拥有。
+- hook 和 CLI 在解析 planning context 之前，先登记或刷新当前 session lease。
+- 如果当前 session 没有 binding，而 `.planning/.active_plan` 指向的任务已经被另一个 session 拥有，hook 必须输出诊断，并且不注入该任务上下文，也不向该任务的 `progress.md` 自动追加记录。
+- stale owner 仍然是 owner。心跳过期只改变诊断状态，不自动转移所有权。
+- 任务转移必须显式执行，例如 `--force-claim`；有意共享必须显式执行，例如 `--share`。
+
+这把“会话停止运行”和“任务已释放”区分开。前一个对话不再发送 hook 事件，并不表示后一个对话可以静默继承它的 PWF 任务。安全默认值应该是冲突时拒绝并给出诊断，让用户选择绑定新任务、释放旧任务、显式共享，或强制接管 stale task。
+
 ## 5. 运行态数据结构
 
 建议每个 session binding 使用一个小 JSON 文件：
@@ -86,6 +103,10 @@ workspace active plan 继续作为默认值和迁移路径。只要 hook payload
   session-policy.json
   session-bindings/
     <session-key>.json
+  session-leases/
+    <session-key>.json
+  <plan-id>/
+    .task-lease.json
 ```
 
 示例：
@@ -115,6 +136,47 @@ workspace active plan 继续作为默认值和迁移路径。只要 hook payload
 ```
 
 JSON 内部可以保留原始 `session_id` 作为本地诊断信息，但 `doctor` 和 `status` 输出必须做 sanitize 和截断。
+
+session lease 示例：
+
+```json
+{
+  "version": 1,
+  "session_key": "3f9a8c1d2e77",
+  "session_id": "abc123",
+  "started_at": "2026-06-07T10:12:30Z",
+  "heartbeat_at": "2026-06-07T10:16:02Z",
+  "status": "active",
+  "bound_plan_id": "2026-06-07-session-task-isolation-plan",
+  "source": "hook"
+}
+```
+
+task lease 示例：
+
+```json
+{
+  "version": 1,
+  "plan_id": "2026-06-07-session-task-isolation-plan",
+  "owner_session_key": "3f9a8c1d2e77",
+  "owner_status": "active",
+  "shared": false,
+  "claimed_at": "2026-06-07T10:12:30Z",
+  "updated_at": "2026-06-07T10:16:02Z",
+  "source": "plan.py switch --session"
+}
+```
+
+lease 状态含义：
+
+| 状态 | 含义 | 其他 session 能否自动使用该任务 |
+|------|------|-------------------------------|
+| `active` | owner 心跳仍在新鲜窗口内 | 不能 |
+| `stale` | owner 心跳过期或不再发送 hook 事件 | 不能 |
+| `released` | owner 显式清除或释放 binding | 可以，仍需正常校验 |
+| `shared` | 任务被显式标记为可共享 | 可以，但 auto record 仍必须包含 `Session` 元数据 |
+
+默认心跳新鲜窗口可以先设为 10 分钟，并允许通过 `PWF_SESSION_LEASE_TTL_SECONDS` 配置。TTL 只把诊断从 active 改成 stale，不授予自动接管权限。
 
 ## 6. Session Identity
 
@@ -190,6 +252,19 @@ plan.py switch 2026-06-07-some-task --session
 plan.py switch 2026-06-07-some-task --workspace
 ```
 
+新增显式 ownership 操作：
+
+```powershell
+plan.py switch 2026-06-07-some-task --session --force-claim
+plan.py switch 2026-06-07-some-task --session --share
+plan.py switch --release-session
+```
+
+ownership 规则：
+- `--session` 只在目标任务没有冲突 owner 时声明 task lease。
+- `--force-claim` 用于显式接管另一个 session 拥有的任务，即使那个 owner 已经 stale 也必须显式指定。
+- `--share` 把 task lease 标记为有意共享。
+
 规则：
 
 - 不加 flag：保持现有 workspace 行为。
@@ -202,9 +277,11 @@ plan.py switch 2026-06-07-some-task --workspace
 
 ```powershell
 plan.py switch --clear-session
+plan.py switch --release-session
 ```
 
 它删除当前 session binding，让这个对话重新 fallback 到 workspace mode。
+`--release-session` 删除 binding，并且当当前 session 是 owner 时，把对应 task lease 标记为 `released`。
 
 ### 7.3 `status`
 
@@ -213,6 +290,8 @@ plan.py switch --clear-session
 ```text
 workspace active plan: 2026-06-07-main-task
 session binding: 3f9a8c1d2e77 -> 2026-06-07-side-task
+session lease: active heartbeat=2026-06-07T10:16:02Z
+task lease: owner=3f9a8c1d2e77 status=active shared=false
 effective plan: 2026-06-07-side-task
 path: D:\project\.planning\2026-06-07-side-task
 ```
@@ -222,6 +301,8 @@ path: D:\project\.planning\2026-06-07-side-task
 ```text
 workspace active plan: 2026-06-07-main-task
 session binding: unavailable (no session_id)
+session lease: unavailable (no session_id)
+task lease: owner=8bb2a31f99d0 status=stale shared=false
 effective plan: 2026-06-07-main-task
 ```
 
@@ -233,6 +314,8 @@ effective plan: 2026-06-07-main-task
 session mode: workspace
 workspace active plan: ok 2026-06-07-main-task
 session binding: none for current session
+session lease: active 3f9a8c1d2e77
+task lease: conflict owner=8bb2a31f99d0 status=active shared=false
 effective plan: workspace active
 ```
 
@@ -240,6 +323,12 @@ effective plan: workspace active
 
 ```text
 [warn] multiple sessions detected while using workspace active plan; concurrent conversations may share progress.md
+```
+
+当 workspace fallback 指向另一个 session 已拥有的任务：
+
+```text
+[warn] workspace active plan is owned by another session; bind this session with plan.py switch <plan-id> --session or create a new task with plan.py init "Task Name" --bind-session
 ```
 
 strict 模式下：
@@ -375,11 +464,23 @@ session binding 文件是本地运行态，但会影响 hook context routing，�
 - binding 不得解析到 `.planning/` 外部。
 - 如果 bound plan 有 attestation，继续保留现有 tamper-blocking 行为。
 
-binding 更新使用 atomic write：
+session lease 和 task lease 也按不可信运行态处理：
+
+- 只接受 JSON object 和 `version == 1`。
+- `session_key` 必须匹配当前 session id 的 digest，或者只作为只读诊断值使用。
+- `owner_session_key` 必须是短 digest，不接受原始 session id。
+- `plan_id` 必须和所在目录一致，不允许 lease 文件声明另一个 plan。
+- `owner_status` 只能来自 `active`、`stale`、`released`、`shared` 的受控集合。
+- `shared` 必须是 boolean；不能把任意 truthy 字符串当作共享授权。
+- 心跳时间解析失败时，把 owner 视为冲突 owner，而不是自动释放。
+
+binding、session lease 和 task lease 更新都使用 atomic write：
 
 1. 写 `<session-key>.json.tmp`。
 2. flush 并关闭。
 3. replace `<session-key>.json`。
+
+task lease 文件同理写 `.task-lease.json.tmp` 后 replace `.task-lease.json`。
 
 ## 12. 文档更新
 
@@ -395,8 +496,10 @@ binding 更新使用 atomic write：
 - workspace active plan 仍然是默认行为。
 - 同项目并发多个 Codex 对话时，推荐使用 session binding。
 - `strict` 控制 session 是否允许参与；binding 控制 session 使用哪个任务。
+- session lease 和 task lease 用来阻止未绑定 session 自动接管其他对话的任务。
 - `PLAN_ID` 是最强显式 override。
 - `--session` 切换不会影响其他对话。
+- `--force-claim`、`--share` 和 `--release-session` 是显式 ownership 操作。
 
 FAQ 建议新增：
 
@@ -406,6 +509,8 @@ FAQ 建议新增：
 plan.py switch <plan-id> --session
 
 旧的 switch 行为仍然会修改 workspace active plan，适合单任务项目。
+
+如果第二个对话开始使用 PWF，而 workspace active task 已经由另一个 session 拥有，PWF 不会自动接管该任务。请给新对话绑定自己的任务、显式共享该任务，或者只在确实要接管时使用 --force-claim。
 ```
 
 ## 13. 测试
@@ -432,18 +537,34 @@ plan.py switch <plan-id> --session
 - strict mode 缺少 session id 时仍输出 denial diagnostic。
 - strict mode 下 attached 但 unbound 的 session 在未开启 `require_binding` 时仍 fallback。
 - strict mode 开启 `require_binding` 后拒绝 unbound session。
+- 未绑定的第二个 session 不会注入或写入另一个 session 拥有的任务。
+- stale task owner 仍阻止自动接管。
+- shared task lease 允许多个 session 使用，但仍保留 `Session` metadata。
 
-### 13.3 CLI Tests
+### 13.3 Lease and Ownership Tests
+
+- PWF 启动时登记或刷新当前 session lease。
+- `switch --session` 创建由当前 session 拥有的 task lease。
+- 当 `.active_plan` 指向另一个 session 的 task lease 时，未绑定 workspace fallback 被拒绝。
+- stale lease 会被报告为 stale，但仍阻止自动接管。
+- `switch --session --force-claim` 显式转移 ownership。
+- `switch --session --share` 把任务标记为有意共享。
+- `switch --release-session` 把当前 session 拥有的 task lease 标记为 released。
+
+### 13.4 CLI Tests
 
 - `init --bind-session` 在设置 `PWF_SESSION_ID` 时创建 plan 和 binding。
 - `init --bind-session --no-workspace-active` 不覆盖 `.active_plan`。
 - `switch --session` 写 binding 文件。
+- `switch --session --force-claim` 只有在显式请求时才能接管另一个 session 拥有的 stale 或 active task。
+- `switch --session --share` 把 task lease 标记为 shared。
+- `switch --release-session` 释放当前 session 拥有的 task。
 - `switch --workspace` 写 `.active_plan`。
 - `switch --clear-session` 删除 binding 文件。
-- `status` 显示 workspace active、session binding 和 effective plan。
-- `doctor` 对多个 session 共享 workspace fallback 发出 warning。
+- `status` 显示 workspace active、session binding、session lease、task lease 和 effective plan。
+- `doctor` 对多个 session 共享 workspace fallback 和 task lease conflict 发出 warning。
 
-### 13.4 Progress Lock Tests
+### 13.5 Progress Lock Tests
 
 - 两次 append 保留完整 auto record 边界。
 - 锁 timeout 时 fail-open，且不破坏已有 progress。
@@ -493,7 +614,26 @@ plan.py switch <plan-id> --session
 - [ ] 给 `doctor` 添加 session binding diagnostics。
 - [ ] 添加 CLI 和 doctor tests。
 
-### Task 4: Add Strict Binding Enforcement Option
+### Task 4: Add Session Lease and Task Ownership Gate
+
+**Files:**
+- Modify: `.codex/hooks/planning_state.py`
+- Modify: `.codex/hooks/codex_hook_adapter.py`
+- Modify: `.codex/skills/planning-with-files/scripts/plan.py`
+- Test: `tests/test_hooks.py`
+- Test: `tests/test_plan_cli.py`
+- Test: `tests/test_plan_doctor.py`
+
+- [ ] 在 `.planning/session-leases/` 下添加 session lease 读写 helper。
+- [ ] 在 `.planning/<plan-id>/.task-lease.json` 下添加 task lease 读写 helper。
+- [ ] hook context resolution 前刷新当前 session lease。
+- [ ] 当 effective plan 由另一个 non-shared session 拥有时，拒绝 workspace fallback。
+- [ ] stale task owner 仍视为冲突，直到显式 `--force-claim` 或 `--release-session`。
+- [ ] 添加 `--force-claim`、`--share` 和 `--release-session` CLI 行为。
+- [ ] 在 status 和 doctor 中显示 session lease、task lease、stale owner、conflict 和 shared task diagnostics。
+- [ ] 添加 hook、CLI 和 doctor tests，覆盖自动接管被阻止。
+
+### Task 5: Add Strict Binding Enforcement Option
 
 **Files:**
 - Modify: `.codex/hooks/codex_hook_adapter.py`
@@ -508,7 +648,7 @@ plan.py switch <plan-id> --session
 - [ ] 为 unbound strict sessions 输出清晰 diagnostics。
 - [ ] 在 doctor 中报告 enforcement 状态。
 
-### Task 5: Add Progress Append Lock and Source Metadata
+### Task 6: Add Progress Append Lock and Source Metadata
 
 **Files:**
 - Modify: `.codex/hooks/planning_state.py`
@@ -521,7 +661,7 @@ plan.py switch <plan-id> --session
 - [ ] 确保现有 compaction 和 recent-record parsing 能容忍新增字段。
 - [ ] 添加 lock 行为和 metadata tests。
 
-### Task 6: Update Documentation
+### Task 7: Update Documentation
 
 **Files:**
 - Modify: `README.md`
@@ -533,10 +673,11 @@ plan.py switch <plan-id> --session
 - [ ] 文档说明 workspace active plan 和 session binding 的区别。
 - [ ] 文档说明 `plan.py switch --session`。
 - [ ] 文档说明 `plan.py init --bind-session`。
+- [ ] 文档说明 session lease、task ownership、stale owner、`--force-claim`、`--share` 和 `--release-session`。
 - [ ] 文档说明 strict binding enforcement。
 - [ ] 添加文档一致性测试。
 
-### Task 7: Verification and Release Readiness
+### Task 8: Verification and Release Readiness
 
 **Files:**
 - All modified files.
@@ -554,24 +695,28 @@ plan.py switch <plan-id> --session
 推荐发布节奏：
 
 1. 先发布 opt-in session binding，同时保留 workspace 默认行为。
-2. 在 doctor 中增加“多个 session 共享 workspace active plan”的 warning。
-3. 收集 `--session` 和 `--bind-session` 的易用性反馈。
-4. 如果未来 Codex 总能稳定提供 `session_id`，再考虑让 `/pwf-init` 自动绑定当前 session。
-5. 在 major release 或明确公告后，再考虑让 strict mode 默认要求 binding。
+2. 在 doctor 中增加“多个 session 共享 workspace active plan”和 task lease conflict 的 warning。
+3. 默认阻止自动接管，包括 stale owner 场景。
+4. 收集 `--session`、`--bind-session`、`--force-claim`、`--share` 和 `--release-session` 的易用性反馈。
+5. 如果未来 Codex 总能稳定提供 `session_id`，再考虑让 `/pwf-init` 自动绑定当前 session。
+6. 在 major release 或明确公告后，再考虑让 strict mode 默认要求 binding。
 
 ## 16. 待确认问题
 
 1. slash command wrapper 在 Codex 内调用时，是否应该自动加 `--session`，还是让用户显式选择？
 2. `/pwf-switch` 是否应该永远默认 workspace 行为，还是当检测到多个 session 时提示用户？
-3. 多个对话有意共享同一任务时，默认注入所有 recent progress，还是只注入当前 session 的 recent records？
-4. Codex desktop 的 `session_id` 在 context compaction、resume 和 thread continuation 后是否稳定？
-5. 如果 Codex 未来暴露更稳定的 thread id，binding 应该继续使用 `session_id`，还是优先使用 thread id？
+3. 标记 owner stale 的默认 lease TTL 应该是 10 分钟、30 分钟，还是只允许配置？
+4. 多个对话有意共享同一任务时，默认注入所有 recent progress，还是只注入当前 session 的 recent records？
+5. Codex desktop 的 `session_id` 在 context compaction、resume 和 thread continuation 后是否稳定？
+6. 如果 Codex 未来暴露更稳定的 thread id，binding 应该继续使用 `session_id`，还是优先使用 thread id？
 
 ## 17. 成功标准
 
 - 同一个项目中的两个对话可以绑定到不同 plan id。
+- 未绑定的第二个对话不能自动使用或写入另一个 session 拥有的任务。
+- stale owner 仍阻止自动接管，直到显式 release、share 或 force-claim。
 - 一个对话切换 workspace active plan，不会改变另一个已绑定对话的 effective plan。
 - Hook prompt context 和 `PostToolUse` progress append 指向同一个 effective plan。
 - 现有单任务项目无需新配置，行为保持兼容。
 - `doctor` 能在用户被混入问题惊到之前提示潜在共享风险。
-- 测试覆盖 resolver 优先级、无效 binding、strict-mode diagnostics、CLI binding commands 和 progress metadata。
+- 测试覆盖 resolver 优先级、无效 binding、task ownership conflicts、stale leases、strict-mode diagnostics、CLI binding commands 和 progress metadata。
