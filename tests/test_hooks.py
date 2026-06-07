@@ -1510,6 +1510,30 @@ class HookTests(unittest.TestCase):
             self.assertEqual(hook_output["hookEventName"], "SessionStart")
             self.assertIn("# Task Plan: Test", hook_output["additionalContext"])
 
+    def test_session_start_calls_catchup_for_effective_plan_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_dir = root / ".planning" / "2026-06-07-bound"
+            write_plan(plan_dir)
+            key = PLANNING_STATE.session_key("session-a")
+            bindings = root / ".planning" / "session-bindings"
+            bindings.mkdir(parents=True, exist_ok=True)
+            (bindings / f"{key}.json").write_text(
+                json.dumps({"version": 1, "session_id": "session-a", "plan_id": "2026-06-07-bound"}),
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "session_start.py",
+                root,
+                {"hook_event_name": "SessionStart", "source": "startup", "session_id": "session-a"},
+                env={"PWF_SESSION_CATCHUP_ECHO_ARGS": "1"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            output = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertIn(f"planning-dir: {plan_dir}", output)
+
     def test_stop_outputs_incomplete_json_decision(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
