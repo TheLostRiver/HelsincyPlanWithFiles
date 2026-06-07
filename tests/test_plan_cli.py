@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 import subprocess
 import sys
@@ -283,6 +284,93 @@ class PlanCliTests(unittest.TestCase):
             self.assertIn("active plan set to: 2026-05-11-b", set_result.stdout)
             self.assertEqual(show_result.returncode, 0, show_result.stderr)
             self.assertIn("active plan: 2026-05-11-b", show_result.stdout)
+
+    def test_switch_session_writes_binding_without_changing_workspace_active(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root / ".planning" / "2026-06-07-workspace")
+            write_plan(root / ".planning" / "2026-06-07-session")
+            (root / ".planning" / ".active_plan").write_text("2026-06-07-workspace\n", encoding="utf-8")
+
+            result = run_plan(
+                root,
+                "switch",
+                "2026-06-07-session",
+                "--session",
+                env={"PWF_SESSION_ID": "session-a"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                (root / ".planning" / ".active_plan").read_text(encoding="utf-8"),
+                "2026-06-07-workspace\n",
+            )
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            binding = root / ".planning" / "session-bindings" / f"{key}.json"
+            self.assertTrue(binding.is_file())
+            self.assertEqual(
+                json.loads(binding.read_text(encoding="utf-8"))["plan_id"],
+                "2026-06-07-session",
+            )
+            self.assertIn(f"session binding set: {key} -> 2026-06-07-session", result.stdout)
+
+    def test_switch_clear_session_removes_binding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            binding_dir = root / ".planning" / "session-bindings"
+            binding_dir.mkdir(parents=True)
+            (binding_dir / f"{key}.json").write_text('{"version": 1}', encoding="utf-8")
+
+            result = run_plan(root, "switch", "--clear-session", env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse((binding_dir / f"{key}.json").exists())
+            self.assertIn(f"session binding cleared: {key}", result.stdout)
+
+    def test_init_bind_session_no_workspace_active(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            result = run_plan(
+                root,
+                "init",
+                "Side Task",
+                "--bind-session",
+                "--no-workspace-active",
+                env={"PWF_SESSION_ID": "session-a"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            today = datetime.now().strftime("%Y-%m-%d")
+            plan_id = f"{today}-side-task"
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            self.assertFalse((root / ".planning" / ".active_plan").exists())
+            binding = root / ".planning" / "session-bindings" / f"{key}.json"
+            self.assertEqual(json.loads(binding.read_text(encoding="utf-8"))["plan_id"], plan_id)
+            self.assertIn(f"session binding set: {key} -> {plan_id}", result.stdout)
+
+    def test_status_reports_workspace_session_and_effective_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root / ".planning" / "2026-06-07-workspace")
+            write_plan(root / ".planning" / "2026-06-07-session")
+            (root / ".planning" / ".active_plan").write_text("2026-06-07-workspace\n", encoding="utf-8")
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            binding_dir = root / ".planning" / "session-bindings"
+            binding_dir.mkdir(parents=True)
+            (binding_dir / f"{key}.json").write_text(
+                json.dumps({"version": 1, "session_id": "session-a", "plan_id": "2026-06-07-session"}),
+                encoding="utf-8",
+            )
+
+            result = run_plan(root, "status", env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("workspace active plan: 2026-06-07-workspace", result.stdout)
+            self.assertIn(f"session binding: {key} -> 2026-06-07-session", result.stdout)
+            self.assertIn("effective plan: 2026-06-07-session", result.stdout)
+            self.assertIn("plan source: session", result.stdout)
 
     def test_switch_reports_chinese_output_when_enabled(self):
         with tempfile.TemporaryDirectory() as tmp:

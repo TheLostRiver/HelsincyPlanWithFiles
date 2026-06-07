@@ -7,7 +7,7 @@ import json
 import os
 import re
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -64,6 +64,7 @@ CLI_MESSAGES = {
         "compacted": "compacted progress.md",
         "created": "created {label}: {plan_id}",
         "current_phase": "current phase: {phase}",
+        "effective_plan": "effective plan: {plan_id}",
         "findings_path": "findings: {path}",
         "help_attest": "Lock, show, or clear plan attestation",
         "help_capture": "Append external context to findings.md",
@@ -80,6 +81,7 @@ CLI_MESSAGES = {
         "hooks_json": "hooks.json: {status}",
         "language_unsupported": "language: warning unsupported PWF_LANG={lang}",
         "legacy_plan_label": "legacy plan",
+        "missing_session_id": "session id: unavailable; set PWF_SESSION_ID or run from a hook payload",
         "no_active_plan": "no active plan set",
         "path": "path: {path}",
         "phases": "phases: {complete}/{total} complete",
@@ -94,10 +96,18 @@ CLI_MESSAGES = {
         "progress_warning": "[warn] progress.md has {count} auto records; run /pwf-compact or plan.py compact",
         "python_runtime_ok": "python runtime: ok",
         "python_runtime_warning": "python runtime: warning python3 command in hooks.json",
+        "plan_source": "plan source: {source}",
         "session_attached_count": "attached sessions: {count}",
+        "session_binding": "session binding: {key} -> {plan_id}",
+        "session_binding_cleared": "session binding cleared: {key}",
+        "session_binding_missing": "session binding: unavailable (no session_id)",
+        "session_binding_none": "session binding: none for current session",
+        "session_binding_set": "session binding set: {key} -> {plan_id}",
         "session_dir_ignored": "session mode: sessions directory ignored unless PWF_SESSION_MODE=strict",
         "session_mode": "session mode: {mode}",
         "session_mode_unsupported": "session mode: warning unsupported PWF_SESSION_MODE={mode}",
+        "workspace_active_plan": "workspace active plan: {plan_id}",
+        "workspace_active_plan_missing": "workspace active plan: missing",
     },
     "zh-CN": {
         "active_plan_missing": "当前计划: 缺失",
@@ -127,6 +137,7 @@ CLI_MESSAGES = {
         "compacted": "已压缩 progress.md",
         "created": "已创建{label}: {plan_id}",
         "current_phase": "当前阶段: {phase}",
+        "effective_plan": "effective plan: {plan_id}",
         "findings_path": "findings: {path}",
         "help_attest": "锁定、查看或清除计划 attestation",
         "help_capture": "将外部上下文追加到 findings.md",
@@ -143,6 +154,7 @@ CLI_MESSAGES = {
         "hooks_json": "hooks.json: {status}",
         "language_unsupported": "language: warning unsupported PWF_LANG={lang}",
         "legacy_plan_label": "legacy plan",
+        "missing_session_id": "session id: 不可用；请设置 PWF_SESSION_ID 或从 hook payload 运行",
         "no_active_plan": "未设置当前计划",
         "path": "路径: {path}",
         "phases": "阶段: {complete}/{total} 已完成",
@@ -157,16 +169,24 @@ CLI_MESSAGES = {
         "progress_warning": "[warn] progress.md 已有 {count} 条 auto records；请运行 /pwf-compact 或 plan.py compact",
         "python_runtime_ok": "Python runtime: ok",
         "python_runtime_warning": "Python runtime: warning hooks.json 中存在 python3 command",
+        "plan_source": "plan source: {source}",
         "session_attached_count": "attached sessions: {count}",
+        "session_binding": "session binding: {key} -> {plan_id}",
+        "session_binding_cleared": "session binding cleared: {key}",
+        "session_binding_missing": "session binding: unavailable (no session_id)",
+        "session_binding_none": "session binding: none for current session",
+        "session_binding_set": "session binding set: {key} -> {plan_id}",
         "session_dir_ignored": "session mode: sessions directory ignored unless PWF_SESSION_MODE=strict",
         "session_mode": "session mode: {mode}",
         "session_mode_unsupported": "session mode: warning unsupported PWF_SESSION_MODE={mode}",
+        "workspace_active_plan": "workspace active plan: {plan_id}",
+        "workspace_active_plan_missing": "workspace active plan: missing",
     },
 }
 
 
-def _message(key: str, **values: object) -> str:
-    text = CLI_MESSAGES[planning_state.current_lang()][key]
+def _message(message_key: str, **values: object) -> str:
+    text = CLI_MESSAGES[planning_state.current_lang()][message_key]
     return text.format(**values) if values else text
 
 
@@ -186,6 +206,53 @@ def _unsupported_session_mode_warning() -> str:
     if mode and mode.lower() not in codex_hook_adapter.SESSION_MODES:
         return _message("session_mode_unsupported", mode=planning_state.safe_env_value(mode))
     return ""
+
+
+def _current_session_id() -> str | None:
+    return os.environ.get("PWF_SESSION_ID", "").strip() or None
+
+
+def _binding_payload(session_id: str, plan_id: str, source: str) -> dict[str, object]:
+    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return {
+        "version": 1,
+        "session_id": session_id,
+        "plan_id": plan_id,
+        "created_at": now,
+        "updated_at": now,
+        "source": source,
+    }
+
+
+def _write_session_binding(root: Path, session_id: str, plan_id: str, source: str) -> str:
+    key = planning_state.session_key(session_id)
+    binding_dir = root / ".planning" / "session-bindings"
+    binding_dir.mkdir(parents=True, exist_ok=True)
+    target = binding_dir / f"{key}.json"
+    tmp = binding_dir / f"{key}.json.tmp"
+    tmp.write_text(
+        json.dumps(_binding_payload(session_id, plan_id, source), ensure_ascii=True, indent=2),
+        encoding="utf-8",
+        newline="\n",
+    )
+    tmp.replace(target)
+    return key
+
+
+def _clear_session_binding(root: Path, session_id: str) -> str:
+    key = planning_state.session_key(session_id)
+    binding = root / ".planning" / "session-bindings" / f"{key}.json"
+    if binding.exists():
+        binding.unlink()
+    return key
+
+
+def _workspace_active_plan_id(root: Path) -> str | None:
+    active_file = root / ".planning" / ".active_plan"
+    if not active_file.is_file():
+        return None
+    value = active_file.read_text(encoding="utf-8", errors="replace").strip()
+    return value or None
 
 
 def _attached_session_count(root: Path) -> int:
@@ -567,7 +634,27 @@ def doctor(root: Path) -> int:
 
 
 def status(root: Path) -> int:
-    paths = planning_state.planning_paths(root)
+    session_id = _current_session_id()
+    resolution = planning_state.resolve_planning_context(root, session_id=session_id)
+    paths = resolution.paths if resolution is not None else None
+    workspace_plan = _workspace_active_plan_id(root)
+    print(
+        _message("workspace_active_plan", plan_id=workspace_plan)
+        if workspace_plan
+        else _message("workspace_active_plan_missing")
+    )
+    if session_id:
+        key = planning_state.session_key(session_id)
+        if resolution is not None and resolution.source == "session":
+            print(_message("session_binding", key=key, plan_id=resolution.plan_id))
+        else:
+            print(_message("session_binding_none"))
+    else:
+        print(_message("session_binding_missing"))
+    if resolution is not None:
+        print(_message("effective_plan", plan_id=resolution.plan_id))
+        print(_message("plan_source", source=resolution.source))
+
     if paths is None:
         print(_message("active_plan_missing"))
         print(_message("planning_files_missing"))
@@ -580,7 +667,7 @@ def status(root: Path) -> int:
     if phase:
         print(_message("current_phase", phase=phase))
 
-    counts = planning_state.phase_counts(root)
+    counts = planning_state.phase_counts(root, session_id=session_id)
     if counts is not None:
         total, complete, _in_progress, _pending = counts
         print(_message("phases", complete=complete, total=total))
@@ -595,7 +682,14 @@ def status(root: Path) -> int:
     return 0 if planning_ok and attestation_ok else 1
 
 
-def init(root: Path, name: str, legacy: bool = False, force: bool = False) -> int:
+def init(
+    root: Path,
+    name: str,
+    legacy: bool = False,
+    force: bool = False,
+    bind_session: bool = False,
+    workspace_active: bool = True,
+) -> int:
     if legacy:
         target = root
         label = _message("legacy_plan_label")
@@ -615,19 +709,41 @@ def init(root: Path, name: str, legacy: bool = False, force: bool = False) -> in
     (target / "progress.md").write_text(_progress_template(), encoding="utf-8", newline="\n")
     (target / "findings.md").write_text(_findings_template(), encoding="utf-8", newline="\n")
 
-    if not legacy:
+    if not legacy and workspace_active:
         active_file = root / ".planning" / ".active_plan"
         active_file.parent.mkdir(parents=True, exist_ok=True)
         active_file.write_text(plan_id, encoding="utf-8")
 
     print(_message("created", label=label, plan_id=plan_id))
     print(_message("path", path=target))
+    if bind_session:
+        session_id = _current_session_id()
+        if not session_id:
+            print(_message("missing_session_id"))
+            return 1
+        key = _write_session_binding(root, session_id, plan_id, "plan.py init --bind-session")
+        print(_message("session_binding_set", key=key, plan_id=plan_id))
     return 0
 
 
-def switch(root: Path, plan_id: str | None) -> int:
+def switch(
+    root: Path,
+    plan_id: str | None,
+    session: bool = False,
+    workspace: bool = False,
+    clear_session: bool = False,
+) -> int:
     plan_root = root / ".planning"
     active_file = plan_root / ".active_plan"
+
+    if clear_session:
+        session_id = _current_session_id()
+        if not session_id:
+            print(_message("missing_session_id"))
+            return 1
+        key = _clear_session_binding(root, session_id)
+        print(_message("session_binding_cleared", key=key))
+        return 0
 
     if not plan_id:
         if active_file.is_file():
@@ -641,6 +757,16 @@ def switch(root: Path, plan_id: str | None) -> int:
     if not (plan_dir / "task_plan.md").is_file():
         print(_message("plan_dir_missing", path=plan_dir))
         return 1
+
+    if session:
+        session_id = _current_session_id()
+        if not session_id:
+            print(_message("missing_session_id"))
+            return 1
+        key = _write_session_binding(root, session_id, plan_id, "plan.py switch --session")
+        print(_message("session_binding_set", key=key, plan_id=plan_id))
+        print(_message("path", path=plan_dir))
+        return 0
 
     active_file.parent.mkdir(parents=True, exist_ok=True)
     active_file.write_text(plan_id, encoding="utf-8")
@@ -766,9 +892,15 @@ def main(argv: Iterable[str] | None = None) -> int:
     init_parser.add_argument("name")
     init_parser.add_argument("--legacy", action="store_true", help=_help("legacy"))
     init_parser.add_argument("--force", action="store_true", help=_help("force"))
+    init_parser.add_argument("--bind-session", action="store_true")
+    init_parser.add_argument("--no-workspace-active", action="store_true")
 
     switch_parser = subparsers.add_parser("switch", help=_help("switch"))
     switch_parser.add_argument("plan_id", nargs="?")
+    switch_group = switch_parser.add_mutually_exclusive_group()
+    switch_group.add_argument("--session", action="store_true")
+    switch_group.add_argument("--workspace", action="store_true")
+    switch_group.add_argument("--clear-session", action="store_true")
 
     attest_parser = subparsers.add_parser("attest", help=_help("attest"))
     attest_group = attest_parser.add_mutually_exclusive_group()
@@ -794,9 +926,22 @@ def main(argv: Iterable[str] | None = None) -> int:
     if args.command == "status":
         return status(root)
     if args.command == "init":
-        return init(root, args.name, legacy=args.legacy, force=args.force)
+        return init(
+            root,
+            args.name,
+            legacy=args.legacy,
+            force=args.force,
+            bind_session=args.bind_session,
+            workspace_active=not args.no_workspace_active,
+        )
     if args.command == "switch":
-        return switch(root, args.plan_id)
+        return switch(
+            root,
+            args.plan_id,
+            session=args.session,
+            workspace=args.workspace,
+            clear_session=args.clear_session,
+        )
     if args.command == "attest":
         return attest(root, show=args.show, clear=args.clear)
     if args.command == "capture":
