@@ -5,6 +5,7 @@ import os
 import re
 import hashlib
 import sys
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -75,6 +76,12 @@ class AttestationStatus:
 class ChangedPath:
     path: str
     operation: str
+
+
+@dataclass(frozen=True)
+class ProgressAppendResult:
+    recorded: bool
+    warning: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1249,20 +1256,71 @@ def log_command_enabled() -> bool:
     return _truthy_env("PWF_LOG_COMMAND")
 
 
-def append_progress(root: Path, payload: dict[str, Any], session_id: str | None = None) -> bool:
+def progress_lock_timeout_seconds(env: Mapping[str, str] | None = None) -> float:
+    source = env if env is not None else os.environ
+    raw = source.get("PWF_PROGRESS_LOCK_TIMEOUT_MS", "250").strip()
+    if not raw.isdigit():
+        return 0.25
+    return max(1, min(int(raw), 5000)) / 1000.0
+
+
+class ProgressFileLock:
+    def __init__(self, path: Path, timeout: float) -> None:
+        self.path = path
+        self.timeout = timeout
+        self.fd: int | None = None
+
+    def __enter__(self) -> "ProgressFileLock":
+        deadline = datetime.now().timestamp() + self.timeout
+        while True:
+            try:
+                self.fd = os.open(str(self.path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.write(self.fd, str(os.getpid()).encode("ascii", errors="ignore"))
+                return self
+            except FileExistsError:
+                if datetime.now().timestamp() >= deadline:
+                    raise TimeoutError("progress.md lock timed out")
+                time.sleep(0.02)
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        if self.fd is not None:
+            os.close(self.fd)
+            self.fd = None
+        try:
+            self.path.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def append_progress(
+    root: Path,
+    payload: dict[str, Any],
+    session_id: str | None = None,
+) -> ProgressAppendResult:
     tool_name = str(payload.get("tool_name") or payload.get("hook_event_name") or "tool")
     if tool_name not in POST_TOOL_RECORD_TOOLS:
-        return False
+        return ProgressAppendResult(False)
 
-    paths = planning_paths(root, session_id=session_id)
-    if paths is None:
-        return False
+    access = resolve_planning_access(root, session_id=session_id)
+    if not access.allowed:
+        return ProgressAppendResult(False, access.warning)
+    if access.resolution is None:
+        return ProgressAppendResult(False)
+    resolution = access.resolution
+    paths = resolution.paths
 
     changed_paths = changed_paths_from_payload(payload)
     command = _tool_command(payload)
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    lines = ["", f"### Auto Record: {timestamp}", f"- Tool: {tool_name}"]
+    session_label = session_key(session_id) if session_id else "unavailable"
+    lines = [
+        "",
+        f"### Auto Record: {timestamp}",
+        f"- Tool: {tool_name}",
+        f"- Session: {session_label}",
+        f"- Plan-Source: {resolution.source}",
+    ]
     phase = current_phase(paths.task_plan)
     if phase:
         lines.append(f"- Phase: {phase}")
@@ -1278,9 +1336,14 @@ def append_progress(root: Path, payload: dict[str, Any], session_id: str | None 
         lines.append(f"- Command: `{_command_summary(command)}`")
 
     paths.progress.parent.mkdir(parents=True, exist_ok=True)
-    with paths.progress.open("a", encoding="utf-8", newline="\n") as handle:
-        handle.write("\n".join(lines).rstrip() + "\n")
-    return True
+    lock_path = paths.progress.parent / ".progress.lock"
+    try:
+        with ProgressFileLock(lock_path, progress_lock_timeout_seconds()):
+            with paths.progress.open("a", encoding="utf-8", newline="\n") as handle:
+                handle.write("\n".join(lines).rstrip() + "\n")
+    except TimeoutError:
+        return ProgressAppendResult(False, "[planning-with-files] progress.md lock timed out; auto record was skipped.")
+    return ProgressAppendResult(True)
 
 
 def phase_counts(root: Path, session_id: str | None = None) -> tuple[int, int, int, int] | None:

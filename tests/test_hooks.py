@@ -832,6 +832,60 @@ class HookTests(unittest.TestCase):
             progress = (plan_dir / "progress.md").read_text(encoding="utf-8")
             self.assertIn("src/shared.py", progress)
 
+    def test_post_tool_use_records_session_and_plan_source_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_dir = root / ".planning" / "2026-06-07-bound"
+            write_plan(plan_dir)
+            key = PLANNING_STATE.session_key("session-a")
+            bindings = root / ".planning" / "session-bindings"
+            bindings.mkdir(parents=True, exist_ok=True)
+            (bindings / f"{key}.json").write_text(
+                json.dumps({"version": 1, "session_id": "session-a", "plan_id": "2026-06-07-bound"}),
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "post_tool_use.py",
+                root,
+                {
+                    "hook_event_name": "PostToolUse",
+                    "tool_name": "Edit",
+                    "tool_input": {"file_path": "src/metadata.py"},
+                    "tool_response": {"success": True},
+                    "session_id": "session-a",
+                },
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            progress = (plan_dir / "progress.md").read_text(encoding="utf-8")
+            self.assertIn(f"- Session: {key}", progress)
+            self.assertIn("- Plan-Source: session", progress)
+
+    def test_post_tool_use_reports_lock_timeout_without_corrupting_progress(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            (root / ".progress.lock").write_text("held\n", encoding="utf-8")
+            before = (root / "progress.md").read_text(encoding="utf-8")
+
+            result = run_hook(
+                "post_tool_use.py",
+                root,
+                {
+                    "hook_event_name": "PostToolUse",
+                    "tool_name": "Edit",
+                    "tool_input": {"file_path": "src/locked.py"},
+                    "tool_response": {"success": True},
+                },
+                env={"PWF_PROGRESS_LOCK_TIMEOUT_MS": "1"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            message = json.loads(result.stdout)["systemMessage"]
+            self.assertIn("progress.md lock timed out", message)
+            self.assertEqual((root / "progress.md").read_text(encoding="utf-8"), before)
+
     def test_stop_uses_session_bound_plan_completion_state(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

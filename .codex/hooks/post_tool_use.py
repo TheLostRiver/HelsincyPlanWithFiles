@@ -18,16 +18,17 @@ def main() -> None:
         adapter.emit_json({"systemMessage": ownership_denial})
         return
 
-    if planning_state.append_progress(root, payload, session_id=session_id):
-        message = planning_state.message("post_tool_recorded")
-        notice = planning_state.progress_compaction_notice(root, session_id=session_id)
-        if notice:
-            message = f"{message} {notice}"
-        adapter.emit_json(
-            {
-                "systemMessage": message
-            }
-        )
+    result = planning_state.append_progress(root, payload, session_id=session_id)
+    if result.recorded or result.warning:
+        parts = []
+        if result.recorded:
+            parts.append(planning_state.message("post_tool_recorded"))
+            notice = planning_state.progress_compaction_notice(root, session_id=session_id)
+            if notice:
+                parts.append(notice)
+        if result.warning:
+            parts.append(result.warning)
+        adapter.emit_json({"systemMessage": " ".join(parts)})
 
 
 if __name__ == "__main__":

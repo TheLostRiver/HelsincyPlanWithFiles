@@ -14,6 +14,8 @@ SUMMARY_END = "<!-- PWF_COMPACT_SUMMARY_END -->"
 AUTO_RECORD_PREFIX = "### Auto Record: "
 AUTO_RECORD_FIELDS = (
     "- Tool:",
+    "- Session:",
+    "- Plan-Source:",
     "- Phase:",
     "- Result:",
     "- Command:",
@@ -28,6 +30,8 @@ class AutoRecord:
     lines: tuple[str, ...]
     timestamp: str
     tool: str
+    session: str
+    plan_source: str
     files: tuple[str, ...]
 
 
@@ -271,11 +275,21 @@ def _is_auto_record_body_line(line: str, *, in_files: bool) -> bool:
 def _make_record(index: int, lines: list[str]) -> AutoRecord:
     timestamp = lines[0][len(AUTO_RECORD_PREFIX) :].strip()
     tool = ""
+    session = ""
+    plan_source = ""
     files: list[str] = []
     in_files = False
     for line in lines[1:]:
         if line.startswith("- Tool:"):
             tool = line.split(":", 1)[1].strip()
+            in_files = False
+            continue
+        if line.startswith("- Session:"):
+            session = line.split(":", 1)[1].strip()
+            in_files = False
+            continue
+        if line.startswith("- Plan-Source:"):
+            plan_source = line.split(":", 1)[1].strip()
             in_files = False
             continue
         if line.startswith("- Files:"):
@@ -288,7 +302,15 @@ def _make_record(index: int, lines: list[str]) -> AutoRecord:
         match = re.search(r"`([^`]+)`", line)
         if match:
             files.append(match.group(1))
-    return AutoRecord(index=index, lines=tuple(lines), timestamp=timestamp, tool=tool, files=tuple(files))
+    return AutoRecord(
+        index=index,
+        lines=tuple(lines),
+        timestamp=timestamp,
+        tool=tool,
+        session=session,
+        plan_source=plan_source,
+        files=tuple(files),
+    )
 
 
 def _recent_manual_line_keys(nodes: list[tuple[str, object]], limit: int) -> set[tuple[int, int]]:
@@ -316,12 +338,21 @@ def _safe_record_summary_lines(record: AutoRecord) -> tuple[str, ...]:
     tool = record.tool or "unknown"
     timestamp = record.timestamp or "unknown"
     file_count = len(record.files)
-    return (
+    lines = [
         f"{AUTO_RECORD_PREFIX}{timestamp}",
         f"- Tool: {tool}",
-        f"- Files: {file_count} paths omitted due to size",
-        "- Note: oversized auto record summarized for prompt safety",
+    ]
+    if record.session:
+        lines.append(f"- Session: {record.session}")
+    if record.plan_source:
+        lines.append(f"- Plan-Source: {record.plan_source}")
+    lines.extend(
+        [
+            f"- Files: {file_count} paths omitted due to size",
+            "- Note: oversized auto record summarized for prompt safety",
+        ]
     )
+    return tuple(lines)
 
 
 def _render_context_units_with_budget(units: list[tuple[str, ...]], max_chars: int) -> str:
