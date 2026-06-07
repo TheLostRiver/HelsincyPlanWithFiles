@@ -33,7 +33,7 @@ def main() -> None:
     if adapter.emit_session_denial_if_needed(root, session_id):
         return
 
-    parts = [_run_session_catchup(root), planning_state.render_prompt_context(root)]
+    parts = [_run_session_catchup(root), planning_state.render_prompt_context(root, session_id=session_id)]
     output = "\n\n".join(part for part in parts if part)
     if output:
         adapter.emit_json(

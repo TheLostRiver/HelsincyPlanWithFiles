@@ -13,9 +13,9 @@ def main() -> None:
     if adapter.emit_session_denial_if_needed(root, session_id):
         return
 
-    if planning_state.append_progress(root, payload):
+    if planning_state.append_progress(root, payload, session_id=session_id):
         message = planning_state.message("post_tool_recorded")
-        notice = planning_state.progress_compaction_notice(root)
+        notice = planning_state.progress_compaction_notice(root, session_id=session_id)
         if notice:
             message = f"{message} {notice}"
         adapter.emit_json(

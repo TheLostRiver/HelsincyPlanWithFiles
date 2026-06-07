@@ -13,7 +13,7 @@ def main() -> None:
     if adapter.emit_session_denial_if_needed(root, session_id):
         return
 
-    context = planning_state.render_pre_tool_context(root)
+    context = planning_state.render_pre_tool_context(root, session_id=session_id)
     if context:
         adapter.emit_json({"systemMessage": context})
 

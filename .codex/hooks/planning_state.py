@@ -717,8 +717,8 @@ def progress_context_block(path: Path, limits: ContextLimits) -> str:
     return read_progress_tail(path, limits.progress_tail_lines)
 
 
-def progress_compaction_notice(root: Path) -> str:
-    paths = planning_paths(root)
+def progress_compaction_notice(root: Path, session_id: str | None = None) -> str:
+    paths = planning_paths(root, session_id=session_id)
     if paths is None:
         return ""
     count = progress_lifecycle.count_auto_records(paths.progress)
@@ -799,16 +799,16 @@ def _render_plan_data(
     return "\n".join(parts).rstrip()
 
 
-def render_pre_tool_context(root: Path) -> str:
-    paths = planning_paths(root)
+def render_pre_tool_context(root: Path, session_id: str | None = None) -> str:
+    paths = planning_paths(root, session_id=session_id)
     if paths is None:
         return ""
     limits = context_limits()
     return _render_plan_data(root, paths, limits.pre_tool_plan_head_lines)
 
 
-def render_prompt_context(root: Path) -> str:
-    paths = planning_paths(root)
+def render_prompt_context(root: Path, session_id: str | None = None) -> str:
+    paths = planning_paths(root, session_id=session_id)
     if paths is None:
         return ""
 
@@ -978,12 +978,12 @@ def log_command_enabled() -> bool:
     return _truthy_env("PWF_LOG_COMMAND")
 
 
-def append_progress(root: Path, payload: dict[str, Any]) -> bool:
+def append_progress(root: Path, payload: dict[str, Any], session_id: str | None = None) -> bool:
     tool_name = str(payload.get("tool_name") or payload.get("hook_event_name") or "tool")
     if tool_name not in POST_TOOL_RECORD_TOOLS:
         return False
 
-    paths = planning_paths(root)
+    paths = planning_paths(root, session_id=session_id)
     if paths is None:
         return False
 
@@ -1012,8 +1012,8 @@ def append_progress(root: Path, payload: dict[str, Any]) -> bool:
     return True
 
 
-def phase_counts(root: Path) -> tuple[int, int, int, int] | None:
-    paths = planning_paths(root)
+def phase_counts(root: Path, session_id: str | None = None) -> tuple[int, int, int, int] | None:
+    paths = planning_paths(root, session_id=session_id)
     if paths is None:
         return None
 
@@ -1031,8 +1031,8 @@ def phase_counts(root: Path) -> tuple[int, int, int, int] | None:
     return total, complete, in_progress, pending
 
 
-def stop_message(root: Path) -> str | None:
-    counts = phase_counts(root)
+def stop_message(root: Path, session_id: str | None = None) -> str | None:
+    counts = phase_counts(root, session_id=session_id)
     if counts is None:
         return None
     total, complete, _in_progress, _pending = counts
