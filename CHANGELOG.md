@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- 中文：新增 session binding，支持同一项目多个 Codex 对话分别绑定不同 PWF 任务；`plan.py switch <plan-id> --session` 不修改 workspace active plan。
+- 中文：新增 task ownership gate；未绑定 session 不会自动接管其他 session 拥有的任务，stale owner 也必须通过 `--force-claim`、`--share` 或 `--release-session` 显式处理。
+- 中文：新增 `PWF_STRICT_REQUIRES_BINDING=1`，可让 strict mode 要求 session 已 attach 且已绑定有效任务。
+- 中文：`progress.md` 自动记录新增 `Session` 和 `Plan-Source` 字段，并用短时 progress.md lock 保护 append 边界。
+- English: Added session binding so multiple Codex conversations in one project can bind to different PWF tasks; `plan.py switch <plan-id> --session` leaves the workspace active plan unchanged.
+- English: Added a task ownership gate so unbound sessions cannot automatically take over tasks owned by another session; stale owners require explicit `--force-claim`, `--share`, or `--release-session`.
+- English: Added `PWF_STRICT_REQUIRES_BINDING=1` so strict mode can require both an attached session and a valid task binding.
+- English: Added `Session` and `Plan-Source` metadata to automatic `progress.md` records and protected append boundaries with a short progress.md lock.
 - 中文：新增可配置 context injection profiles：`PWF_CONTEXT_PROFILE=lean/default/expanded/deep/custom`，默认行为保持兼容；`expanded` 和 `deep` 会注入计划头尾，并以完整 auto record 方式注入最近 progress。
 - 中文：保留 findings 显式 opt-in；只有设置 `PWF_INCLUDE_FINDINGS=1` 后才会注入 findings，并继续使用 delimiter framing 和不可信内容提示。
 - 中文：增强 context 配置安全性和可诊断性，包括严格 `PWF_*` 数值/布尔解析、环境变量诊断值清理、delimiter-looking 内容转义、总 context budget 兜底，以及 `/pwf-status`、`/pwf-doctor` 的 profile/limits 输出。

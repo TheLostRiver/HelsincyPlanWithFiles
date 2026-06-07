@@ -179,6 +179,7 @@ Hooks resolve the active plan in this order:
 
 ```text
 PLAN_ID environment variable
+current session binding
 .planning/.active_plan
 newest .planning/<plan-id>/task_plan.md
 root-level task_plan.md
@@ -201,6 +202,37 @@ or create `.planning/session-policy.json`:
 ```
 
 In strict mode, hook payloads must include an attached `session_id`; otherwise the hook emits a diagnostic message instead of silently skipping planning context. Run `/pwf-doctor` to inspect the current session mode.
+
+When multiple Codex conversations work in the same project, bind each conversation to its own PWF task:
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session
+```
+
+To create a side task and bind the current session immediately:
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --bind-session
+python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --bind-session --no-workspace-active
+```
+
+`--session` writes only `.planning/session-bindings/<session-key>.json`; it does not change `.planning/.active_plan`. The old `plan.py switch <plan-id>` behavior still switches the workspace active plan.
+
+If the workspace active task is already owned by another session, a new session will not automatically take it over, even when the owner is stale. Explicit claim, sharing, and release use:
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session --force-claim
+python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session --share
+python .codex\skills\planning-with-files\scripts\plan.py switch --release-session
+```
+
+To make strict mode require a task binding as well as an attached session, set:
+
+```powershell
+$env:PWF_STRICT_REQUIRES_BINDING=1
+```
+
+Automatic `progress.md` records include `Session` and `Plan-Source` fields so audits can identify which session and resolver layer produced each record.
 
 ### Context Profiles
 
@@ -280,8 +312,10 @@ Then use Codex normally. After the agent edits files, the hook appends a record 
 ```text
 ### Auto Record: 2026-05-11 20:35:47
 - Tool: apply_patch
+- Session: unavailable
+- Plan-Source: workspace
 - Files:
-  - `.codex/hooks/planning_state.py`
+  - `.codex/hooks/planning_state.py` (update)
 ```
 
 By default, the hook records only objective facts: time, tool, result, and file paths. Set `PWF_LOG_COMMAND=1` to include a command summary for debugging.

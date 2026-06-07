@@ -179,6 +179,7 @@ hook 会解析当前 active plan：
 
 ```text
 PLAN_ID 环境变量
+当前 session binding
 .planning/.active_plan
 最新的 .planning/<plan-id>/task_plan.md
 项目根目录 task_plan.md
@@ -201,6 +202,37 @@ $env:PWF_SESSION_MODE = "strict"
 ```
 
 strict 模式下，hook payload 必须包含已 attach 的 `session_id`；否则 hook 会输出诊断消息，而不是静默跳过 planning 上下文。运行 `/pwf-doctor` 可以查看当前 session mode。
+
+同一项目多会话并发时，请给每个会话绑定自己的 PWF 任务：
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session
+```
+
+新建旁路任务时也可以直接绑定当前 session：
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --bind-session
+python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --bind-session --no-workspace-active
+```
+
+`--session` 只写 `.planning/session-bindings/<session-key>.json`，不会修改 `.planning/.active_plan`。旧的 `plan.py switch <plan-id>` 仍然切换 workspace active plan。
+
+如果 workspace active task 已经由另一个 session 拥有，新的 session 不会自动接管；即使 owner 已经 stale，也必须显式选择。接管、共享和释放当前会话分别使用：
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session --force-claim
+python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session --share
+python .codex\skills\planning-with-files\scripts\plan.py switch --release-session
+```
+
+如果希望 strict mode 同时要求 session 已 attach 且已有有效 binding，可以设置：
+
+```powershell
+$env:PWF_STRICT_REQUIRES_BINDING=1
+```
+
+自动写入的 `progress.md` 记录会包含 `Session` 和 `Plan-Source` 字段，便于审计一条记录来自哪个会话和哪一层 plan resolver。
 
 ### Context Profiles
 
@@ -280,8 +312,10 @@ python .codex\skills\planning-with-files\scripts\plan.py status
 ```text
 ### Auto Record: 2026-05-11 20:35:47
 - Tool: apply_patch
+- Session: unavailable
+- Plan-Source: workspace
 - Files:
-  - `.codex/hooks/planning_state.py`
+  - `.codex/hooks/planning_state.py` (update)
 ```
 
 默认记录只包含客观事实：时间、工具、结果和文件路径。设置 `PWF_LOG_COMMAND=1` 后，hook 会额外记录命令摘要，主要用于调试。

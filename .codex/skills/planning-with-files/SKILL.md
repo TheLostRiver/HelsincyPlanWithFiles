@@ -100,7 +100,40 @@ Filesystem = Disk (persistent, unlimited)
 
 Hooks may append objective auto records to `progress.md`: tool name, timestamp, result, and changed file paths. These records are factual audit entries.
 
+Automatic records also include stable `Session` and `Plan-Source` fields when the Codex Python hooks are installed. `Session` is a short session key or `unavailable`; `Plan-Source` shows whether the record came from `env`, `session`, `workspace`, `newest`, or `legacy` plan resolution.
+
 Agent-written notes are interpretive: rationale, conclusions, risks, and next steps. They are useful working memory, but they are not guaranteed to be fully accurate. When accuracy matters, verify agent notes against hook records, tests, and the actual code.
+
+## Session Task Binding
+
+When several Codex conversations work in the same project, bind each conversation to its own PWF task before relying on hooks:
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session
+```
+
+To create a task and bind the current session immediately:
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --bind-session
+python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --bind-session --no-workspace-active
+```
+
+`--session` writes only `.planning/session-bindings/<session-key>.json`; it does not change `.planning/.active_plan`. Plain `plan.py switch <plan-id>` still changes the workspace active plan.
+
+Task ownership is separate from routing. If another session owns a task, a new session must not automatically take it over, even if the owner is stale. Use explicit commands:
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session --force-claim
+python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session --share
+python .codex\skills\planning-with-files\scripts\plan.py switch --release-session
+```
+
+To make strict mode require both an attached session and a valid binding:
+
+```powershell
+$env:PWF_STRICT_REQUIRES_BINDING=1
+```
 
 ## Progress Lifecycle
 
