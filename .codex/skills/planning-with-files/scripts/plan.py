@@ -109,7 +109,8 @@ CLI_MESSAGES = {
         "session_mode": "session mode: {mode}",
         "session_mode_unsupported": "session mode: warning unsupported PWF_SESSION_MODE={mode}",
         "task_lease": "task lease: owner={owner} status={status} shared={shared}",
-        "task_lease_conflict": "task is owned by another session: owner={owner} status={status} shared=false; rerun with --force-claim if you mean to take ownership.",
+        "task_lease_conflict": "task is owned by another session: owner={owner} status={status} shared={shared}; rerun with --force-claim if you mean to take ownership.",
+        "task_lease_error": "task lease error: {message}",
         "task_lease_released": "task lease released: {key} -> {plan_id}",
         "workspace_active_plan": "workspace active plan: {plan_id}",
         "workspace_active_plan_missing": "workspace active plan: missing",
@@ -187,7 +188,8 @@ CLI_MESSAGES = {
         "session_mode": "session mode: {mode}",
         "session_mode_unsupported": "session mode: warning unsupported PWF_SESSION_MODE={mode}",
         "task_lease": "task lease: owner={owner} status={status} shared={shared}",
-        "task_lease_conflict": "task is owned by another session: owner={owner} status={status} shared=false; rerun with --force-claim if you mean to take ownership.",
+        "task_lease_conflict": "task is owned by another session: owner={owner} status={status} shared={shared}; rerun with --force-claim if you mean to take ownership.",
+        "task_lease_error": "task lease error: {message}",
         "task_lease_released": "task lease released: {key} -> {plan_id}",
         "workspace_active_plan": "workspace active plan: {plan_id}",
         "workspace_active_plan_missing": "workspace active plan: missing",
@@ -764,6 +766,34 @@ def init(
         print(_message("plan_already_exists", label=label, path=target))
         return 1
 
+    session_id = None
+    lease = None
+    if bind_session:
+        session_id = _current_session_id()
+        if not session_id:
+            print(_message("missing_session_id"))
+            return 1
+        lease, conflict = planning_state.claim_task_lease_for_rewrite(
+            root,
+            plan_id,
+            session_id,
+            source="plan.py init --bind-session",
+        )
+        if lease is None:
+            print(_message("task_lease_error", message=conflict))
+            return 1
+        if conflict:
+            status = planning_state.task_lease_status(lease)
+            print(
+                _message(
+                    "task_lease_conflict",
+                    owner=lease.owner_session_key,
+                    status=status,
+                    shared=str(lease.shared).lower(),
+                )
+            )
+            return 1
+
     target.mkdir(parents=True, exist_ok=True)
     (target / "task_plan.md").write_text(_task_plan_template(name), encoding="utf-8", newline="\n")
     (target / "progress.md").write_text(_progress_template(), encoding="utf-8", newline="\n")
@@ -777,12 +807,19 @@ def init(
     print(_message("created", label=label, plan_id=plan_id))
     print(_message("path", path=target))
     if bind_session:
-        session_id = _current_session_id()
-        if not session_id:
-            print(_message("missing_session_id"))
-            return 1
+        assert session_id is not None
+        assert lease is not None
         key = _write_session_binding(root, session_id, plan_id, "plan.py init --bind-session")
         print(_message("session_binding_set", key=key, plan_id=plan_id))
+        status = planning_state.task_lease_status(lease)
+        print(
+            _message(
+                "task_lease",
+                owner=lease.owner_session_key,
+                status=status,
+                shared=str(lease.shared).lower(),
+            )
+        )
     return 0
 
 
@@ -806,10 +843,15 @@ def switch(
             return 1
         key = planning_state.session_key(session_id)
         bound_plan_id = _read_session_binding_plan_id(root, session_id)
+        lease = None
+        if bound_plan_id:
+            lease, conflict = planning_state.release_task_lease_for_session(root, bound_plan_id, session_id)
+            if lease is None and conflict:
+                print(_message("task_lease_error", message=conflict))
+                return 1
         _clear_session_binding(root, session_id)
         print(_message("session_released", key=key))
         if bound_plan_id:
-            lease = planning_state.release_task_lease_for_session(root, bound_plan_id, session_id)
             if lease and lease.owner_session_key == key:
                 print(_message("task_lease_released", key=key, plan_id=bound_plan_id))
         return 0
@@ -849,9 +891,19 @@ def switch(
             share=share,
             source="plan.py switch --session",
         )
+        if lease is None:
+            print(_message("task_lease_error", message=conflict))
+            return 1
         if conflict:
             status = planning_state.task_lease_status(lease)
-            print(_message("task_lease_conflict", owner=lease.owner_session_key, status=status))
+            print(
+                _message(
+                    "task_lease_conflict",
+                    owner=lease.owner_session_key,
+                    status=status,
+                    shared=str(lease.shared).lower(),
+                )
+            )
             return 1
         key = _write_session_binding(root, session_id, plan_id, "plan.py switch --session")
         print(_message("session_binding_set", key=key, plan_id=plan_id))

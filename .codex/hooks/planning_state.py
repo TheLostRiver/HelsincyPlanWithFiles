@@ -250,6 +250,7 @@ DATA_BLOCK_DELIMITER_RE = re.compile(r"^---(?:BEGIN|END) [A-Z ][A-Z ]* DATA---$"
 VALID_PLAN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$")
 LEASE_STATUSES = {"active", "stale", "released", "shared"}
 DEFAULT_SESSION_LEASE_TTL_SECONDS = 600
+DEFAULT_TASK_LEASE_LOCK_TIMEOUT_SECONDS = 0.25
 
 
 def current_lang(env: Mapping[str, str] | None = None) -> str:
@@ -327,6 +328,10 @@ def task_lease_path(root: Path, plan_id: str) -> Path:
     return root / ".planning" / plan_id / ".task-lease.json"
 
 
+def task_lease_lock_path(root: Path, plan_id: str) -> Path:
+    return root / ".planning" / plan_id / ".task-lease.lock"
+
+
 def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
@@ -344,6 +349,20 @@ def session_lease_ttl_seconds(env: Mapping[str, str] | None = None) -> int:
     except ValueError:
         return DEFAULT_SESSION_LEASE_TTL_SECONDS
     return value if value >= 1 else DEFAULT_SESSION_LEASE_TTL_SECONDS
+
+
+def _lock_timeout_seconds(
+    env_name: str,
+    default_seconds: float,
+    env: Mapping[str, str] | None = None,
+) -> float:
+    source = env if env is not None else os.environ
+    raw = source.get(env_name, "").strip()
+    if not raw:
+        return default_seconds
+    if not raw.isdigit():
+        return default_seconds
+    return max(1, min(int(raw), 5000)) / 1000.0
 
 
 def refresh_session_lease(
@@ -722,6 +741,44 @@ def write_task_lease(
     return TaskLease(plan_id, owner_session_key, owner_status, shared, claimed_at, now)
 
 
+class ExclusiveFileLock:
+    def __init__(self, path: Path, timeout: float, label: str) -> None:
+        self.path = path
+        self.timeout = timeout
+        self.label = label
+        self.fd: int | None = None
+
+    def __enter__(self) -> "ExclusiveFileLock":
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        deadline = datetime.now().timestamp() + self.timeout
+        while True:
+            try:
+                self.fd = os.open(str(self.path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.write(self.fd, str(os.getpid()).encode("ascii", errors="ignore"))
+                return self
+            except FileExistsError:
+                if datetime.now().timestamp() >= deadline:
+                    raise TimeoutError(f"{self.label} lock timed out")
+                time.sleep(0.02)
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        if self.fd is not None:
+            os.close(self.fd)
+            self.fd = None
+        try:
+            self.path.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def task_lease_lock_timeout_seconds(env: Mapping[str, str] | None = None) -> float:
+    return _lock_timeout_seconds(
+        "PWF_TASK_LEASE_LOCK_TIMEOUT_MS",
+        DEFAULT_TASK_LEASE_LOCK_TIMEOUT_SECONDS,
+        env,
+    )
+
+
 def claim_task_lease(
     root: Path,
     plan_id: str,
@@ -730,37 +787,92 @@ def claim_task_lease(
     force: bool = False,
     share: bool = False,
     source: str = "plan.py switch --session",
-) -> tuple[TaskLease, str | None]:
+) -> tuple[TaskLease | None, str | None]:
     current_key = session_key(session_id)
-    existing = read_task_lease(root, plan_id)
-    if existing:
-        status = task_lease_status(existing)
-        conflict = existing.owner_session_key != current_key and not existing.shared and status != "released"
-        if conflict and not force:
-            return existing, (
-                f"task is owned by another session: owner={existing.owner_session_key} "
-                f"status={status} shared=false; rerun with --force-claim if you mean to take ownership."
+    try:
+        with ExclusiveFileLock(
+            task_lease_lock_path(root, plan_id),
+            task_lease_lock_timeout_seconds(),
+            "task lease",
+        ):
+            existing = read_task_lease(root, plan_id)
+            if existing:
+                status = task_lease_status(existing)
+                conflict = existing.owner_session_key != current_key and not existing.shared and status != "released"
+                if conflict and not force:
+                    return existing, (
+                        f"task is owned by another session: owner={existing.owner_session_key} "
+                        f"status={status} shared=false; rerun with --force-claim if you mean to take ownership."
+                    )
+                if existing.shared and not force:
+                    refresh_session_lease(root, session_id, bound_plan_id=plan_id, source=source)
+                    return existing, None
+            lease = write_task_lease(root, plan_id, current_key, shared=share, source=source)
+            refresh_session_lease(root, session_id, bound_plan_id=plan_id, source=source)
+            return lease, None
+    except TimeoutError:
+        return None, "task lease lock timed out; session binding was not changed."
+
+
+def claim_task_lease_for_rewrite(
+    root: Path,
+    plan_id: str,
+    session_id: str,
+    *,
+    source: str = "plan.py init --bind-session",
+) -> tuple[TaskLease | None, str | None]:
+    current_key = session_key(session_id)
+    try:
+        with ExclusiveFileLock(
+            task_lease_lock_path(root, plan_id),
+            task_lease_lock_timeout_seconds(),
+            "task lease",
+        ):
+            existing = read_task_lease(root, plan_id)
+            if existing:
+                status = task_lease_status(existing)
+                conflict = existing.owner_session_key != current_key and status != "released"
+                if conflict:
+                    return existing, (
+                        f"task is owned by another session: owner={existing.owner_session_key} "
+                        f"status={status} shared={str(existing.shared).lower()}; "
+                        "rerun with --force-claim if you mean to take ownership."
+                    )
+            lease = write_task_lease(root, plan_id, current_key, shared=False, source=source)
+            refresh_session_lease(root, session_id, bound_plan_id=plan_id, source=source)
+            return lease, None
+    except TimeoutError:
+        return None, "task lease lock timed out; session binding was not changed."
+
+
+def release_task_lease_for_session(
+    root: Path,
+    plan_id: str,
+    session_id: str,
+) -> tuple[TaskLease | None, str | None]:
+    current_key = session_key(session_id)
+    try:
+        with ExclusiveFileLock(
+            task_lease_lock_path(root, plan_id),
+            task_lease_lock_timeout_seconds(),
+            "task lease",
+        ):
+            existing = read_task_lease(root, plan_id)
+            if existing is None:
+                return None, None
+            if existing.owner_session_key != current_key:
+                return existing, None
+            lease = write_task_lease(
+                root,
+                plan_id,
+                current_key,
+                shared=False,
+                owner_status="released",
+                source="plan.py switch --release-session",
             )
-    lease = write_task_lease(root, plan_id, current_key, shared=share, source=source)
-    refresh_session_lease(root, session_id, bound_plan_id=plan_id, source=source)
-    return lease, None
-
-
-def release_task_lease_for_session(root: Path, plan_id: str, session_id: str) -> TaskLease | None:
-    existing = read_task_lease(root, plan_id)
-    if existing is None:
-        return None
-    current_key = session_key(session_id)
-    if existing.owner_session_key != current_key:
-        return existing
-    return write_task_lease(
-        root,
-        plan_id,
-        current_key,
-        shared=False,
-        owner_status="released",
-        source="plan.py switch --release-session",
-    )
+            return lease, None
+    except TimeoutError:
+        return None, "task lease lock timed out; session binding was not changed."
 
 
 def resolve_plan_dir(root: Path) -> Path | None:
@@ -1257,39 +1369,12 @@ def log_command_enabled() -> bool:
 
 
 def progress_lock_timeout_seconds(env: Mapping[str, str] | None = None) -> float:
-    source = env if env is not None else os.environ
-    raw = source.get("PWF_PROGRESS_LOCK_TIMEOUT_MS", "250").strip()
-    if not raw.isdigit():
-        return 0.25
-    return max(1, min(int(raw), 5000)) / 1000.0
+    return _lock_timeout_seconds("PWF_PROGRESS_LOCK_TIMEOUT_MS", 0.25, env)
 
 
-class ProgressFileLock:
+class ProgressFileLock(ExclusiveFileLock):
     def __init__(self, path: Path, timeout: float) -> None:
-        self.path = path
-        self.timeout = timeout
-        self.fd: int | None = None
-
-    def __enter__(self) -> "ProgressFileLock":
-        deadline = datetime.now().timestamp() + self.timeout
-        while True:
-            try:
-                self.fd = os.open(str(self.path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-                os.write(self.fd, str(os.getpid()).encode("ascii", errors="ignore"))
-                return self
-            except FileExistsError:
-                if datetime.now().timestamp() >= deadline:
-                    raise TimeoutError("progress.md lock timed out")
-                time.sleep(0.02)
-
-    def __exit__(self, exc_type, exc, tb) -> None:
-        if self.fd is not None:
-            os.close(self.fd)
-            self.fd = None
-        try:
-            self.path.unlink()
-        except FileNotFoundError:
-            pass
+        super().__init__(path, timeout, "progress.md")
 
 
 def append_progress(
