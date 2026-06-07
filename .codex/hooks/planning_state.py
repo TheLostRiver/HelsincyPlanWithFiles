@@ -634,6 +634,11 @@ def resolve_planning_context(
     return None
 
 
+def session_has_valid_binding(root: Path, session_id: str) -> bool:
+    resolution = resolve_planning_context(root, env={}, session_id=session_id)
+    return resolution is not None and resolution.source == "session"
+
+
 def ownership_denial_for_resolution(
     root: Path,
     resolution: PlanResolution,

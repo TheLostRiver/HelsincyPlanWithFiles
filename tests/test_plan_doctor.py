@@ -288,6 +288,21 @@ class PlanDoctorTests(unittest.TestCase):
             self.assertIn("session mode: strict", result.stdout)
             self.assertIn("attached sessions: 1", result.stdout)
 
+    def test_doctor_reports_strict_binding_enforcement(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_hooks(root)
+            write_active_plan(root)
+
+            result = run_plan(
+                root,
+                "doctor",
+                env={"PWF_SESSION_MODE": "strict", "PWF_STRICT_REQUIRES_BINDING": "1"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("session binding required: yes", result.stdout)
+
     def test_doctor_warns_about_unsupported_session_mode(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

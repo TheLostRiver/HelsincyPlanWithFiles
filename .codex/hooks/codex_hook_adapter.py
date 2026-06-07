@@ -9,6 +9,11 @@ from typing import Any
 
 
 HOOK_DIR = Path(__file__).resolve().parent
+if str(HOOK_DIR) not in sys.path:
+    sys.path.insert(0, str(HOOK_DIR))
+
+import planning_state  # noqa: E402
+
 SESSION_MODES = {"workspace", "strict"}
 DEFAULT_SESSION_MODE = "workspace"
 
@@ -17,20 +22,33 @@ def _session_policy_path(root: Path) -> Path:
     return root / ".planning" / "session-policy.json"
 
 
-def _session_mode_from_policy_file(root: Path) -> str | None:
+def _session_policy(root: Path) -> dict[str, Any]:
     policy = _session_policy_path(root)
     if not policy.is_file():
-        return None
+        return {}
     try:
         payload = json.loads(policy.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return None
-    if not isinstance(payload, dict):
-        return None
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _session_mode_from_policy_file(root: Path) -> str | None:
+    payload = _session_policy(root)
     mode = payload.get("mode")
     if isinstance(mode, str):
         return mode.strip().lower()
     return None
+
+
+def strict_requires_binding(root: Path) -> bool:
+    env_value = os.environ.get("PWF_STRICT_REQUIRES_BINDING", "").strip().lower()
+    if env_value in {"1", "true", "yes", "on"}:
+        return True
+    if env_value in {"0", "false", "no", "off"}:
+        return False
+    policy_value = _session_policy(root).get("require_binding")
+    return policy_value is True
 
 
 def session_mode(root: Path) -> str:
@@ -73,7 +91,11 @@ def is_session_attached(root: Path, session_id: str | None) -> bool:
     sessions_dir = root / ".planning" / "sessions"
     if not session_id:
         return False
-    return (sessions_dir / f"{session_id}.attached").exists()
+    if not (sessions_dir / f"{session_id}.attached").exists():
+        return False
+    if strict_requires_binding(root):
+        return planning_state.session_has_valid_binding(root, session_id)
+    return True
 
 
 def session_denial_message(root: Path, session_id: str | None) -> str:
@@ -83,6 +105,11 @@ def session_denial_message(root: Path, session_id: str | None) -> str:
         return (
             "[planning-with-files] session isolation is strict but hook payload has "
             "no session_id; planning context was not injected."
+        )
+    if strict_requires_binding(root):
+        return (
+            "[planning-with-files] session isolation is strict and requires a "
+            "session plan binding; planning context was not injected."
         )
     return (
         "[planning-with-files] session isolation is strict and session_id is not "

@@ -911,6 +911,44 @@ class HookTests(unittest.TestCase):
             context = json.loads(attached.stdout)["hookSpecificOutput"]["additionalContext"]
             self.assertIn("# Task Plan: Test", context)
 
+    def test_strict_attached_unbound_session_falls_back_without_enforcement(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            sessions = root / ".planning" / "sessions"
+            sessions.mkdir(parents=True)
+            (sessions / "session-a.attached").write_text("attached\n", encoding="utf-8")
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue", "session_id": "session-a"},
+                env={"PWF_SESSION_MODE": "strict"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("additionalContext", result.stdout)
+
+    def test_strict_requires_binding_rejects_attached_unbound_session(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            sessions = root / ".planning" / "sessions"
+            sessions.mkdir(parents=True)
+            (sessions / "session-a.attached").write_text("attached\n", encoding="utf-8")
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue", "session_id": "session-a"},
+                env={"PWF_SESSION_MODE": "strict", "PWF_STRICT_REQUIRES_BINDING": "1"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            message = json.loads(result.stdout)["systemMessage"]
+            self.assertIn("requires a session plan binding", message)
+            self.assertNotIn("additionalContext", result.stdout)
+
     def test_user_prompt_submit_strict_mode_can_be_enabled_by_policy_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -102,6 +102,7 @@ CLI_MESSAGES = {
         "session_binding_cleared": "session binding cleared: {key}",
         "session_binding_missing": "session binding: unavailable (no session_id)",
         "session_binding_none": "session binding: none for current session",
+        "session_binding_required": "session binding required: {value}",
         "session_binding_set": "session binding set: {key} -> {plan_id}",
         "session_released": "session binding released: {key}",
         "session_dir_ignored": "session mode: sessions directory ignored unless PWF_SESSION_MODE=strict",
@@ -179,6 +180,7 @@ CLI_MESSAGES = {
         "session_binding_cleared": "session binding cleared: {key}",
         "session_binding_missing": "session binding: unavailable (no session_id)",
         "session_binding_none": "session binding: none for current session",
+        "session_binding_required": "session binding required: {value}",
         "session_binding_set": "session binding set: {key} -> {plan_id}",
         "session_released": "session binding released: {key}",
         "session_dir_ignored": "session mode: sessions directory ignored unless PWF_SESSION_MODE=strict",
@@ -292,6 +294,8 @@ def _session_status_lines(root: Path) -> list[str]:
     sessions_dir = root / ".planning" / "sessions"
     if mode == "strict":
         lines.append(_message("session_attached_count", count=_attached_session_count(root)))
+        required = "yes" if codex_hook_adapter.strict_requires_binding(root) else "no"
+        lines.append(_message("session_binding_required", value=required))
     elif sessions_dir.is_dir():
         lines.append(_message("session_dir_ignored"))
     return lines
