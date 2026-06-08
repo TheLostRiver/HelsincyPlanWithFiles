@@ -791,6 +791,30 @@ class PlanCliTests(unittest.TestCase):
             self.assertEqual(clear.returncode, 0, clear.stderr)
             self.assertFalse((plan_dir / ".attestation").exists())
 
+    def test_attest_uses_session_bound_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace_dir = root / ".planning" / "2026-06-08-workspace"
+            session_dir = root / ".planning" / "2026-06-08-session"
+            write_plan(workspace_dir, title="Workspace")
+            write_plan(session_dir, title="Session")
+            (root / ".planning" / ".active_plan").write_text("2026-06-08-workspace\n", encoding="utf-8")
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            binding_dir = root / ".planning" / "session-bindings"
+            binding_dir.mkdir(parents=True)
+            (binding_dir / f"{key}.json").write_text(
+                json.dumps({"version": 1, "session_id": "session-a", "plan_id": "2026-06-08-session"}),
+                encoding="utf-8",
+            )
+            expected = hashlib.sha256((session_dir / "task_plan.md").read_bytes()).hexdigest()
+
+            result = run_plan(root, "attest", env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual((session_dir / ".attestation").read_text(encoding="ascii"), expected)
+            self.assertFalse((workspace_dir / ".attestation").exists())
+            self.assertIn(str(session_dir / "task_plan.md"), result.stdout)
+
     def test_attest_reports_chinese_output_when_enabled(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -819,6 +843,39 @@ class PlanCliTests(unittest.TestCase):
             self.assertIn("计划:", show.stdout)
             self.assertIn("Attestation:", show.stdout)
             self.assertIn(expected, show.stdout)
+
+    def test_capture_uses_session_bound_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace_dir = root / ".planning" / "2026-06-08-workspace"
+            session_dir = root / ".planning" / "2026-06-08-session"
+            write_plan(workspace_dir, title="Workspace")
+            write_plan(session_dir, title="Session")
+            (root / ".planning" / ".active_plan").write_text("2026-06-08-workspace\n", encoding="utf-8")
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            binding_dir = root / ".planning" / "session-bindings"
+            binding_dir.mkdir(parents=True)
+            (binding_dir / f"{key}.json").write_text(
+                json.dumps({"version": 1, "session_id": "session-a", "plan_id": "2026-06-08-session"}),
+                encoding="utf-8",
+            )
+
+            result = run_plan(
+                root,
+                "capture",
+                "--kind",
+                "note",
+                "--source",
+                "manual",
+                "--summary",
+                "session-bound finding",
+                env={"PWF_SESSION_ID": "session-a"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(str(session_dir / "findings.md"), result.stdout)
+            self.assertIn("session-bound finding", (session_dir / "findings.md").read_text(encoding="utf-8"))
+            self.assertNotIn("session-bound finding", (workspace_dir / "findings.md").read_text(encoding="utf-8"))
 
     def test_capture_reports_chinese_output_when_enabled(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -858,6 +915,34 @@ class PlanCliTests(unittest.TestCase):
             progress = (plan_dir / "progress.md").read_text(encoding="utf-8")
             self.assertNotIn("src/file_0.py", progress)
             self.assertIn("src/file_2.py", progress)
+
+    def test_compact_uses_session_bound_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace_dir = root / ".planning" / "2026-06-08-workspace"
+            session_dir = root / ".planning" / "2026-06-08-session"
+            write_plan(workspace_dir, title="Workspace")
+            write_plan(session_dir, title="Session")
+            (workspace_dir / "progress.md").write_text("# Progress Log\n\n" + auto_records(4), encoding="utf-8")
+            (session_dir / "progress.md").write_text("# Progress Log\n\n" + auto_records(4), encoding="utf-8")
+            (root / ".planning" / ".active_plan").write_text("2026-06-08-workspace\n", encoding="utf-8")
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            binding_dir = root / ".planning" / "session-bindings"
+            binding_dir.mkdir(parents=True)
+            (binding_dir / f"{key}.json").write_text(
+                json.dumps({"version": 1, "session_id": "session-a", "plan_id": "2026-06-08-session"}),
+                encoding="utf-8",
+            )
+
+            result = run_plan(root, "compact", "--keep-records", "2", env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue((session_dir / "progress.archive.md").is_file())
+            self.assertFalse((workspace_dir / "progress.archive.md").exists())
+            session_progress = (session_dir / "progress.md").read_text(encoding="utf-8")
+            workspace_progress = (workspace_dir / "progress.md").read_text(encoding="utf-8")
+            self.assertNotIn("src/file_0.py", session_progress)
+            self.assertIn("src/file_0.py", workspace_progress)
 
     def test_compact_reports_chinese_output_when_enabled(self):
         with tempfile.TemporaryDirectory() as tmp:

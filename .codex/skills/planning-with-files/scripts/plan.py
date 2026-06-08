@@ -931,7 +931,8 @@ def _sha256(path: Path) -> str:
 
 
 def attest(root: Path, show: bool = False, clear: bool = False) -> int:
-    paths = planning_state.planning_paths(root)
+    session_id = _current_session_id()
+    paths = planning_state.planning_paths(root, session_id=session_id)
     if paths is None:
         print(_message("attestation_no_plan"))
         return 1
@@ -964,7 +965,8 @@ def attest(root: Path, show: bool = False, clear: bool = False) -> int:
 
 
 def capture(root: Path, kind: str, source: str, summary: str, trust: str = "untrusted") -> int:
-    paths = planning_state.planning_paths(root)
+    session_id = _current_session_id()
+    paths = planning_state.planning_paths(root, session_id=session_id)
     if paths is None:
         print(_message("capture_no_plan"))
         return 1
@@ -994,7 +996,8 @@ def capture(root: Path, kind: str, source: str, summary: str, trust: str = "untr
 
 
 def compact(root: Path, keep_records: int = 30, dry_run: bool = False, archive: str = "progress.archive.md") -> int:
-    paths = planning_state.planning_paths(root)
+    session_id = _current_session_id()
+    paths = planning_state.planning_paths(root, session_id=session_id)
     if paths is None:
         print(_message("compact_no_plan"))
         return 1
