@@ -185,7 +185,134 @@ class ContextLimitResolverTests(unittest.TestCase):
         self.assertIn("[hash] injected heading", value)
 
 
+class PlanResolutionTests(unittest.TestCase):
+    def write_named_plan(self, root, plan_id, title):
+        plan_dir = root / ".planning" / plan_id
+        write_plan(plan_dir)
+        (plan_dir / "task_plan.md").write_text(
+            f"# Task Plan: {title}\n\n## Phases\n\n### Phase 1: Test\n- **Status:** in_progress\n",
+            encoding="utf-8",
+        )
+        return plan_dir
+
+    def write_session_binding(self, root, session_id, plan_id):
+        key = PLANNING_STATE.session_key(session_id)
+        bindings = root / ".planning" / "session-bindings"
+        bindings.mkdir(parents=True, exist_ok=True)
+        (bindings / f"{key}.json").write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "session_id": session_id,
+                    "plan_id": plan_id,
+                    "created_at": "2026-06-07T00:00:00Z",
+                    "updated_at": "2026-06-07T00:00:00Z",
+                    "source": "test",
+                }
+            ),
+            encoding="utf-8",
+        )
+        return key
+
+    def test_session_binding_precedes_workspace_active_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bound = self.write_named_plan(root, "2026-06-07-bound", "Bound")
+            self.write_named_plan(root, "2026-06-07-workspace", "Workspace")
+            (root / ".planning" / ".active_plan").write_text(
+                "2026-06-07-workspace\n",
+                encoding="utf-8",
+            )
+            key = self.write_session_binding(root, "session-a", "2026-06-07-bound")
+
+            resolution = PLANNING_STATE.resolve_planning_context(
+                root,
+                env={},
+                session_id="session-a",
+            )
+
+            self.assertIsNotNone(resolution)
+            self.assertEqual(resolution.source, "session")
+            self.assertEqual(resolution.plan_id, "2026-06-07-bound")
+            self.assertEqual(resolution.session_key, key)
+            self.assertEqual(resolution.paths.root, bound)
+
+    def test_plan_id_env_precedes_session_binding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env_plan = self.write_named_plan(root, "2026-06-07-env", "Env")
+            self.write_named_plan(root, "2026-06-07-bound", "Bound")
+            self.write_session_binding(root, "session-a", "2026-06-07-bound")
+
+            resolution = PLANNING_STATE.resolve_planning_context(
+                root,
+                env={"PLAN_ID": "2026-06-07-env"},
+                session_id="session-a",
+            )
+
+            self.assertIsNotNone(resolution)
+            self.assertEqual(resolution.source, "env")
+            self.assertEqual(resolution.plan_id, "2026-06-07-env")
+            self.assertEqual(resolution.paths.root, env_plan)
+
+    def test_invalid_session_binding_falls_back_to_workspace_with_warning(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = self.write_named_plan(root, "2026-06-07-workspace", "Workspace")
+            (root / ".planning" / ".active_plan").write_text(
+                "2026-06-07-workspace\n",
+                encoding="utf-8",
+            )
+            key = PLANNING_STATE.session_key("session-a")
+            bindings = root / ".planning" / "session-bindings"
+            bindings.mkdir(parents=True, exist_ok=True)
+            (bindings / f"{key}.json").write_text(
+                json.dumps({"version": 1, "session_id": "session-a", "plan_id": "../escape"}),
+                encoding="utf-8",
+            )
+
+            resolution = PLANNING_STATE.resolve_planning_context(
+                root,
+                env={},
+                session_id="session-a",
+            )
+
+            self.assertIsNotNone(resolution)
+            self.assertEqual(resolution.source, "workspace")
+            self.assertEqual(resolution.plan_id, "2026-06-07-workspace")
+            self.assertEqual(resolution.paths.root, workspace)
+            self.assertIn("ignored session binding", resolution.warning)
+
+    def test_session_key_is_short_digest_not_raw_session_id(self):
+        key = PLANNING_STATE.session_key("raw/session id with spaces")
+
+        self.assertRegex(key, r"^[0-9a-f]{12}$")
+        self.assertNotIn("raw", key)
+        self.assertNotIn("/", key)
+
+
 class HookTests(unittest.TestCase):
+    def write_task_lease(self, root, plan_id, owner_session_id, *, heartbeat_at="2026-06-07T10:00:00Z", shared=False):
+        owner_key = PLANNING_STATE.session_key(owner_session_id)
+        plan_dir = root / ".planning" / plan_id
+        plan_dir.mkdir(parents=True, exist_ok=True)
+        (plan_dir / ".task-lease.json").write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "plan_id": plan_id,
+                    "owner_session_key": owner_key,
+                    "owner_status": "active",
+                    "shared": shared,
+                    "claimed_at": "2026-06-07T10:00:00Z",
+                    "updated_at": heartbeat_at,
+                    "source": "test",
+                }
+            ),
+            encoding="utf-8",
+        )
+        return owner_key
+
     def test_hooks_json_does_not_run_post_tool_use_for_bash(self):
         hooks = json.loads((REPO_ROOT / ".codex" / "hooks.json").read_text(encoding="utf-8"))
         post_tool_use = hooks["hooks"]["PostToolUse"][0]
@@ -531,6 +658,262 @@ class HookTests(unittest.TestCase):
             self.assertIn("# Task Plan: Test", context)
             self.assertIn("---BEGIN PLAN DATA---", context)
 
+    def test_user_prompt_submit_uses_session_bound_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bound = root / ".planning" / "2026-06-07-bound"
+            workspace = root / ".planning" / "2026-06-07-workspace"
+            write_plan(bound)
+            write_plan(workspace)
+            (bound / "task_plan.md").write_text("# Task Plan: Bound\n", encoding="utf-8")
+            (workspace / "task_plan.md").write_text("# Task Plan: Workspace\n", encoding="utf-8")
+            (root / ".planning" / ".active_plan").write_text(
+                "2026-06-07-workspace\n",
+                encoding="utf-8",
+            )
+            key = PLANNING_STATE.session_key("session-a")
+            bindings = root / ".planning" / "session-bindings"
+            bindings.mkdir(parents=True, exist_ok=True)
+            (bindings / f"{key}.json").write_text(
+                json.dumps({"version": 1, "session_id": "session-a", "plan_id": "2026-06-07-bound"}),
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue", "session_id": "session-a"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("# Task Plan: Bound", context)
+            self.assertNotIn("# Task Plan: Workspace", context)
+
+    def test_post_tool_use_writes_to_session_bound_progress(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bound = root / ".planning" / "2026-06-07-bound"
+            workspace = root / ".planning" / "2026-06-07-workspace"
+            write_plan(bound)
+            write_plan(workspace)
+            (root / ".planning" / ".active_plan").write_text(
+                "2026-06-07-workspace\n",
+                encoding="utf-8",
+            )
+            key = PLANNING_STATE.session_key("session-a")
+            bindings = root / ".planning" / "session-bindings"
+            bindings.mkdir(parents=True, exist_ok=True)
+            (bindings / f"{key}.json").write_text(
+                json.dumps({"version": 1, "session_id": "session-a", "plan_id": "2026-06-07-bound"}),
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "post_tool_use.py",
+                root,
+                {
+                    "hook_event_name": "PostToolUse",
+                    "tool_name": "Edit",
+                    "tool_input": {"file_path": "src/session_bound.py"},
+                    "tool_response": {"success": True},
+                    "session_id": "session-a",
+                },
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(
+                "src/session_bound.py",
+                (bound / "progress.md").read_text(encoding="utf-8"),
+            )
+            self.assertNotIn(
+                "src/session_bound.py",
+                (workspace / "progress.md").read_text(encoding="utf-8"),
+            )
+
+    def test_session_start_refreshes_session_lease(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+
+            result = run_hook(
+                "session_start.py",
+                root,
+                {"hook_event_name": "SessionStart", "session_id": "session-a"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            key = PLANNING_STATE.session_key("session-a")
+            lease = root / ".planning" / "session-leases" / f"{key}.json"
+            self.assertTrue(lease.is_file())
+            payload = json.loads(lease.read_text(encoding="utf-8"))
+            self.assertEqual(payload["session_key"], key)
+            self.assertEqual(payload["status"], "active")
+            self.assertIn("heartbeat_at", payload)
+
+    def test_unbound_workspace_fallback_denies_task_owned_by_other_session(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_id = "2026-06-07-owned"
+            plan_dir = root / ".planning" / plan_id
+            write_plan(plan_dir)
+            (root / ".planning" / ".active_plan").write_text(plan_id + "\n", encoding="utf-8")
+            owner_key = self.write_task_lease(root, plan_id, "session-a")
+
+            prompt = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue", "session_id": "session-b"},
+            )
+            post = run_hook(
+                "post_tool_use.py",
+                root,
+                {
+                    "hook_event_name": "PostToolUse",
+                    "tool_name": "Edit",
+                    "tool_input": {"file_path": "src/conflict.py"},
+                    "tool_response": {"success": True},
+                    "session_id": "session-b",
+                },
+            )
+
+            self.assertEqual(prompt.returncode, 0, prompt.stderr)
+            self.assertEqual(post.returncode, 0, post.stderr)
+            self.assertIn("owned by another session", json.loads(prompt.stdout)["systemMessage"])
+            self.assertIn(owner_key, prompt.stdout)
+            self.assertNotIn("additionalContext", prompt.stdout)
+            self.assertIn("owned by another session", json.loads(post.stdout)["systemMessage"])
+            self.assertNotIn("src/conflict.py", (plan_dir / "progress.md").read_text(encoding="utf-8"))
+
+    def test_stale_owner_still_blocks_workspace_takeover(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_id = "2026-06-07-stale"
+            plan_dir = root / ".planning" / plan_id
+            write_plan(plan_dir)
+            (root / ".planning" / ".active_plan").write_text(plan_id + "\n", encoding="utf-8")
+            self.write_task_lease(root, plan_id, "session-a", heartbeat_at="2000-01-01T00:00:00Z")
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue", "session_id": "session-b"},
+                env={"PWF_SESSION_LEASE_TTL_SECONDS": "600"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            message = json.loads(result.stdout)["systemMessage"]
+            self.assertIn("owned by another session", message)
+            self.assertIn("stale", message)
+            self.assertNotIn("additionalContext", result.stdout)
+
+    def test_shared_task_lease_allows_second_session(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_id = "2026-06-07-shared"
+            plan_dir = root / ".planning" / plan_id
+            write_plan(plan_dir)
+            (root / ".planning" / ".active_plan").write_text(plan_id + "\n", encoding="utf-8")
+            self.write_task_lease(root, plan_id, "session-a", shared=True)
+
+            result = run_hook(
+                "post_tool_use.py",
+                root,
+                {
+                    "hook_event_name": "PostToolUse",
+                    "tool_name": "Edit",
+                    "tool_input": {"file_path": "src/shared.py"},
+                    "tool_response": {"success": True},
+                    "session_id": "session-b",
+                },
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            progress = (plan_dir / "progress.md").read_text(encoding="utf-8")
+            self.assertIn("src/shared.py", progress)
+
+    def test_post_tool_use_records_session_and_plan_source_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_dir = root / ".planning" / "2026-06-07-bound"
+            write_plan(plan_dir)
+            key = PLANNING_STATE.session_key("session-a")
+            bindings = root / ".planning" / "session-bindings"
+            bindings.mkdir(parents=True, exist_ok=True)
+            (bindings / f"{key}.json").write_text(
+                json.dumps({"version": 1, "session_id": "session-a", "plan_id": "2026-06-07-bound"}),
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "post_tool_use.py",
+                root,
+                {
+                    "hook_event_name": "PostToolUse",
+                    "tool_name": "Edit",
+                    "tool_input": {"file_path": "src/metadata.py"},
+                    "tool_response": {"success": True},
+                    "session_id": "session-a",
+                },
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            progress = (plan_dir / "progress.md").read_text(encoding="utf-8")
+            self.assertIn(f"- Session: {key}", progress)
+            self.assertIn("- Plan-Source: session", progress)
+
+    def test_post_tool_use_reports_lock_timeout_without_corrupting_progress(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            (root / ".progress.lock").write_text("held\n", encoding="utf-8")
+            before = (root / "progress.md").read_text(encoding="utf-8")
+
+            result = run_hook(
+                "post_tool_use.py",
+                root,
+                {
+                    "hook_event_name": "PostToolUse",
+                    "tool_name": "Edit",
+                    "tool_input": {"file_path": "src/locked.py"},
+                    "tool_response": {"success": True},
+                },
+                env={"PWF_PROGRESS_LOCK_TIMEOUT_MS": "1"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            message = json.loads(result.stdout)["systemMessage"]
+            self.assertIn("progress.md lock timed out", message)
+            self.assertEqual((root / "progress.md").read_text(encoding="utf-8"), before)
+
+    def test_stop_uses_session_bound_plan_completion_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bound = root / ".planning" / "2026-06-07-bound"
+            workspace = root / ".planning" / "2026-06-07-workspace"
+            write_plan(bound, complete=True)
+            write_plan(workspace, complete=False)
+            (root / ".planning" / ".active_plan").write_text(
+                "2026-06-07-workspace\n",
+                encoding="utf-8",
+            )
+            key = PLANNING_STATE.session_key("session-a")
+            bindings = root / ".planning" / "session-bindings"
+            bindings.mkdir(parents=True, exist_ok=True)
+            (bindings / f"{key}.json").write_text(
+                json.dumps({"version": 1, "session_id": "session-a", "plan_id": "2026-06-07-bound"}),
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "stop.py",
+                root,
+                {"hook_event_name": "Stop", "stop_hook_active": False, "session_id": "session-a"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), "")
+
     def test_user_prompt_submit_strict_mode_requires_attached_session(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -581,6 +964,44 @@ class HookTests(unittest.TestCase):
             self.assertEqual(attached.returncode, 0, attached.stderr)
             context = json.loads(attached.stdout)["hookSpecificOutput"]["additionalContext"]
             self.assertIn("# Task Plan: Test", context)
+
+    def test_strict_attached_unbound_session_falls_back_without_enforcement(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            sessions = root / ".planning" / "sessions"
+            sessions.mkdir(parents=True)
+            (sessions / "session-a.attached").write_text("attached\n", encoding="utf-8")
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue", "session_id": "session-a"},
+                env={"PWF_SESSION_MODE": "strict"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("additionalContext", result.stdout)
+
+    def test_strict_requires_binding_rejects_attached_unbound_session(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            sessions = root / ".planning" / "sessions"
+            sessions.mkdir(parents=True)
+            (sessions / "session-a.attached").write_text("attached\n", encoding="utf-8")
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue", "session_id": "session-a"},
+                env={"PWF_SESSION_MODE": "strict", "PWF_STRICT_REQUIRES_BINDING": "1"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            message = json.loads(result.stdout)["systemMessage"]
+            self.assertIn("requires a session plan binding", message)
+            self.assertNotIn("additionalContext", result.stdout)
 
     def test_user_prompt_submit_strict_mode_can_be_enabled_by_policy_file(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1302,6 +1723,30 @@ class HookTests(unittest.TestCase):
             hook_output = payload["hookSpecificOutput"]
             self.assertEqual(hook_output["hookEventName"], "SessionStart")
             self.assertIn("# Task Plan: Test", hook_output["additionalContext"])
+
+    def test_session_start_calls_catchup_for_effective_plan_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_dir = root / ".planning" / "2026-06-07-bound"
+            write_plan(plan_dir)
+            key = PLANNING_STATE.session_key("session-a")
+            bindings = root / ".planning" / "session-bindings"
+            bindings.mkdir(parents=True, exist_ok=True)
+            (bindings / f"{key}.json").write_text(
+                json.dumps({"version": 1, "session_id": "session-a", "plan_id": "2026-06-07-bound"}),
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "session_start.py",
+                root,
+                {"hook_event_name": "SessionStart", "source": "startup", "session_id": "session-a"},
+                env={"PWF_SESSION_CATCHUP_ECHO_ARGS": "1"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            output = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertIn(f"planning-dir: {plan_dir}", output)
 
     def test_stop_outputs_incomplete_json_decision(self):
         with tempfile.TemporaryDirectory() as tmp:

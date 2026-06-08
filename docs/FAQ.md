@@ -179,6 +179,34 @@ $env:PWF_SESSION_MODE = "strict"
 
 strict 模式更隔离，但也更依赖 Codex hook payload 中的 `session_id`。不确定时，用默认 `workspace`。
 
+### 11a. 同一项目里多个对话会不会混用 `progress.md`？
+
+默认 `workspace` 模式仍然使用 `.planning/.active_plan`，适合单任务项目。如果同一项目同时打开多个 Codex 对话，请为每个对话绑定自己的 PWF 任务：
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session
+```
+
+也可以在创建任务时直接绑定：
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --bind-session
+```
+
+绑定后，该对话的上下文注入和 `progress.md` 自动记录都会使用 session-bound plan。自动记录包含 `Session` 和 `Plan-Source` 字段，便于审计。如果需要 strict mode 强制要求 binding，请设置：
+
+```powershell
+$env:PWF_STRICT_REQUIRES_BINDING=1
+```
+
+如果 workspace active task 已经由另一个 session 拥有，新的未绑定对话不会自动接管它；owner stale 也仍然需要显式选择。接管用 `--force-claim`，有意共享用 `--share`，释放当前 session 的 ownership 用 `--release-session`：
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session --force-claim
+python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session --share
+python .codex\skills\planning-with-files\scripts\plan.py switch --release-session
+```
+
 ### 12. `progress.md` 越来越长怎么办？
 
 运行：
@@ -469,6 +497,34 @@ or create `.planning/session-policy.json`:
 ```
 
 Strict mode provides more isolation, but depends on `session_id` in the Codex hook payload. When unsure, use `workspace`.
+
+### 11a. Will multiple conversations in one project mix `progress.md`?
+
+Default `workspace` mode still uses `.planning/.active_plan`, which is best for one active task. When multiple Codex conversations work in the same project at the same time, bind each conversation to its own PWF task:
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session
+```
+
+You can also bind while creating a task:
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --bind-session
+```
+
+After binding, context injection and automatic `progress.md` records use the session-bound plan. Auto records include `Session` and `Plan-Source` fields for auditing. To make strict mode require a binding, set:
+
+```powershell
+$env:PWF_STRICT_REQUIRES_BINDING=1
+```
+
+If the workspace active task is already owned by another session, an unbound new conversation will not automatically take it over; a stale owner still requires an explicit choice. Use `--force-claim` to take ownership, `--share` for intentional sharing, and `--release-session` to release the current session:
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session --force-claim
+python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session --share
+python .codex\skills\planning-with-files\scripts\plan.py switch --release-session
+```
 
 ### 12. What if `progress.md` gets too large?
 

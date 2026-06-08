@@ -13,7 +13,7 @@ def main() -> None:
     if adapter.emit_session_denial_if_needed(root, session_id):
         return
 
-    message = planning_state.stop_message(root)
+    message = planning_state.stop_message(root, session_id=session_id)
     if not message:
         return
 

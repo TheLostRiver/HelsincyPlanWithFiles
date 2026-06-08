@@ -218,6 +218,37 @@ class ProgressCompactionTests(unittest.TestCase):
                 "",
             )
 
+    def test_extract_recent_progress_context_preserves_session_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            progress = root / "progress.md"
+            progress.write_text(
+                "\n".join(
+                    [
+                        "# Progress Log",
+                        "",
+                        "### Auto Record: 2026-06-07 10:00:00",
+                        "- Tool: apply_patch",
+                        "- Session: abcdef123456",
+                        "- Plan-Source: session",
+                        "- Files:",
+                        "  - `src/current.py` (update)",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            context = MODULE.extract_recent_progress_context(
+                progress,
+                record_limit=1,
+                manual_tail_lines=0,
+                max_chars=10000,
+            )
+
+            self.assertIn("- Session: abcdef123456", context)
+            self.assertIn("- Plan-Source: session", context)
+
     def test_compact_archives_old_auto_records_and_keeps_recent(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

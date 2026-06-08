@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import hashlib
 import sys
+import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
@@ -27,6 +29,42 @@ class PlanningPaths:
 
 
 @dataclass(frozen=True)
+class PlanResolution:
+    source: str
+    plan_id: str
+    paths: PlanningPaths
+    session_key: str | None = None
+    warning: str | None = None
+
+
+@dataclass(frozen=True)
+class SessionLease:
+    session_key: str
+    session_id: str
+    status: str
+    started_at: str
+    heartbeat_at: str
+    bound_plan_id: str | None = None
+
+
+@dataclass(frozen=True)
+class TaskLease:
+    plan_id: str
+    owner_session_key: str
+    owner_status: str
+    shared: bool
+    claimed_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
+class PlanningAccess:
+    resolution: PlanResolution | None
+    allowed: bool = True
+    warning: str | None = None
+
+
+@dataclass(frozen=True)
 class AttestationStatus:
     path: Path | None
     expected: str | None
@@ -38,6 +76,12 @@ class AttestationStatus:
 class ChangedPath:
     path: str
     operation: str
+
+
+@dataclass(frozen=True)
+class ProgressAppendResult:
+    recorded: bool
+    warning: str | None = None
 
 
 @dataclass(frozen=True)
@@ -203,6 +247,10 @@ PLAN_TAMPERED_MESSAGE = MESSAGES["en"]["plan_tampered"]
 DEFAULT_COMPACT_THRESHOLD = 100
 POST_TOOL_RECORD_TOOLS = {"apply_patch", "Edit", "Write"}
 DATA_BLOCK_DELIMITER_RE = re.compile(r"^---(?:BEGIN|END) [A-Z ][A-Z ]* DATA---$")
+VALID_PLAN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$")
+LEASE_STATUSES = {"active", "stale", "released", "shared"}
+DEFAULT_SESSION_LEASE_TTL_SECONDS = 600
+DEFAULT_TASK_LEASE_LOCK_TIMEOUT_SECONDS = 0.25
 
 
 def current_lang(env: Mapping[str, str] | None = None) -> str:
@@ -237,6 +285,169 @@ def safe_env_value(value: str | None, limit: int = 80) -> str:
         .replace("\n", "\\n")
         .replace("\r", "\\r")
     )
+
+
+def session_key(session_id: str) -> str:
+    return hashlib.sha256(session_id.encode("utf-8")).hexdigest()[:12]
+
+
+def valid_plan_id(plan_id: str) -> bool:
+    if not VALID_PLAN_ID_RE.fullmatch(plan_id):
+        return False
+    if plan_id in {".", ".."}:
+        return False
+    return "/" not in plan_id and "\\" not in plan_id
+
+
+def _paths_for_plan_dir(plan_dir: Path) -> PlanningPaths:
+    return PlanningPaths(
+        root=plan_dir,
+        task_plan=plan_dir / "task_plan.md",
+        progress=plan_dir / "progress.md",
+        findings=plan_dir / "findings.md",
+    )
+
+
+def _session_binding_path(root: Path, session_id: str) -> Path:
+    return root / ".planning" / "session-bindings" / f"{session_key(session_id)}.json"
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _session_leases_dir(root: Path) -> Path:
+    return root / ".planning" / "session-leases"
+
+
+def session_lease_path(root: Path, session_id: str) -> Path:
+    return _session_leases_dir(root) / f"{session_key(session_id)}.json"
+
+
+def task_lease_path(root: Path, plan_id: str) -> Path:
+    return root / ".planning" / plan_id / ".task-lease.json"
+
+
+def task_lease_lock_path(root: Path, plan_id: str) -> Path:
+    return root / ".planning" / plan_id / ".task-lease.lock"
+
+
+def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8", newline="\n")
+    tmp.replace(path)
+
+
+def session_lease_ttl_seconds(env: Mapping[str, str] | None = None) -> int:
+    source = env if env is not None else os.environ
+    raw = source.get("PWF_SESSION_LEASE_TTL_SECONDS", "").strip()
+    if not raw:
+        return DEFAULT_SESSION_LEASE_TTL_SECONDS
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_SESSION_LEASE_TTL_SECONDS
+    return value if value >= 1 else DEFAULT_SESSION_LEASE_TTL_SECONDS
+
+
+def _lock_timeout_seconds(
+    env_name: str,
+    default_seconds: float,
+    env: Mapping[str, str] | None = None,
+) -> float:
+    source = env if env is not None else os.environ
+    raw = source.get(env_name, "").strip()
+    if not raw:
+        return default_seconds
+    if not raw.isdigit():
+        return default_seconds
+    return max(1, min(int(raw), 5000)) / 1000.0
+
+
+def refresh_session_lease(
+    root: Path,
+    session_id: str | None,
+    bound_plan_id: str | None = None,
+    source: str = "hook",
+) -> str | None:
+    if not session_id:
+        return None
+    key = session_key(session_id)
+    now = _utc_now()
+    path = session_lease_path(root, session_id)
+    started_at = now
+    if path.is_file():
+        try:
+            existing = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+            if isinstance(existing, dict) and isinstance(existing.get("started_at"), str):
+                started_at = existing["started_at"]
+        except (OSError, json.JSONDecodeError):
+            started_at = now
+    _atomic_write_json(
+        path,
+        {
+            "version": 1,
+            "session_key": key,
+            "session_id": session_id,
+            "started_at": started_at,
+            "heartbeat_at": now,
+            "status": "active",
+            "bound_plan_id": bound_plan_id,
+            "source": source,
+        },
+    )
+    return key
+
+
+def read_task_lease(root: Path, plan_id: str) -> TaskLease | None:
+    if not valid_plan_id(plan_id):
+        return None
+    path = task_lease_path(root, plan_id)
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict) or payload.get("version") != 1:
+        return None
+    if payload.get("plan_id") != plan_id:
+        return None
+    owner = payload.get("owner_session_key")
+    status = payload.get("owner_status")
+    shared = payload.get("shared")
+    claimed_at = payload.get("claimed_at")
+    updated_at = payload.get("updated_at")
+    if not isinstance(owner, str) or not re.fullmatch(r"[0-9a-f]{12}", owner):
+        return None
+    if not isinstance(status, str) or status not in LEASE_STATUSES:
+        return None
+    if not isinstance(shared, bool):
+        return None
+    if not isinstance(claimed_at, str) or not isinstance(updated_at, str):
+        return None
+    return TaskLease(plan_id, owner, status, shared, claimed_at, updated_at)
+
+
+def _parse_iso_z(value: str) -> datetime | None:
+    try:
+        normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+        return datetime.fromisoformat(normalized).astimezone(timezone.utc).replace(tzinfo=None)
+    except ValueError:
+        return None
+
+
+def task_lease_status(lease: TaskLease, env: Mapping[str, str] | None = None) -> str:
+    if lease.shared:
+        return "shared"
+    if lease.owner_status == "released":
+        return "released"
+    updated = _parse_iso_z(lease.updated_at)
+    if updated is None:
+        return "stale"
+    age = (datetime.now(timezone.utc).replace(tzinfo=None) - updated).total_seconds()
+    return "stale" if age > session_lease_ttl_seconds(env) else "active"
 
 
 def env_int(
@@ -341,23 +552,84 @@ def message(key: str, env: Mapping[str, str] | None = None, **values: object) ->
     return text.format(**values) if values else text
 
 
-def resolve_plan_dir(root: Path) -> Path | None:
+def _resolution_from_plan_id(
+    root: Path,
+    plan_id: str,
+    source: str,
+    session_key_value: str | None = None,
+    warning: str | None = None,
+) -> PlanResolution | None:
+    if not valid_plan_id(plan_id):
+        return None
+    candidate = root / ".planning" / plan_id
+    if not (candidate / "task_plan.md").is_file():
+        return None
+    return PlanResolution(
+        source=source,
+        plan_id=plan_id,
+        paths=_paths_for_plan_dir(candidate),
+        session_key=session_key_value,
+        warning=warning,
+    )
+
+
+def _read_session_plan_id(root: Path, session_id: str) -> tuple[str | None, str | None, str | None]:
+    key = session_key(session_id)
+    path = _session_binding_path(root, session_id)
+    if not path.is_file():
+        return None, key, None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return None, key, f"[warn] ignored session binding {key}: invalid json"
+    if not isinstance(payload, dict):
+        return None, key, f"[warn] ignored session binding {key}: not an object"
+    if payload.get("version") != 1:
+        return None, key, f"[warn] ignored session binding {key}: unsupported version"
+    plan_id = payload.get("plan_id")
+    if not isinstance(plan_id, str) or not valid_plan_id(plan_id):
+        return None, key, f"[warn] ignored session binding {key}: invalid plan_id"
+    return plan_id, key, None
+
+
+def resolve_planning_context(
+    root: Path,
+    env: Mapping[str, str] | None = None,
+    session_id: str | None = None,
+) -> PlanResolution | None:
     root = root.resolve()
+    source = env if env is not None else os.environ
     plan_root = root / ".planning"
 
-    env_plan = os.environ.get("PLAN_ID", "").strip()
+    env_plan = source.get("PLAN_ID", "").strip()
     if env_plan:
-        candidate = plan_root / env_plan
-        if (candidate / "task_plan.md").is_file():
-            return candidate
+        resolution = _resolution_from_plan_id(root, env_plan, "env")
+        if resolution is not None:
+            return resolution
+
+    binding_warning: str | None = None
+    if session_id:
+        bound_plan, key, warning = _read_session_plan_id(root, session_id)
+        binding_warning = warning
+        if bound_plan:
+            resolution = _resolution_from_plan_id(
+                root,
+                bound_plan,
+                "session",
+                session_key_value=key,
+                warning=warning,
+            )
+            if resolution is not None:
+                return resolution
+            binding_warning = f"[warn] ignored session binding {key}: missing plan"
 
     active_file = plan_root / ".active_plan"
     if active_file.is_file():
         plan_id = active_file.read_text(encoding="utf-8", errors="replace").strip()
         if plan_id:
-            candidate = plan_root / plan_id
-            if (candidate / "task_plan.md").is_file():
-                return candidate
+            resolution = _resolution_from_plan_id(root, plan_id, "workspace", warning=binding_warning)
+            if resolution is not None:
+                return resolution
 
     if plan_root.is_dir():
         candidates = [
@@ -365,27 +637,252 @@ def resolve_plan_dir(root: Path) -> Path | None:
             for item in plan_root.iterdir()
             if item.is_dir()
             and not item.name.startswith(".")
+            and valid_plan_id(item.name)
             and (item / "task_plan.md").is_file()
         ]
         if candidates:
-            return max(candidates, key=lambda item: item.stat().st_mtime)
+            newest = max(candidates, key=lambda item: item.stat().st_mtime)
+            return PlanResolution(
+                source="newest",
+                plan_id=newest.name,
+                paths=_paths_for_plan_dir(newest),
+                warning=binding_warning,
+            )
 
     if (root / "task_plan.md").is_file():
-        return root
+        return PlanResolution(
+            source="legacy",
+            plan_id="legacy",
+            paths=_paths_for_plan_dir(root),
+            warning=binding_warning,
+        )
 
     return None
 
 
-def planning_paths(root: Path) -> PlanningPaths | None:
-    plan_dir = resolve_plan_dir(root)
-    if plan_dir is None:
+def session_has_valid_binding(root: Path, session_id: str) -> bool:
+    resolution = resolve_planning_context(root, env={}, session_id=session_id)
+    return resolution is not None and resolution.source == "session"
+
+
+def ownership_denial_for_resolution(
+    root: Path,
+    resolution: PlanResolution,
+    session_id: str | None,
+    env: Mapping[str, str] | None = None,
+) -> str | None:
+    if resolution.source == "env":
         return None
-    return PlanningPaths(
-        root=plan_dir,
-        task_plan=plan_dir / "task_plan.md",
-        progress=plan_dir / "progress.md",
-        findings=plan_dir / "findings.md",
+    lease = read_task_lease(root, resolution.plan_id)
+    if lease is None:
+        return None
+    status = task_lease_status(lease, env)
+    if lease.shared or status == "released":
+        return None
+    current_key = session_key(session_id) if session_id else None
+    if current_key and current_key == lease.owner_session_key:
+        return None
+    return (
+        "[planning-with-files] workspace active plan is owned by another session; "
+        f"owner={lease.owner_session_key} status={status} shared=false. "
+        "Bind this session with plan.py switch <plan-id> --session, create a new task "
+        "with plan.py init \"Task Name\" --bind-session, or use --force-claim only "
+        "when you mean to take ownership."
     )
+
+
+def resolve_planning_access(
+    root: Path,
+    env: Mapping[str, str] | None = None,
+    session_id: str | None = None,
+) -> PlanningAccess:
+    resolution = resolve_planning_context(root, env=env, session_id=session_id)
+    refresh_session_lease(
+        root,
+        session_id,
+        bound_plan_id=resolution.plan_id if resolution is not None and resolution.source == "session" else None,
+    )
+    if resolution is None:
+        return PlanningAccess(None)
+    denial = ownership_denial_for_resolution(root, resolution, session_id, env)
+    if denial:
+        return PlanningAccess(resolution, allowed=False, warning=denial)
+    return PlanningAccess(resolution)
+
+
+def planning_access_denial(root: Path, session_id: str | None = None) -> str | None:
+    access = resolve_planning_access(root, session_id=session_id)
+    return access.warning if not access.allowed else None
+
+
+def write_task_lease(
+    root: Path,
+    plan_id: str,
+    owner_session_key: str,
+    *,
+    shared: bool = False,
+    owner_status: str = "active",
+    source: str = "plan.py",
+) -> TaskLease:
+    now = _utc_now()
+    existing = read_task_lease(root, plan_id)
+    claimed_at = existing.claimed_at if existing and existing.owner_session_key == owner_session_key else now
+    payload = {
+        "version": 1,
+        "plan_id": plan_id,
+        "owner_session_key": owner_session_key,
+        "owner_status": owner_status,
+        "shared": shared,
+        "claimed_at": claimed_at,
+        "updated_at": now,
+        "source": source,
+    }
+    _atomic_write_json(task_lease_path(root, plan_id), payload)
+    return TaskLease(plan_id, owner_session_key, owner_status, shared, claimed_at, now)
+
+
+class ExclusiveFileLock:
+    def __init__(self, path: Path, timeout: float, label: str) -> None:
+        self.path = path
+        self.timeout = timeout
+        self.label = label
+        self.fd: int | None = None
+
+    def __enter__(self) -> "ExclusiveFileLock":
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        deadline = datetime.now().timestamp() + self.timeout
+        while True:
+            try:
+                self.fd = os.open(str(self.path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.write(self.fd, str(os.getpid()).encode("ascii", errors="ignore"))
+                return self
+            except FileExistsError:
+                if datetime.now().timestamp() >= deadline:
+                    raise TimeoutError(f"{self.label} lock timed out")
+                time.sleep(0.02)
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        if self.fd is not None:
+            os.close(self.fd)
+            self.fd = None
+        try:
+            self.path.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def task_lease_lock_timeout_seconds(env: Mapping[str, str] | None = None) -> float:
+    return _lock_timeout_seconds(
+        "PWF_TASK_LEASE_LOCK_TIMEOUT_MS",
+        DEFAULT_TASK_LEASE_LOCK_TIMEOUT_SECONDS,
+        env,
+    )
+
+
+def claim_task_lease(
+    root: Path,
+    plan_id: str,
+    session_id: str,
+    *,
+    force: bool = False,
+    share: bool = False,
+    source: str = "plan.py switch --session",
+) -> tuple[TaskLease | None, str | None]:
+    current_key = session_key(session_id)
+    try:
+        with ExclusiveFileLock(
+            task_lease_lock_path(root, plan_id),
+            task_lease_lock_timeout_seconds(),
+            "task lease",
+        ):
+            existing = read_task_lease(root, plan_id)
+            if existing:
+                status = task_lease_status(existing)
+                conflict = existing.owner_session_key != current_key and not existing.shared and status != "released"
+                if conflict and not force:
+                    return existing, (
+                        f"task is owned by another session: owner={existing.owner_session_key} "
+                        f"status={status} shared=false; rerun with --force-claim if you mean to take ownership."
+                    )
+                if existing.shared and not force:
+                    refresh_session_lease(root, session_id, bound_plan_id=plan_id, source=source)
+                    return existing, None
+            lease = write_task_lease(root, plan_id, current_key, shared=share, source=source)
+            refresh_session_lease(root, session_id, bound_plan_id=plan_id, source=source)
+            return lease, None
+    except TimeoutError:
+        return None, "task lease lock timed out; session binding was not changed."
+
+
+def claim_task_lease_for_rewrite(
+    root: Path,
+    plan_id: str,
+    session_id: str,
+    *,
+    source: str = "plan.py init --bind-session",
+) -> tuple[TaskLease | None, str | None]:
+    current_key = session_key(session_id)
+    try:
+        with ExclusiveFileLock(
+            task_lease_lock_path(root, plan_id),
+            task_lease_lock_timeout_seconds(),
+            "task lease",
+        ):
+            existing = read_task_lease(root, plan_id)
+            if existing:
+                status = task_lease_status(existing)
+                conflict = existing.owner_session_key != current_key and status != "released"
+                if conflict:
+                    return existing, (
+                        f"task is owned by another session: owner={existing.owner_session_key} "
+                        f"status={status} shared={str(existing.shared).lower()}; "
+                        "rerun with --force-claim if you mean to take ownership."
+                    )
+            lease = write_task_lease(root, plan_id, current_key, shared=False, source=source)
+            refresh_session_lease(root, session_id, bound_plan_id=plan_id, source=source)
+            return lease, None
+    except TimeoutError:
+        return None, "task lease lock timed out; session binding was not changed."
+
+
+def release_task_lease_for_session(
+    root: Path,
+    plan_id: str,
+    session_id: str,
+) -> tuple[TaskLease | None, str | None]:
+    current_key = session_key(session_id)
+    try:
+        with ExclusiveFileLock(
+            task_lease_lock_path(root, plan_id),
+            task_lease_lock_timeout_seconds(),
+            "task lease",
+        ):
+            existing = read_task_lease(root, plan_id)
+            if existing is None:
+                return None, None
+            if existing.owner_session_key != current_key:
+                return existing, None
+            lease = write_task_lease(
+                root,
+                plan_id,
+                current_key,
+                shared=False,
+                owner_status="released",
+                source="plan.py switch --release-session",
+            )
+            return lease, None
+    except TimeoutError:
+        return None, "task lease lock timed out; session binding was not changed."
+
+
+def resolve_plan_dir(root: Path) -> Path | None:
+    resolution = resolve_planning_context(root)
+    return resolution.paths.root if resolution is not None else None
+
+
+def planning_paths(root: Path, session_id: str | None = None) -> PlanningPaths | None:
+    access = resolve_planning_access(root, session_id=session_id)
+    return access.resolution.paths if access.allowed and access.resolution is not None else None
 
 
 def read_head(path: Path, limit: int) -> str:
@@ -610,8 +1107,8 @@ def progress_context_block(path: Path, limits: ContextLimits) -> str:
     return read_progress_tail(path, limits.progress_tail_lines)
 
 
-def progress_compaction_notice(root: Path) -> str:
-    paths = planning_paths(root)
+def progress_compaction_notice(root: Path, session_id: str | None = None) -> str:
+    paths = planning_paths(root, session_id=session_id)
     if paths is None:
         return ""
     count = progress_lifecycle.count_auto_records(paths.progress)
@@ -692,16 +1189,16 @@ def _render_plan_data(
     return "\n".join(parts).rstrip()
 
 
-def render_pre_tool_context(root: Path) -> str:
-    paths = planning_paths(root)
+def render_pre_tool_context(root: Path, session_id: str | None = None) -> str:
+    paths = planning_paths(root, session_id=session_id)
     if paths is None:
         return ""
     limits = context_limits()
     return _render_plan_data(root, paths, limits.pre_tool_plan_head_lines)
 
 
-def render_prompt_context(root: Path) -> str:
-    paths = planning_paths(root)
+def render_prompt_context(root: Path, session_id: str | None = None) -> str:
+    paths = planning_paths(root, session_id=session_id)
     if paths is None:
         return ""
 
@@ -871,20 +1368,44 @@ def log_command_enabled() -> bool:
     return _truthy_env("PWF_LOG_COMMAND")
 
 
-def append_progress(root: Path, payload: dict[str, Any]) -> bool:
+def progress_lock_timeout_seconds(env: Mapping[str, str] | None = None) -> float:
+    return _lock_timeout_seconds("PWF_PROGRESS_LOCK_TIMEOUT_MS", 0.25, env)
+
+
+class ProgressFileLock(ExclusiveFileLock):
+    def __init__(self, path: Path, timeout: float) -> None:
+        super().__init__(path, timeout, "progress.md")
+
+
+def append_progress(
+    root: Path,
+    payload: dict[str, Any],
+    session_id: str | None = None,
+) -> ProgressAppendResult:
     tool_name = str(payload.get("tool_name") or payload.get("hook_event_name") or "tool")
     if tool_name not in POST_TOOL_RECORD_TOOLS:
-        return False
+        return ProgressAppendResult(False)
 
-    paths = planning_paths(root)
-    if paths is None:
-        return False
+    access = resolve_planning_access(root, session_id=session_id)
+    if not access.allowed:
+        return ProgressAppendResult(False, access.warning)
+    if access.resolution is None:
+        return ProgressAppendResult(False)
+    resolution = access.resolution
+    paths = resolution.paths
 
     changed_paths = changed_paths_from_payload(payload)
     command = _tool_command(payload)
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    lines = ["", f"### Auto Record: {timestamp}", f"- Tool: {tool_name}"]
+    session_label = session_key(session_id) if session_id else "unavailable"
+    lines = [
+        "",
+        f"### Auto Record: {timestamp}",
+        f"- Tool: {tool_name}",
+        f"- Session: {session_label}",
+        f"- Plan-Source: {resolution.source}",
+    ]
     phase = current_phase(paths.task_plan)
     if phase:
         lines.append(f"- Phase: {phase}")
@@ -900,13 +1421,18 @@ def append_progress(root: Path, payload: dict[str, Any]) -> bool:
         lines.append(f"- Command: `{_command_summary(command)}`")
 
     paths.progress.parent.mkdir(parents=True, exist_ok=True)
-    with paths.progress.open("a", encoding="utf-8", newline="\n") as handle:
-        handle.write("\n".join(lines).rstrip() + "\n")
-    return True
+    lock_path = paths.progress.parent / ".progress.lock"
+    try:
+        with ProgressFileLock(lock_path, progress_lock_timeout_seconds()):
+            with paths.progress.open("a", encoding="utf-8", newline="\n") as handle:
+                handle.write("\n".join(lines).rstrip() + "\n")
+    except TimeoutError:
+        return ProgressAppendResult(False, "[planning-with-files] progress.md lock timed out; auto record was skipped.")
+    return ProgressAppendResult(True)
 
 
-def phase_counts(root: Path) -> tuple[int, int, int, int] | None:
-    paths = planning_paths(root)
+def phase_counts(root: Path, session_id: str | None = None) -> tuple[int, int, int, int] | None:
+    paths = planning_paths(root, session_id=session_id)
     if paths is None:
         return None
 
@@ -924,8 +1450,8 @@ def phase_counts(root: Path) -> tuple[int, int, int, int] | None:
     return total, complete, in_progress, pending
 
 
-def stop_message(root: Path) -> str | None:
-    counts = phase_counts(root)
+def stop_message(root: Path, session_id: str | None = None) -> str | None:
+    counts = phase_counts(root, session_id=session_id)
     if counts is None:
         return None
     total, complete, _in_progress, _pending = counts

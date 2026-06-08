@@ -77,6 +77,28 @@ class ProjectConsistencyTests(unittest.TestCase):
             self.assertIn("deep", text)
             self.assertIn("PWF_INCLUDE_FINDINGS", text)
 
+    def test_docs_document_session_task_bindings(self):
+        readme_cn = read_text("README.md")
+        readme_en = read_text("README.en.md")
+        faq = read_text("docs/FAQ.md")
+        skill = read_text(".codex/skills/planning-with-files/SKILL.md")
+        changelog = read_text("CHANGELOG.md")
+
+        for text in (readme_cn, readme_en, faq, skill):
+            self.assertIn("plan.py switch <plan-id> --session", text)
+            self.assertIn("--force-claim", text)
+            self.assertIn("--share", text)
+            self.assertIn("--release-session", text)
+            self.assertIn('plan.py init "Task Name" --bind-session', text)
+            self.assertIn("PWF_STRICT_REQUIRES_BINDING=1", text)
+            self.assertIn("Session", text)
+            self.assertIn("Plan-Source", text)
+            self.assertIn("stale", text)
+
+        self.assertIn("session binding", changelog)
+        self.assertIn("task ownership", changelog)
+        self.assertIn("progress.md lock", changelog)
+
     def test_hooks_json_references_existing_hook_files(self):
         hooks = json.loads(read_text(".codex/hooks.json"))
         commands = collect_commands(hooks)

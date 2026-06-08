@@ -1,10 +1,12 @@
 import hashlib
+import json
 import os
 import subprocess
 import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 import unittest
 
 
@@ -283,6 +285,468 @@ class PlanCliTests(unittest.TestCase):
             self.assertIn("active plan set to: 2026-05-11-b", set_result.stdout)
             self.assertEqual(show_result.returncode, 0, show_result.stderr)
             self.assertIn("active plan: 2026-05-11-b", show_result.stdout)
+
+    def test_switch_session_writes_binding_without_changing_workspace_active(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root / ".planning" / "2026-06-07-workspace")
+            write_plan(root / ".planning" / "2026-06-07-session")
+            (root / ".planning" / ".active_plan").write_text("2026-06-07-workspace\n", encoding="utf-8")
+
+            result = run_plan(
+                root,
+                "switch",
+                "2026-06-07-session",
+                "--session",
+                env={"PWF_SESSION_ID": "session-a"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                (root / ".planning" / ".active_plan").read_text(encoding="utf-8"),
+                "2026-06-07-workspace\n",
+            )
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            binding = root / ".planning" / "session-bindings" / f"{key}.json"
+            self.assertTrue(binding.is_file())
+            self.assertEqual(
+                json.loads(binding.read_text(encoding="utf-8"))["plan_id"],
+                "2026-06-07-session",
+            )
+            self.assertIn(f"session binding set: {key} -> 2026-06-07-session", result.stdout)
+
+    def test_switch_session_creates_task_lease(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_id = "2026-06-07-session"
+            write_plan(root / ".planning" / plan_id)
+
+            result = run_plan(root, "switch", plan_id, "--session", env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            lease = json.loads((root / ".planning" / plan_id / ".task-lease.json").read_text(encoding="utf-8"))
+            self.assertEqual(lease["owner_session_key"], key)
+            self.assertFalse(lease["shared"])
+            self.assertIn(f"task lease: owner={key} status=active shared=false", result.stdout)
+
+    def test_switch_session_requires_force_claim_for_owned_task(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_id = "2026-06-07-owned"
+            write_plan(root / ".planning" / plan_id)
+            owner_key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            (root / ".planning" / plan_id / ".task-lease.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "plan_id": plan_id,
+                        "owner_session_key": owner_key,
+                        "owner_status": "active",
+                        "shared": False,
+                        "claimed_at": "2026-06-07T10:00:00Z",
+                        "updated_at": "2026-06-07T10:00:00Z",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_plan(root, "switch", plan_id, "--session", env={"PWF_SESSION_ID": "session-b"})
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("owned by another session", result.stdout)
+            self.assertIn("--force-claim", result.stdout)
+
+    def test_switch_session_force_claim_transfers_task_lease(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_id = "2026-06-07-claim"
+            write_plan(root / ".planning" / plan_id)
+            old_key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            new_key = hashlib.sha256("session-b".encode("utf-8")).hexdigest()[:12]
+            (root / ".planning" / plan_id / ".task-lease.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "plan_id": plan_id,
+                        "owner_session_key": old_key,
+                        "owner_status": "active",
+                        "shared": False,
+                        "claimed_at": "2026-06-07T10:00:00Z",
+                        "updated_at": "2026-06-07T10:00:00Z",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_plan(
+                root,
+                "switch",
+                plan_id,
+                "--session",
+                "--force-claim",
+                env={"PWF_SESSION_ID": "session-b"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            lease = json.loads((root / ".planning" / plan_id / ".task-lease.json").read_text(encoding="utf-8"))
+            self.assertEqual(lease["owner_session_key"], new_key)
+            self.assertIn(f"task lease: owner={new_key} status=active shared=false", result.stdout)
+
+    def test_switch_session_share_marks_task_shared(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_id = "2026-06-07-share"
+            write_plan(root / ".planning" / plan_id)
+
+            result = run_plan(root, "switch", plan_id, "--session", "--share", env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            lease = json.loads((root / ".planning" / plan_id / ".task-lease.json").read_text(encoding="utf-8"))
+            self.assertTrue(lease["shared"])
+            self.assertIn("shared=true", result.stdout)
+
+    def test_switch_session_keeps_shared_task_shared_for_second_session(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_id = "2026-06-07-share"
+            write_plan(root / ".planning" / plan_id)
+            owner_key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+
+            share_result = run_plan(
+                root,
+                "switch",
+                plan_id,
+                "--session",
+                "--share",
+                env={"PWF_SESSION_ID": "session-a"},
+            )
+            join_result = run_plan(root, "switch", plan_id, "--session", env={"PWF_SESSION_ID": "session-b"})
+
+            self.assertEqual(share_result.returncode, 0, share_result.stderr)
+            self.assertEqual(join_result.returncode, 0, join_result.stderr)
+            lease = json.loads((root / ".planning" / plan_id / ".task-lease.json").read_text(encoding="utf-8"))
+            self.assertEqual(lease["owner_session_key"], owner_key)
+            self.assertTrue(lease["shared"])
+            self.assertIn("shared=true", join_result.stdout)
+
+    def test_switch_session_concurrent_claim_allows_single_owner(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_id = "2026-06-07-race"
+            write_plan(root / ".planning" / plan_id)
+
+            def claim(session_id):
+                return run_plan(root, "switch", plan_id, "--session", env={"PWF_SESSION_ID": session_id})
+
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                results = list(executor.map(claim, ["session-a", "session-b"]))
+
+            successes = [result for result in results if result.returncode == 0]
+            failures = [result for result in results if result.returncode != 0]
+            lease = json.loads((root / ".planning" / plan_id / ".task-lease.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(len(successes), 1, [result.stdout for result in results])
+            self.assertEqual(len(failures), 1, [result.stdout for result in results])
+            self.assertIn("owned by another session", failures[0].stdout)
+            self.assertIn(lease["owner_session_key"], successes[0].stdout)
+
+    def test_switch_session_reports_task_lease_lock_timeout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_id = "2026-06-07-locked"
+            plan_dir = root / ".planning" / plan_id
+            write_plan(plan_dir)
+            (plan_dir / ".task-lease.lock").write_text("held\n", encoding="utf-8")
+
+            result = run_plan(
+                root,
+                "switch",
+                plan_id,
+                "--session",
+                env={"PWF_SESSION_ID": "session-a", "PWF_TASK_LEASE_LOCK_TIMEOUT_MS": "1"},
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("task lease lock timed out", result.stdout)
+            self.assertFalse((plan_dir / ".task-lease.json").exists())
+
+    def test_switch_clear_session_removes_binding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            binding_dir = root / ".planning" / "session-bindings"
+            binding_dir.mkdir(parents=True)
+            (binding_dir / f"{key}.json").write_text('{"version": 1}', encoding="utf-8")
+
+            result = run_plan(root, "switch", "--clear-session", env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse((binding_dir / f"{key}.json").exists())
+            self.assertIn(f"session binding cleared: {key}", result.stdout)
+
+    def test_switch_release_session_releases_owned_task(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_id = "2026-06-07-release"
+            write_plan(root / ".planning" / plan_id)
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            binding_dir = root / ".planning" / "session-bindings"
+            binding_dir.mkdir(parents=True)
+            (binding_dir / f"{key}.json").write_text(
+                json.dumps({"version": 1, "session_id": "session-a", "plan_id": plan_id}),
+                encoding="utf-8",
+            )
+            (root / ".planning" / plan_id / ".task-lease.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "plan_id": plan_id,
+                        "owner_session_key": key,
+                        "owner_status": "active",
+                        "shared": False,
+                        "claimed_at": "2026-06-07T10:00:00Z",
+                        "updated_at": "2026-06-07T10:00:00Z",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_plan(root, "switch", "--release-session", env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse((binding_dir / f"{key}.json").exists())
+            lease = json.loads((root / ".planning" / plan_id / ".task-lease.json").read_text(encoding="utf-8"))
+            self.assertEqual(lease["owner_status"], "released")
+            self.assertIn(f"task lease released: {key} -> {plan_id}", result.stdout)
+
+    def test_switch_release_session_reports_task_lease_lock_timeout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_id = "2026-06-07-release-locked"
+            plan_dir = root / ".planning" / plan_id
+            write_plan(plan_dir)
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            binding_dir = root / ".planning" / "session-bindings"
+            binding_dir.mkdir(parents=True)
+            binding = binding_dir / f"{key}.json"
+            binding.write_text(
+                json.dumps({"version": 1, "session_id": "session-a", "plan_id": plan_id}),
+                encoding="utf-8",
+            )
+            lease_path = plan_dir / ".task-lease.json"
+            lease_path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "plan_id": plan_id,
+                        "owner_session_key": key,
+                        "owner_status": "active",
+                        "shared": False,
+                        "claimed_at": "2026-06-07T10:00:00Z",
+                        "updated_at": "2026-06-07T10:00:00Z",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (plan_dir / ".task-lease.lock").write_text("held\n", encoding="utf-8")
+
+            result = run_plan(
+                root,
+                "switch",
+                "--release-session",
+                env={"PWF_SESSION_ID": "session-a", "PWF_TASK_LEASE_LOCK_TIMEOUT_MS": "1"},
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("task lease lock timed out", result.stdout)
+            self.assertTrue(binding.exists())
+            lease = json.loads(lease_path.read_text(encoding="utf-8"))
+            self.assertEqual(lease["owner_status"], "active")
+
+    def test_init_bind_session_no_workspace_active(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            result = run_plan(
+                root,
+                "init",
+                "Side Task",
+                "--bind-session",
+                "--no-workspace-active",
+                env={"PWF_SESSION_ID": "session-a"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            today = datetime.now().strftime("%Y-%m-%d")
+            plan_id = f"{today}-side-task"
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            self.assertFalse((root / ".planning" / ".active_plan").exists())
+            binding = root / ".planning" / "session-bindings" / f"{key}.json"
+            self.assertEqual(json.loads(binding.read_text(encoding="utf-8"))["plan_id"], plan_id)
+            self.assertIn(f"session binding set: {key} -> {plan_id}", result.stdout)
+
+    def test_init_bind_session_creates_task_lease_for_workspace_active_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            result = run_plan(root, "init", "Bound Task", "--bind-session", env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            today = datetime.now().strftime("%Y-%m-%d")
+            plan_id = f"{today}-bound-task"
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            lease_path = root / ".planning" / plan_id / ".task-lease.json"
+            lease = json.loads(lease_path.read_text(encoding="utf-8"))
+            self.assertEqual(lease["owner_session_key"], key)
+            self.assertFalse(lease["shared"])
+            self.assertIn(f"task lease: owner={key} status=active shared=false", result.stdout)
+
+    def test_init_force_bind_session_does_not_overwrite_other_owned_task(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            today = datetime.now().strftime("%Y-%m-%d")
+            plan_id = f"{today}-owned-task"
+            plan_dir = root / ".planning" / plan_id
+            write_plan(plan_dir, title="Original Owner")
+            original_plan = (plan_dir / "task_plan.md").read_text(encoding="utf-8")
+            owner_key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            (plan_dir / ".task-lease.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "plan_id": plan_id,
+                        "owner_session_key": owner_key,
+                        "owner_status": "active",
+                        "shared": False,
+                        "claimed_at": "2026-06-07T10:00:00Z",
+                        "updated_at": "2026-06-07T10:00:00Z",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_plan(
+                root,
+                "init",
+                "Owned Task",
+                "--force",
+                "--bind-session",
+                env={"PWF_SESSION_ID": "session-b"},
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("owned by another session", result.stdout)
+            self.assertEqual((plan_dir / "task_plan.md").read_text(encoding="utf-8"), original_plan)
+
+    def test_init_force_bind_session_does_not_overwrite_shared_task(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            today = datetime.now().strftime("%Y-%m-%d")
+            plan_id = f"{today}-shared-task"
+            plan_dir = root / ".planning" / plan_id
+            write_plan(plan_dir, title="Shared Owner")
+            original_plan = (plan_dir / "task_plan.md").read_text(encoding="utf-8")
+            owner_key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            (plan_dir / ".task-lease.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "plan_id": plan_id,
+                        "owner_session_key": owner_key,
+                        "owner_status": "active",
+                        "shared": True,
+                        "claimed_at": "2026-06-07T10:00:00Z",
+                        "updated_at": "2026-06-07T10:00:00Z",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_plan(
+                root,
+                "init",
+                "Shared Task",
+                "--force",
+                "--bind-session",
+                env={"PWF_SESSION_ID": "session-b"},
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("shared=true", result.stdout)
+            self.assertEqual((plan_dir / "task_plan.md").read_text(encoding="utf-8"), original_plan)
+
+    def test_status_reports_workspace_session_and_effective_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root / ".planning" / "2026-06-07-workspace")
+            write_plan(root / ".planning" / "2026-06-07-session")
+            (root / ".planning" / ".active_plan").write_text("2026-06-07-workspace\n", encoding="utf-8")
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            binding_dir = root / ".planning" / "session-bindings"
+            binding_dir.mkdir(parents=True)
+            (binding_dir / f"{key}.json").write_text(
+                json.dumps({"version": 1, "session_id": "session-a", "plan_id": "2026-06-07-session"}),
+                encoding="utf-8",
+            )
+
+            result = run_plan(root, "status", env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("workspace active plan: 2026-06-07-workspace", result.stdout)
+            self.assertIn(f"session binding: {key} -> 2026-06-07-session", result.stdout)
+            self.assertIn("effective plan: 2026-06-07-session", result.stdout)
+            self.assertIn("plan source: session", result.stdout)
+
+    def test_status_reports_session_and_task_lease(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_id = "2026-06-07-status"
+            write_plan(root / ".planning" / plan_id)
+            (root / ".planning" / ".active_plan").write_text(plan_id + "\n", encoding="utf-8")
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            binding_dir = root / ".planning" / "session-bindings"
+            binding_dir.mkdir(parents=True)
+            (binding_dir / f"{key}.json").write_text(
+                json.dumps({"version": 1, "session_id": "session-a", "plan_id": plan_id}),
+                encoding="utf-8",
+            )
+            lease_dir = root / ".planning" / "session-leases"
+            lease_dir.mkdir(parents=True)
+            (lease_dir / f"{key}.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "session_key": key,
+                        "session_id": "session-a",
+                        "started_at": "2026-06-07T10:00:00Z",
+                        "heartbeat_at": "2999-01-01T00:00:00Z",
+                        "status": "active",
+                        "bound_plan_id": plan_id,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (root / ".planning" / plan_id / ".task-lease.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "plan_id": plan_id,
+                        "owner_session_key": key,
+                        "owner_status": "active",
+                        "shared": False,
+                        "claimed_at": "2026-06-07T10:00:00Z",
+                        "updated_at": "2999-01-01T00:00:00Z",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_plan(root, "status", env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(f"session lease: active {key}", result.stdout)
+            self.assertIn(f"task lease: owner={key} status=active shared=false", result.stdout)
 
     def test_switch_reports_chinese_output_when_enabled(self):
         with tempfile.TemporaryDirectory() as tmp:

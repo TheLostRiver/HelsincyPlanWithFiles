@@ -7,7 +7,7 @@ import json
 import os
 import re
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -64,6 +64,7 @@ CLI_MESSAGES = {
         "compacted": "compacted progress.md",
         "created": "created {label}: {plan_id}",
         "current_phase": "current phase: {phase}",
+        "effective_plan": "effective plan: {plan_id}",
         "findings_path": "findings: {path}",
         "help_attest": "Lock, show, or clear plan attestation",
         "help_capture": "Append external context to findings.md",
@@ -80,6 +81,7 @@ CLI_MESSAGES = {
         "hooks_json": "hooks.json: {status}",
         "language_unsupported": "language: warning unsupported PWF_LANG={lang}",
         "legacy_plan_label": "legacy plan",
+        "missing_session_id": "session id: unavailable; set PWF_SESSION_ID or run from a hook payload",
         "no_active_plan": "no active plan set",
         "path": "path: {path}",
         "phases": "phases: {complete}/{total} complete",
@@ -94,10 +96,24 @@ CLI_MESSAGES = {
         "progress_warning": "[warn] progress.md has {count} auto records; run /pwf-compact or plan.py compact",
         "python_runtime_ok": "python runtime: ok",
         "python_runtime_warning": "python runtime: warning python3 command in hooks.json",
+        "plan_source": "plan source: {source}",
         "session_attached_count": "attached sessions: {count}",
+        "session_binding": "session binding: {key} -> {plan_id}",
+        "session_binding_cleared": "session binding cleared: {key}",
+        "session_binding_missing": "session binding: unavailable (no session_id)",
+        "session_binding_none": "session binding: none for current session",
+        "session_binding_required": "session binding required: {value}",
+        "session_binding_set": "session binding set: {key} -> {plan_id}",
+        "session_released": "session binding released: {key}",
         "session_dir_ignored": "session mode: sessions directory ignored unless PWF_SESSION_MODE=strict",
         "session_mode": "session mode: {mode}",
         "session_mode_unsupported": "session mode: warning unsupported PWF_SESSION_MODE={mode}",
+        "task_lease": "task lease: owner={owner} status={status} shared={shared}",
+        "task_lease_conflict": "task is owned by another session: owner={owner} status={status} shared={shared}; rerun with --force-claim if you mean to take ownership.",
+        "task_lease_error": "task lease error: {message}",
+        "task_lease_released": "task lease released: {key} -> {plan_id}",
+        "workspace_active_plan": "workspace active plan: {plan_id}",
+        "workspace_active_plan_missing": "workspace active plan: missing",
     },
     "zh-CN": {
         "active_plan_missing": "当前计划: 缺失",
@@ -127,6 +143,7 @@ CLI_MESSAGES = {
         "compacted": "已压缩 progress.md",
         "created": "已创建{label}: {plan_id}",
         "current_phase": "当前阶段: {phase}",
+        "effective_plan": "effective plan: {plan_id}",
         "findings_path": "findings: {path}",
         "help_attest": "锁定、查看或清除计划 attestation",
         "help_capture": "将外部上下文追加到 findings.md",
@@ -143,6 +160,7 @@ CLI_MESSAGES = {
         "hooks_json": "hooks.json: {status}",
         "language_unsupported": "language: warning unsupported PWF_LANG={lang}",
         "legacy_plan_label": "legacy plan",
+        "missing_session_id": "session id: 不可用；请设置 PWF_SESSION_ID 或从 hook payload 运行",
         "no_active_plan": "未设置当前计划",
         "path": "路径: {path}",
         "phases": "阶段: {complete}/{total} 已完成",
@@ -157,16 +175,30 @@ CLI_MESSAGES = {
         "progress_warning": "[warn] progress.md 已有 {count} 条 auto records；请运行 /pwf-compact 或 plan.py compact",
         "python_runtime_ok": "Python runtime: ok",
         "python_runtime_warning": "Python runtime: warning hooks.json 中存在 python3 command",
+        "plan_source": "plan source: {source}",
         "session_attached_count": "attached sessions: {count}",
+        "session_binding": "session binding: {key} -> {plan_id}",
+        "session_binding_cleared": "session binding cleared: {key}",
+        "session_binding_missing": "session binding: unavailable (no session_id)",
+        "session_binding_none": "session binding: none for current session",
+        "session_binding_required": "session binding required: {value}",
+        "session_binding_set": "session binding set: {key} -> {plan_id}",
+        "session_released": "session binding released: {key}",
         "session_dir_ignored": "session mode: sessions directory ignored unless PWF_SESSION_MODE=strict",
         "session_mode": "session mode: {mode}",
         "session_mode_unsupported": "session mode: warning unsupported PWF_SESSION_MODE={mode}",
+        "task_lease": "task lease: owner={owner} status={status} shared={shared}",
+        "task_lease_conflict": "task is owned by another session: owner={owner} status={status} shared={shared}; rerun with --force-claim if you mean to take ownership.",
+        "task_lease_error": "task lease error: {message}",
+        "task_lease_released": "task lease released: {key} -> {plan_id}",
+        "workspace_active_plan": "workspace active plan: {plan_id}",
+        "workspace_active_plan_missing": "workspace active plan: missing",
     },
 }
 
 
-def _message(key: str, **values: object) -> str:
-    text = CLI_MESSAGES[planning_state.current_lang()][key]
+def _message(message_key: str, **values: object) -> str:
+    text = CLI_MESSAGES[planning_state.current_lang()][message_key]
     return text.format(**values) if values else text
 
 
@@ -188,6 +220,66 @@ def _unsupported_session_mode_warning() -> str:
     return ""
 
 
+def _current_session_id() -> str | None:
+    return os.environ.get("PWF_SESSION_ID", "").strip() or None
+
+
+def _binding_payload(session_id: str, plan_id: str, source: str) -> dict[str, object]:
+    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return {
+        "version": 1,
+        "session_id": session_id,
+        "plan_id": plan_id,
+        "created_at": now,
+        "updated_at": now,
+        "source": source,
+    }
+
+
+def _write_session_binding(root: Path, session_id: str, plan_id: str, source: str) -> str:
+    key = planning_state.session_key(session_id)
+    binding_dir = root / ".planning" / "session-bindings"
+    binding_dir.mkdir(parents=True, exist_ok=True)
+    target = binding_dir / f"{key}.json"
+    tmp = binding_dir / f"{key}.json.tmp"
+    tmp.write_text(
+        json.dumps(_binding_payload(session_id, plan_id, source), ensure_ascii=True, indent=2),
+        encoding="utf-8",
+        newline="\n",
+    )
+    tmp.replace(target)
+    return key
+
+
+def _clear_session_binding(root: Path, session_id: str) -> str:
+    key = planning_state.session_key(session_id)
+    binding = root / ".planning" / "session-bindings" / f"{key}.json"
+    if binding.exists():
+        binding.unlink()
+    return key
+
+
+def _read_session_binding_plan_id(root: Path, session_id: str) -> str | None:
+    key = planning_state.session_key(session_id)
+    binding = root / ".planning" / "session-bindings" / f"{key}.json"
+    if not binding.is_file():
+        return None
+    try:
+        payload = json.loads(binding.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    plan_id = payload.get("plan_id") if isinstance(payload, dict) else None
+    return plan_id if isinstance(plan_id, str) and planning_state.valid_plan_id(plan_id) else None
+
+
+def _workspace_active_plan_id(root: Path) -> str | None:
+    active_file = root / ".planning" / ".active_plan"
+    if not active_file.is_file():
+        return None
+    value = active_file.read_text(encoding="utf-8", errors="replace").strip()
+    return value or None
+
+
 def _attached_session_count(root: Path) -> int:
     sessions_dir = root / ".planning" / "sessions"
     if not sessions_dir.is_dir():
@@ -204,6 +296,8 @@ def _session_status_lines(root: Path) -> list[str]:
     sessions_dir = root / ".planning" / "sessions"
     if mode == "strict":
         lines.append(_message("session_attached_count", count=_attached_session_count(root)))
+        required = "yes" if codex_hook_adapter.strict_requires_binding(root) else "no"
+        lines.append(_message("session_binding_required", value=required))
     elif sessions_dir.is_dir():
         lines.append(_message("session_dir_ignored"))
     return lines
@@ -250,6 +344,20 @@ def _plan_id(root: Path, paths: planning_state.PlanningPaths) -> str:
     except OSError:
         pass
     return paths.root.name
+
+
+def _task_lease_line(root: Path, plan_id: str | None, session_id: str | None = None) -> str | None:
+    if not plan_id or plan_id == "legacy":
+        return None
+    lease = planning_state.read_task_lease(root, plan_id)
+    if lease is None:
+        return "task lease: none"
+    status = planning_state.task_lease_status(lease)
+    shared = str(lease.shared).lower()
+    current_key = planning_state.session_key(session_id) if session_id else None
+    if current_key and lease.owner_session_key != current_key and not lease.shared and status != "released":
+        return f"task lease: conflict owner={lease.owner_session_key} status={status} shared={shared}"
+    return f"task lease: owner={lease.owner_session_key} status={status} shared={shared}"
 
 
 def _current_phase(paths: planning_state.PlanningPaths) -> str | None:
@@ -541,12 +649,24 @@ def doctor(root: Path) -> int:
 
     lines.extend(_session_status_lines(root))
 
-    paths = planning_state.planning_paths(root)
+    session_id = _current_session_id()
+    resolution = planning_state.resolve_planning_context(root, session_id=session_id)
+    paths = resolution.paths if resolution is not None else None
     if paths is None:
         lines.append(_message("active_plan_missing"))
         ok = False
     else:
         lines.append(_message("active_plan_ok", path=paths.root))
+
+    task_line = _task_lease_line(root, resolution.plan_id if resolution is not None else None, session_id)
+    if task_line:
+        lines.append(task_line)
+        if task_line.startswith("task lease: conflict"):
+            lines.append(
+                "[warn] workspace active plan is owned by another session; bind this session "
+                "with plan.py switch <plan-id> --session or create a new task with "
+                "plan.py init \"Task Name\" --bind-session"
+            )
 
     planning_line, planning_ok = _planning_files_status(paths)
     lines.append(planning_line)
@@ -567,7 +687,36 @@ def doctor(root: Path) -> int:
 
 
 def status(root: Path) -> int:
-    paths = planning_state.planning_paths(root)
+    session_id = _current_session_id()
+    resolution = planning_state.resolve_planning_context(root, session_id=session_id)
+    paths = resolution.paths if resolution is not None else None
+    workspace_plan = _workspace_active_plan_id(root)
+    print(
+        _message("workspace_active_plan", plan_id=workspace_plan)
+        if workspace_plan
+        else _message("workspace_active_plan_missing")
+    )
+    if session_id:
+        key = planning_state.session_key(session_id)
+        if resolution is not None and resolution.source == "session":
+            print(_message("session_binding", key=key, plan_id=resolution.plan_id))
+        else:
+            print(_message("session_binding_none"))
+    else:
+        print(_message("session_binding_missing"))
+    if resolution is not None:
+        print(_message("effective_plan", plan_id=resolution.plan_id))
+        print(_message("plan_source", source=resolution.source))
+    if session_id:
+        key = planning_state.session_key(session_id)
+        lease_path = planning_state.session_lease_path(root, session_id)
+        print(f"session lease: {'active ' + key if lease_path.is_file() else 'missing ' + key}")
+    else:
+        print("session lease: unavailable (no session_id)")
+    task_line = _task_lease_line(root, resolution.plan_id if resolution is not None else workspace_plan, session_id)
+    if task_line:
+        print(task_line)
+
     if paths is None:
         print(_message("active_plan_missing"))
         print(_message("planning_files_missing"))
@@ -580,7 +729,7 @@ def status(root: Path) -> int:
     if phase:
         print(_message("current_phase", phase=phase))
 
-    counts = planning_state.phase_counts(root)
+    counts = planning_state.phase_counts(root, session_id=session_id)
     if counts is not None:
         total, complete, _in_progress, _pending = counts
         print(_message("phases", complete=complete, total=total))
@@ -595,7 +744,14 @@ def status(root: Path) -> int:
     return 0 if planning_ok and attestation_ok else 1
 
 
-def init(root: Path, name: str, legacy: bool = False, force: bool = False) -> int:
+def init(
+    root: Path,
+    name: str,
+    legacy: bool = False,
+    force: bool = False,
+    bind_session: bool = False,
+    workspace_active: bool = True,
+) -> int:
     if legacy:
         target = root
         label = _message("legacy_plan_label")
@@ -610,24 +766,104 @@ def init(root: Path, name: str, legacy: bool = False, force: bool = False) -> in
         print(_message("plan_already_exists", label=label, path=target))
         return 1
 
+    session_id = None
+    lease = None
+    if bind_session:
+        session_id = _current_session_id()
+        if not session_id:
+            print(_message("missing_session_id"))
+            return 1
+        lease, conflict = planning_state.claim_task_lease_for_rewrite(
+            root,
+            plan_id,
+            session_id,
+            source="plan.py init --bind-session",
+        )
+        if lease is None:
+            print(_message("task_lease_error", message=conflict))
+            return 1
+        if conflict:
+            status = planning_state.task_lease_status(lease)
+            print(
+                _message(
+                    "task_lease_conflict",
+                    owner=lease.owner_session_key,
+                    status=status,
+                    shared=str(lease.shared).lower(),
+                )
+            )
+            return 1
+
     target.mkdir(parents=True, exist_ok=True)
     (target / "task_plan.md").write_text(_task_plan_template(name), encoding="utf-8", newline="\n")
     (target / "progress.md").write_text(_progress_template(), encoding="utf-8", newline="\n")
     (target / "findings.md").write_text(_findings_template(), encoding="utf-8", newline="\n")
 
-    if not legacy:
+    if not legacy and workspace_active:
         active_file = root / ".planning" / ".active_plan"
         active_file.parent.mkdir(parents=True, exist_ok=True)
         active_file.write_text(plan_id, encoding="utf-8")
 
     print(_message("created", label=label, plan_id=plan_id))
     print(_message("path", path=target))
+    if bind_session:
+        assert session_id is not None
+        assert lease is not None
+        key = _write_session_binding(root, session_id, plan_id, "plan.py init --bind-session")
+        print(_message("session_binding_set", key=key, plan_id=plan_id))
+        status = planning_state.task_lease_status(lease)
+        print(
+            _message(
+                "task_lease",
+                owner=lease.owner_session_key,
+                status=status,
+                shared=str(lease.shared).lower(),
+            )
+        )
     return 0
 
 
-def switch(root: Path, plan_id: str | None) -> int:
+def switch(
+    root: Path,
+    plan_id: str | None,
+    session: bool = False,
+    workspace: bool = False,
+    clear_session: bool = False,
+    release_session: bool = False,
+    force_claim: bool = False,
+    share: bool = False,
+) -> int:
     plan_root = root / ".planning"
     active_file = plan_root / ".active_plan"
+
+    if release_session:
+        session_id = _current_session_id()
+        if not session_id:
+            print(_message("missing_session_id"))
+            return 1
+        key = planning_state.session_key(session_id)
+        bound_plan_id = _read_session_binding_plan_id(root, session_id)
+        lease = None
+        if bound_plan_id:
+            lease, conflict = planning_state.release_task_lease_for_session(root, bound_plan_id, session_id)
+            if lease is None and conflict:
+                print(_message("task_lease_error", message=conflict))
+                return 1
+        _clear_session_binding(root, session_id)
+        print(_message("session_released", key=key))
+        if bound_plan_id:
+            if lease and lease.owner_session_key == key:
+                print(_message("task_lease_released", key=key, plan_id=bound_plan_id))
+        return 0
+
+    if clear_session:
+        session_id = _current_session_id()
+        if not session_id:
+            print(_message("missing_session_id"))
+            return 1
+        key = _clear_session_binding(root, session_id)
+        print(_message("session_binding_cleared", key=key))
+        return 0
 
     if not plan_id:
         if active_file.is_file():
@@ -641,6 +877,47 @@ def switch(root: Path, plan_id: str | None) -> int:
     if not (plan_dir / "task_plan.md").is_file():
         print(_message("plan_dir_missing", path=plan_dir))
         return 1
+
+    if session:
+        session_id = _current_session_id()
+        if not session_id:
+            print(_message("missing_session_id"))
+            return 1
+        lease, conflict = planning_state.claim_task_lease(
+            root,
+            plan_id,
+            session_id,
+            force=force_claim,
+            share=share,
+            source="plan.py switch --session",
+        )
+        if lease is None:
+            print(_message("task_lease_error", message=conflict))
+            return 1
+        if conflict:
+            status = planning_state.task_lease_status(lease)
+            print(
+                _message(
+                    "task_lease_conflict",
+                    owner=lease.owner_session_key,
+                    status=status,
+                    shared=str(lease.shared).lower(),
+                )
+            )
+            return 1
+        key = _write_session_binding(root, session_id, plan_id, "plan.py switch --session")
+        print(_message("session_binding_set", key=key, plan_id=plan_id))
+        status = planning_state.task_lease_status(lease)
+        print(
+            _message(
+                "task_lease",
+                owner=lease.owner_session_key,
+                status=status,
+                shared=str(lease.shared).lower(),
+            )
+        )
+        print(_message("path", path=plan_dir))
+        return 0
 
     active_file.parent.mkdir(parents=True, exist_ok=True)
     active_file.write_text(plan_id, encoding="utf-8")
@@ -766,9 +1043,18 @@ def main(argv: Iterable[str] | None = None) -> int:
     init_parser.add_argument("name")
     init_parser.add_argument("--legacy", action="store_true", help=_help("legacy"))
     init_parser.add_argument("--force", action="store_true", help=_help("force"))
+    init_parser.add_argument("--bind-session", action="store_true")
+    init_parser.add_argument("--no-workspace-active", action="store_true")
 
     switch_parser = subparsers.add_parser("switch", help=_help("switch"))
     switch_parser.add_argument("plan_id", nargs="?")
+    switch_group = switch_parser.add_mutually_exclusive_group()
+    switch_group.add_argument("--session", action="store_true")
+    switch_group.add_argument("--workspace", action="store_true")
+    switch_group.add_argument("--clear-session", action="store_true")
+    switch_group.add_argument("--release-session", action="store_true")
+    switch_parser.add_argument("--force-claim", action="store_true")
+    switch_parser.add_argument("--share", action="store_true")
 
     attest_parser = subparsers.add_parser("attest", help=_help("attest"))
     attest_group = attest_parser.add_mutually_exclusive_group()
@@ -794,9 +1080,25 @@ def main(argv: Iterable[str] | None = None) -> int:
     if args.command == "status":
         return status(root)
     if args.command == "init":
-        return init(root, args.name, legacy=args.legacy, force=args.force)
+        return init(
+            root,
+            args.name,
+            legacy=args.legacy,
+            force=args.force,
+            bind_session=args.bind_session,
+            workspace_active=not args.no_workspace_active,
+        )
     if args.command == "switch":
-        return switch(root, args.plan_id)
+        return switch(
+            root,
+            args.plan_id,
+            session=args.session,
+            workspace=args.workspace,
+            clear_session=args.clear_session,
+            release_session=args.release_session,
+            force_claim=args.force_claim,
+            share=args.share,
+        )
     if args.command == "attest":
         return attest(root, show=args.show, clear=args.clear)
     if args.command == "capture":
