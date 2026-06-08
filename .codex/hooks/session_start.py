@@ -37,9 +37,13 @@ def main() -> None:
     if adapter.emit_session_denial_if_needed(root, session_id):
         return
 
-    planning_state.refresh_session_lease(root, session_id)
-    resolution = planning_state.resolve_planning_context(root, session_id=session_id)
-    planning_dir = resolution.paths.root if resolution is not None else None
+    access = planning_state.resolve_planning_access(root, session_id=session_id)
+    if not access.allowed:
+        if access.warning:
+            adapter.emit_json({"systemMessage": access.warning})
+        return
+
+    planning_dir = access.resolution.paths.root if access.resolution is not None else None
     parts = [
         _run_session_catchup(root, planning_dir),
         planning_state.render_prompt_context(root, session_id=session_id),
