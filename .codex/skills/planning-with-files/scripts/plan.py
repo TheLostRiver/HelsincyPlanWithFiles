@@ -32,6 +32,10 @@ REQUIRED_HOOK_ENTRYPOINTS = [
     ".codex/hooks/stop.py",
 ]
 DEFAULT_COMPACT_THRESHOLD = 100
+LEGACY_BIND_SESSION_UNSUPPORTED = (
+    "legacy plans do not support session binding; create a named .planning task "
+    "with plan.py init \"Task Name\" --bind-session instead."
+)
 CLI_MESSAGES = {
     "en": {
         "active_plan_missing": "active plan: missing",
@@ -752,6 +756,10 @@ def init(
     bind_session: bool = False,
     workspace_active: bool = True,
 ) -> int:
+    if legacy and bind_session:
+        print(LEGACY_BIND_SESSION_UNSUPPORTED)
+        return 1
+
     if legacy:
         target = root
         label = _message("legacy_plan_label")

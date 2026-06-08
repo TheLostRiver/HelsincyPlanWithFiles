@@ -271,6 +271,28 @@ class PlanCliTests(unittest.TestCase):
             self.assertTrue((root / "findings.md").is_file())
             self.assertIn("created legacy plan", result.stdout.lower())
 
+    def test_init_legacy_bind_session_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+
+            result = run_plan(
+                root,
+                "init",
+                "Legacy Bound",
+                "--legacy",
+                "--bind-session",
+                env={"PWF_SESSION_ID": "session-a"},
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("legacy plans do not support session binding", result.stdout)
+            self.assertFalse((root / "task_plan.md").exists())
+            self.assertFalse((root / "progress.md").exists())
+            self.assertFalse((root / "findings.md").exists())
+            self.assertFalse((root / ".planning" / "session-bindings" / f"{key}.json").exists())
+            self.assertFalse((root / ".planning" / "legacy" / ".task-lease.json").exists())
+
     def test_switch_sets_and_prints_active_plan(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
