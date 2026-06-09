@@ -220,6 +220,8 @@ python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --bind
 
 `--session` writes only `.planning/session-bindings/<session-key>.json`; it does not change `.planning/.active_plan`. The old `plan.py switch <plan-id>` behavior still switches the workspace active plan.
 
+For a lower-friction workflow, run `/pwf-tasks` first. It lists only tasks visible to the current session by default. Copy a short ID and run `/pwf-use <short-id>` to bind this conversation. Use `plan.py tasks --all` only for read-only diagnostics; crossing another session's ownership boundary still requires explicit `plan.py use <id> --claim` or `plan.py use <id> --share`.
+
 `--legacy` is only for root-level single-task compatibility mode and does not support session binding; `plan.py init "Task Name" --legacy --bind-session` is rejected. For multi-session isolation, use named `.planning/<plan-id>` tasks with `--bind-session`.
 
 If the workspace active task is already owned by another session, a new session will not automatically take it over, even when the owner is stale. Explicit claim, sharing, and release use:

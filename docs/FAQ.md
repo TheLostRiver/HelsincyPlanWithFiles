@@ -207,6 +207,17 @@ python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --sess
 python .codex\skills\planning-with-files\scripts\plan.py switch --release-session
 ```
 
+### 11b. 同一个项目里开了多个会话，我忘记当前会话能用哪个任务怎么办？
+
+先运行 `/pwf-tasks`。它默认只列出当前会话可见任务，并显示短 ID、绑定状态和 lease 状态。复制短 ID 后运行 `/pwf-use <short-id>`。终端备用命令是：
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py tasks
+python .codex\skills\planning-with-files\scripts\plan.py use <short-id>
+```
+
+如果你需要排查整个项目里的任务，运行 `plan.py tasks --all`。这个列表是诊断视图；默认 `/pwf-use` 不会因为你看到了其他会话任务就自动切过去。跨会话接管或共享必须显式使用 `plan.py use <id> --claim` 或 `plan.py use <id> --share`。
+
 ### 12. `progress.md` 越来越长怎么办？
 
 运行：
@@ -527,6 +538,17 @@ python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --sess
 python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session --share
 python .codex\skills\planning-with-files\scripts\plan.py switch --release-session
 ```
+
+### 11b. What if I forget which task this conversation can use?
+
+Run `/pwf-tasks` first. It lists only tasks visible to the current session by default, with short IDs, binding state, and lease state. Copy a short ID and run `/pwf-use <short-id>`. Terminal fallback:
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py tasks
+python .codex\skills\planning-with-files\scripts\plan.py use <short-id>
+```
+
+If you need to inspect every task in the project, run `plan.py tasks --all`. That is a read-only diagnostic view; `/pwf-use` will not automatically switch to another session's task just because it appeared in `--all`. Crossing session ownership still requires explicit `plan.py use <id> --claim` or `plan.py use <id> --share`.
 
 ### 12. What if `progress.md` gets too large?
 

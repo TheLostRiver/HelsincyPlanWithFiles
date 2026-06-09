@@ -100,6 +100,22 @@ class ProjectConsistencyTests(unittest.TestCase):
         self.assertIn("task ownership", changelog)
         self.assertIn("progress.md lock", changelog)
 
+    def test_docs_document_session_task_selection_commands(self):
+        readme_cn = read_text("README.md")
+        readme_en = read_text("README.en.md")
+        faq = read_text("docs/FAQ.md")
+
+        for text in (readme_cn, readme_en, faq):
+            self.assertIn("/pwf-tasks", text)
+            self.assertIn("/pwf-use", text)
+            self.assertIn("plan.py tasks", text)
+            self.assertIn("plan.py use", text)
+
+        self.assertIn("默认", readme_cn)
+        self.assertIn("当前会话", readme_cn)
+        self.assertIn("current session", readme_en)
+        self.assertIn("other session", readme_en)
+
     def test_legacy_resolver_scripts_delegate_to_python_resolver(self):
         shell_resolvers = [
             read_text(".codex/hooks/resolve-plan-dir.sh"),
