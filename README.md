@@ -218,6 +218,8 @@ python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --bind
 
 `--session` 只写 `.planning/session-bindings/<session-key>.json`，不会修改 `.planning/.active_plan`。旧的 `plan.py switch <plan-id>` 仍然切换 workspace active plan。
 
+`--legacy` 只用于根目录单任务兼容模式，不支持 session binding；`plan.py init "Task Name" --legacy --bind-session` 会被拒绝。需要多会话隔离时，请使用 `.planning/<plan-id>` 命名任务和 `--bind-session`。
+
 如果 workspace active task 已经由另一个 session 拥有，新的 session 不会自动接管；即使 owner 已经 stale，也必须显式选择。接管、共享和释放当前会话分别使用：
 
 ```powershell

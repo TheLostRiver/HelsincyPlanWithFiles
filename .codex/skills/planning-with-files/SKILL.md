@@ -121,6 +121,8 @@ python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --bind
 
 `--session` writes only `.planning/session-bindings/<session-key>.json`; it does not change `.planning/.active_plan`. Plain `plan.py switch <plan-id>` still changes the workspace active plan.
 
+`--legacy` is only for root-level single-task compatibility mode and does not support session binding; `plan.py init "Task Name" --legacy --bind-session` is rejected. For multi-session isolation, use named `.planning/<plan-id>` tasks with `--bind-session`.
+
 Task ownership is separate from routing. If another session owns a task, a new session must not automatically take it over, even if the owner is stale. Use explicit commands:
 
 ```powershell

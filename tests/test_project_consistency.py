@@ -90,6 +90,7 @@ class ProjectConsistencyTests(unittest.TestCase):
             self.assertIn("--share", text)
             self.assertIn("--release-session", text)
             self.assertIn('plan.py init "Task Name" --bind-session', text)
+            self.assertIn("--legacy --bind-session", text)
             self.assertIn("PWF_STRICT_REQUIRES_BINDING=1", text)
             self.assertIn("Session", text)
             self.assertIn("Plan-Source", text)
@@ -98,6 +99,30 @@ class ProjectConsistencyTests(unittest.TestCase):
         self.assertIn("session binding", changelog)
         self.assertIn("task ownership", changelog)
         self.assertIn("progress.md lock", changelog)
+
+    def test_legacy_resolver_scripts_delegate_to_python_resolver(self):
+        shell_resolvers = [
+            read_text(".codex/hooks/resolve-plan-dir.sh"),
+            read_text(".codex/skills/planning-with-files/scripts/resolve-plan-dir.sh"),
+        ]
+        powershell_resolver = read_text(".codex/skills/planning-with-files/scripts/resolve-plan-dir.ps1")
+
+        for resolver in shell_resolvers:
+            self.assertIn("plan.py", resolver)
+            self.assertIn("status", resolver)
+            self.assertIn("PYTHON_BIN=", resolver)
+            self.assertIn("command -v python3", resolver)
+            self.assertIn("command -v python", resolver)
+            self.assertIn("PWF_LANG=''", resolver)
+            self.assertIn("^path: ", resolver)
+            self.assertNotIn("ACTIVE_FILE=", resolver)
+            self.assertNotIn("resolve_from_active_file", resolver)
+
+        self.assertIn("plan.py", powershell_resolver)
+        self.assertIn("status", powershell_resolver)
+        self.assertIn('$env:PWF_LANG = ""', powershell_resolver)
+        self.assertIn("path: *", powershell_resolver)
+        self.assertNotIn("$activeFile", powershell_resolver)
 
     def test_hooks_json_references_existing_hook_files(self):
         hooks = json.loads(read_text(".codex/hooks.json"))

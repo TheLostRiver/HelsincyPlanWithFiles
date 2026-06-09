@@ -785,6 +785,68 @@ class HookTests(unittest.TestCase):
             self.assertIn("owned by another session", json.loads(post.stdout)["systemMessage"])
             self.assertNotIn("src/conflict.py", (plan_dir / "progress.md").read_text(encoding="utf-8"))
 
+    def test_session_start_blocks_catchup_when_workspace_task_owned_by_other_session(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_id = "2026-06-08-owned"
+            plan_dir = root / ".planning" / plan_id
+            write_plan(plan_dir)
+            (root / ".planning" / ".active_plan").write_text(plan_id + "\n", encoding="utf-8")
+            owner_key = self.write_task_lease(root, plan_id, "session-a")
+
+            sessions_dir = root / ".codex" / "sessions"
+            sessions_dir.mkdir(parents=True)
+            session_file = sessions_dir / "rollout-owned-session.jsonl"
+            records = [
+                {
+                    "type": "session_meta",
+                    "payload": {
+                        "cwd": str(root),
+                        "timestamp": "2026-06-08T10:00:00Z",
+                    },
+                },
+                {
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "patch_apply_end",
+                        "success": True,
+                        "changes": {str(plan_dir / "progress.md"): {"type": "update"}},
+                    },
+                },
+                {
+                    "type": "response_item",
+                    "payload": {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": "SESSION A PRIVATE CATCHUP CONTENT",
+                            }
+                        ],
+                    },
+                },
+            ]
+            session_file.write_text(
+                "\n".join(json.dumps(record) for record in records) + "\n" + ("x" * 6000),
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "session_start.py",
+                root,
+                {"hook_event_name": "SessionStart", "source": "startup", "session_id": "session-b"},
+                env={"CODEX_SESSIONS_DIR": str(sessions_dir)},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertIn("systemMessage", payload)
+            self.assertIn("owned by another session", payload["systemMessage"])
+            self.assertIn(owner_key, payload["systemMessage"])
+            self.assertNotIn("SESSION CATCHUP DETECTED", result.stdout)
+            self.assertNotIn("SESSION A PRIVATE CATCHUP CONTENT", result.stdout)
+
     def test_stale_owner_still_blocks_workspace_takeover(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

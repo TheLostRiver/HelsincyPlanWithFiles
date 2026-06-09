@@ -32,6 +32,10 @@ REQUIRED_HOOK_ENTRYPOINTS = [
     ".codex/hooks/stop.py",
 ]
 DEFAULT_COMPACT_THRESHOLD = 100
+LEGACY_BIND_SESSION_UNSUPPORTED = (
+    "legacy plans do not support session binding; create a named .planning task "
+    "with plan.py init \"Task Name\" --bind-session instead."
+)
 CLI_MESSAGES = {
     "en": {
         "active_plan_missing": "active plan: missing",
@@ -752,6 +756,10 @@ def init(
     bind_session: bool = False,
     workspace_active: bool = True,
 ) -> int:
+    if legacy and bind_session:
+        print(LEGACY_BIND_SESSION_UNSUPPORTED)
+        return 1
+
     if legacy:
         target = root
         label = _message("legacy_plan_label")
@@ -931,7 +939,8 @@ def _sha256(path: Path) -> str:
 
 
 def attest(root: Path, show: bool = False, clear: bool = False) -> int:
-    paths = planning_state.planning_paths(root)
+    session_id = _current_session_id()
+    paths = planning_state.planning_paths(root, session_id=session_id)
     if paths is None:
         print(_message("attestation_no_plan"))
         return 1
@@ -964,7 +973,8 @@ def attest(root: Path, show: bool = False, clear: bool = False) -> int:
 
 
 def capture(root: Path, kind: str, source: str, summary: str, trust: str = "untrusted") -> int:
-    paths = planning_state.planning_paths(root)
+    session_id = _current_session_id()
+    paths = planning_state.planning_paths(root, session_id=session_id)
     if paths is None:
         print(_message("capture_no_plan"))
         return 1
@@ -994,7 +1004,8 @@ def capture(root: Path, kind: str, source: str, summary: str, trust: str = "untr
 
 
 def compact(root: Path, keep_records: int = 30, dry_run: bool = False, archive: str = "progress.archive.md") -> int:
-    paths = planning_state.planning_paths(root)
+    session_id = _current_session_id()
+    paths = planning_state.planning_paths(root, session_id=session_id)
     if paths is None:
         print(_message("compact_no_plan"))
         return 1
