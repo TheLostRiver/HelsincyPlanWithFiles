@@ -2,11 +2,17 @@
 
 [简体中文](README.md) | [English](README.en.md)
 
-Helsincy Plan With Files 给 Codex 增加了一套基于项目文件的工作记忆。它把计划、研究发现和执行进度写进本地 planning 文件，并通过 hook 在合适的时机注入上下文、记录文件变更，让长任务不再只依赖当前聊天窗口里的上下文。
+Helsincy Plan With Files 是给 Codex 准备的“任务记忆本”。
+
+当你让 Codex 做一个很长的任务时，它可能会遇到几种麻烦：聊着聊着上下文变短、换了一个新会话后忘了做到哪一步、多个会话同时操作同一个项目时把进度写混。这个工具会在你的项目里保存任务计划、重要发现和执行进度，让 Codex 可以像翻自己的工作笔记一样找回状态。
+
+如果你只是问一个很短的问题，通常不需要它。如果你要让 Codex 分几步完成一个任务、改多个文件、跨几次会话继续做，或者同一个项目里开了多个 Codex 会话，它就很有用。
+
+第一次使用建议先看这篇通俗说明：[普通用户使用指南](docs/USER_GUIDE.zh-CN.md)。
 
 ## 这是什么？
 
-这是一个用于 Codex 的项目本地 skill + hook 工具。安装后，你的项目会获得一组 `/pwf-*` 命令、Codex hooks 和本地 planning 文件：
+这是一个安装在项目里的 Codex 辅助工具。安装后，你的项目会多出一组 `/pwf-*` 命令，以及一个 `.planning/` 文件夹。Codex 会把当前任务的“要做什么、发现了什么、已经做了什么”写进去：
 
 ```text
 .planning/<plan-id>/task_plan.md
@@ -14,7 +20,11 @@ Helsincy Plan With Files 给 Codex 增加了一套基于项目文件的工作记
 .planning/<plan-id>/progress.md
 ```
 
-这三个文件分别保存任务计划、研究发现和执行记录。Codex 每次开始会话、收到用户提示、调用工具或准备停止时，都可以根据这些文件恢复当前任务状态。
+- `task_plan.md`：任务清单，记录目标、阶段和完成情况。
+- `findings.md`：发现笔记，记录调查结果、重要判断和外部资料摘要。
+- `progress.md`：进度日志，记录 Codex 做过什么、改过哪些文件、跑过哪些测试。
+
+你不需要一开始就理解所有内部机制。日常使用时，记住三个命令就够了：`/pwf-doctor` 检查安装，`/pwf-init` 开始任务，`/pwf-status` 查看当前状态。
 
 ## 它解决什么问题？
 
@@ -60,14 +70,15 @@ Helsincy Plan With Files 把这些易丢失的信息落到项目文件里，让�
 
 ## 版本
 
-当前版本：`0.2.3`。变更记录见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本：`0.2.4`。变更记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 重要：请不要再使用 `v0.1.0` 或更早版本。旧版本包含错误的 `/plw-*` 命令前缀，并且曾经引入过全局 prompts 安装路线，容易造成迁移和卸载混乱。请升级到当前版本并使用 `/pwf-*` 命令。
 
 ## 用户文档
 
+- [普通用户使用指南](docs/USER_GUIDE.zh-CN.md)：用通俗语言说明这个工具是干什么的、什么时候用、怎么开始、怎么继续任务，以及多个会话怎么避免写混。
 - [FAQ](docs/FAQ.md)：面向普通用户的常见问题，覆盖安装、命令不可见、上下文压缩、session policy、progress compaction、attestation 和中文模式。
-- [v0.2.3 Release Notes](docs/RELEASE_NOTES_0.2.3.md)：本次发布的中英双语说明，可直接用于 GitHub Release。
+- [v0.2.4 Release Notes](docs/RELEASE_NOTES_0.2.4.md)：本次发布的中英双语说明，可直接用于 GitHub Release。
 - [CHANGELOG.md](CHANGELOG.md)：完整版本变更记录。
 
 ## 中文模式
@@ -96,12 +107,12 @@ $env:PWF_LANG="en"
 
 ## 安装
 
-推荐普通用户从 Release 下载 `HelsincyPlanWithFiles-v0.2.3-codex.zip`。这个包只包含安装到项目所需的 `.codex/`、hooks、`/pwf-*` commands 和基础文档。
+推荐普通用户从 Release 下载 `HelsincyPlanWithFiles-v0.2.4-codex.zip`。这个包只包含安装到项目所需的 `.codex/`、hooks、`/pwf-*` commands 和基础文档。
 
 ### 方式 A：从 Release 下载
 
 1. 打开 [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest)。
-2. 下载 `HelsincyPlanWithFiles-v0.2.3-codex.zip`。
+2. 下载 `HelsincyPlanWithFiles-v0.2.4-codex.zip`。
 3. 解压后，把里面的 `.codex/` 复制到你的项目根目录。
 4. 重启 Codex，第一次提示信任 hook 时选择批准。
 5. 在 Codex 中运行 `/pwf-doctor` 检查安装状态。

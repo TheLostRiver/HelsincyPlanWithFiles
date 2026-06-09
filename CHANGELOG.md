@@ -2,8 +2,20 @@
 
 ## Unreleased
 
+## 0.2.4 - 2026-06-10
+
 - 中文：新增 `/pwf-tasks` 和 `/pwf-use`，可用短 ID 查看并绑定当前会话可见任务；默认不显示其他会话独占任务。
+- 中文：`plan.py tasks --all` 提供只读诊断视图，跨会话接管或共享仍必须显式使用 `plan.py use <selector> --claim` 或 `--share`，继续遵守 workspace/strict 与 task lease 安全边界。
+- 中文：CLI 会话识别新增 `CODEX_THREAD_ID` fallback，减少普通 Codex 会话手动设置 `PWF_SESSION_ID` 的需要。
+- 中文：修复同一输出集合内短 ID 完全碰撞时无法复制即用的问题；碰撞的短 ID 会自动扩展到 8/10/12 位。
+- 中文：新增面向普通用户的中文使用指南，并改写 README 开头，让用户先理解“任务记忆本”的用途，再进入高级配置。
+- 中文：更新 FAQ、README 和 release notes，说明 `/pwf-tasks`、`/pwf-use`、上下文压缩后恢复任务时的选择方式，以及推荐 `v0.2.4` 安装包。
 - English: Added `/pwf-tasks` and `/pwf-use` for short-ID based current-session task selection; other sessions' exclusive tasks stay hidden by default.
+- English: Added `plan.py tasks --all` as a read-only diagnostic view. Cross-session takeover or sharing still requires explicit `plan.py use <selector> --claim` or `--share`, preserving workspace/strict and task lease safety boundaries.
+- English: Added `CODEX_THREAD_ID` fallback for CLI session detection, reducing the need to set `PWF_SESSION_ID` manually in ordinary Codex sessions.
+- English: Fixed fully colliding short IDs within the same output set by expanding colliding IDs to 8/10/12 characters so copied IDs remain usable.
+- English: Added a Chinese plain-language user guide and rewrote the README opening so users understand the "task notebook" purpose before advanced configuration.
+- English: Updated the FAQ, READMEs, and release notes for `/pwf-tasks`, `/pwf-use`, task recovery after context compaction, and the recommended `v0.2.4` package.
 
 ## 0.2.3 - 2026-06-09
 

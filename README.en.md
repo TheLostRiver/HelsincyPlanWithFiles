@@ -2,11 +2,17 @@
 
 [简体中文](README.md) | [English](README.en.md)
 
-Helsincy Plan With Files gives Codex a project-local working memory based on files. It stores plans, research findings, and execution progress in local planning files, then uses hooks to inject that context and record file changes at the right moments, so long-running work is not trapped inside the current chat context.
+Helsincy Plan With Files gives Codex a project-local task notebook.
+
+When a Codex task gets long, the chat can lose early context, a later session may not remember where the work stopped, and multiple Codex conversations in the same project can accidentally mix their progress. This tool stores the task plan, useful findings, and progress log in project files so Codex can recover the work state instead of relying only on the current chat window.
+
+For a short one-off question, you probably do not need it. For multi-step work, multi-file edits, session recovery, or several Codex conversations in the same project, it helps keep the work organized and safer.
+
+A plain-language user guide is currently available in Chinese: [普通用户使用指南](docs/USER_GUIDE.zh-CN.md).
 
 ## What Is This?
 
-This is a project-local skill + hook tool for Codex. After installation, your project gets `/pwf-*` commands, Codex hooks, and local planning files:
+This is a Codex helper installed inside a project. After installation, the project gets `/pwf-*` commands and a `.planning/` folder. Codex stores what the task is, what it has learned, and what it has already done:
 
 ```text
 .planning/<plan-id>/task_plan.md
@@ -14,7 +20,11 @@ This is a project-local skill + hook tool for Codex. After installation, your pr
 .planning/<plan-id>/progress.md
 ```
 
-These files store the task plan, research findings, and execution records. When Codex starts a session, receives a user prompt, uses tools, or prepares to stop, the hooks can use these files to recover the current task state.
+- `task_plan.md`: the task checklist, goal, phases, and completion state.
+- `findings.md`: notes for discoveries, decisions, and external context summaries.
+- `progress.md`: the progress log, including what Codex did, which files changed, and which tests ran.
+
+For daily use, the first commands to remember are `/pwf-doctor` to check installation, `/pwf-init` to start a task, and `/pwf-status` to see the current state.
 
 ## What Problem Does It Solve?
 
@@ -60,14 +70,15 @@ The value is not simply creating a few `.md` files. The value is giving Codex a 
 
 ## Version
 
-Current version: `0.2.3`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current version: `0.2.4`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 Important: please do not use `v0.1.0` or earlier anymore. Older versions include the incorrect `/plw-*` command prefix and briefly introduced a global prompts installation route, which can make migration and uninstall confusing. Upgrade to the current version and use `/pwf-*` commands instead.
 
 ## User Documentation
 
+- [普通用户使用指南](docs/USER_GUIDE.zh-CN.md): Chinese plain-language guide for what this tool does, when to use it, how to start, how to continue tasks, and how to avoid mixed progress with multiple sessions.
 - [FAQ](docs/FAQ.md): user-facing answers for installation, missing commands, context compaction, session policy, progress compaction, attestation, and Chinese mode.
-- [v0.2.3 Release Notes](docs/RELEASE_NOTES_0.2.3.md): bilingual release notes ready to reuse on GitHub Releases.
+- [v0.2.4 Release Notes](docs/RELEASE_NOTES_0.2.4.md): bilingual release notes ready to reuse on GitHub Releases.
 - [CHANGELOG.md](CHANGELOG.md): complete version history.
 
 ## Chinese Mode
@@ -96,12 +107,12 @@ Other `PWF_LANG` values fall back to English; `plan.py doctor` reports `language
 
 ## Installation
 
-For regular users, download `HelsincyPlanWithFiles-v0.2.3-codex.zip` from the release page. This package contains only the project-local `.codex/`, hooks, `/pwf-*` commands, and basic docs needed for installation.
+For regular users, download `HelsincyPlanWithFiles-v0.2.4-codex.zip` from the release page. This package contains only the project-local `.codex/`, hooks, `/pwf-*` commands, and basic docs needed for installation.
 
 ### Option A: Download From Release
 
 1. Open the [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest).
-2. Download `HelsincyPlanWithFiles-v0.2.3-codex.zip`.
+2. Download `HelsincyPlanWithFiles-v0.2.4-codex.zip`.
 3. Unzip it and copy the `.codex/` directory into your target project root.
 4. Restart Codex and approve the hooks when Codex asks for trust.
 5. Run `/pwf-doctor` in Codex to check the installation.
