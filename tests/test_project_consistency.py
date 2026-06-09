@@ -100,6 +100,23 @@ class ProjectConsistencyTests(unittest.TestCase):
         self.assertIn("task ownership", changelog)
         self.assertIn("progress.md lock", changelog)
 
+    def test_docs_document_session_task_selection_commands(self):
+        readme_cn = read_text("README.md")
+        readme_en = read_text("README.en.md")
+        faq = read_text("docs/FAQ.md")
+
+        for text in (readme_cn, readme_en, faq):
+            self.assertIn("/pwf-tasks", text)
+            self.assertIn("/pwf-use", text)
+            self.assertIn("plan.py tasks", text)
+            self.assertIn("plan.py use", text)
+
+        self.assertIn("当前会话可见的 PWF 任务和短 ID；默认不显示其他会话任务", readme_cn)
+        self.assertIn("用 `/pwf-tasks` 显示的短 ID 或 plan id 绑定当前会话", readme_cn)
+        self.assertIn("visible to the current session with short IDs", readme_en)
+        self.assertIn("other sessions' exclusive tasks are hidden by default", readme_en)
+        self.assertIn("Bind the current session using a short ID or plan id shown by `/pwf-tasks`", readme_en)
+
     def test_legacy_resolver_scripts_delegate_to_python_resolver(self):
         shell_resolvers = [
             read_text(".codex/hooks/resolve-plan-dir.sh"),

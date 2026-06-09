@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- 中文：新增 `/pwf-tasks` 和 `/pwf-use`，可用短 ID 查看并绑定当前会话可见任务；默认不显示其他会话独占任务。
+- English: Added `/pwf-tasks` and `/pwf-use` for short-ID based current-session task selection; other sessions' exclusive tasks stay hidden by default.
+
 ## 0.2.3 - 2026-06-09
 
 - 中文：新增 session binding，支持同一项目多个 Codex 对话分别绑定不同 PWF 任务；`plan.py switch <plan-id> --session` 不修改 workspace active plan。

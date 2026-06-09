@@ -143,6 +143,8 @@ The first batch uses the `/pwf-XXX` naming pattern. `pwf` means planning with fi
 | `/pwf-init` | Create a new planning task | `plan.py init <task name>` |
 | `/pwf-status` | Show the current active plan status | `plan.py status` |
 | `/pwf-switch` | Show or switch the active plan | `plan.py switch [plan-id]` |
+| `/pwf-tasks` | List PWF tasks visible to the current session with short IDs; other sessions' exclusive tasks are hidden by default | `plan.py tasks` |
+| `/pwf-use` | Bind the current session using a short ID or plan id shown by `/pwf-tasks` | `plan.py use <id>` |
 | `/pwf-attest` | Create, show, or clear plan hash attestation | `plan.py attest [--show or --clear]` |
 | `/pwf-capture` | Save web, browser, image, PDF, file, or note context to `findings.md` | `plan.py capture ...` |
 | `/pwf-compact` | Archive old auto records and keep `progress.md` small | `plan.py compact` |
@@ -217,6 +219,8 @@ python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --bind
 ```
 
 `--session` writes only `.planning/session-bindings/<session-key>.json`; it does not change `.planning/.active_plan`. The old `plan.py switch <plan-id>` behavior still switches the workspace active plan.
+
+For a lower-friction workflow, run `/pwf-tasks` first. It lists only tasks visible to the current session by default. Copy a short ID and run `/pwf-use <short-id>` to bind this conversation. Use `plan.py tasks --all` only for read-only diagnostics; crossing another session's ownership boundary still requires explicit `plan.py use <id> --claim` or `plan.py use <id> --share`.
 
 `--legacy` is only for root-level single-task compatibility mode and does not support session binding; `plan.py init "Task Name" --legacy --bind-session` is rejected. For multi-session isolation, use named `.planning/<plan-id>` tasks with `--bind-session`.
 
