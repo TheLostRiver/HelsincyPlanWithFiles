@@ -11,7 +11,11 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 ROOT_DIR="$(CDPATH= cd -- "${SCRIPT_DIR}/../../../.." && pwd)"
 PLAN_CLI="${ROOT_DIR}/.codex/skills/planning-with-files/scripts/plan.py"
 
-PWF_LANG= python "${PLAN_CLI}" --root "${ROOT_DIR}" status 2>/dev/null \
+PYTHON_BIN="$(command -v python3 2>/dev/null || command -v python 2>/dev/null || true)"
+# Preserve the legacy resolver contract: no Python means no resolved plan path.
+[ -n "${PYTHON_BIN}" ] || exit 0
+
+PWF_LANG='' "${PYTHON_BIN}" "${PLAN_CLI}" --root "${ROOT_DIR}" status \
     | sed -n 's/^path: //p' \
     | head -n 1
 

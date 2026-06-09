@@ -110,11 +110,18 @@ class ProjectConsistencyTests(unittest.TestCase):
         for resolver in shell_resolvers:
             self.assertIn("plan.py", resolver)
             self.assertIn("status", resolver)
+            self.assertIn("PYTHON_BIN=", resolver)
+            self.assertIn("command -v python3", resolver)
+            self.assertIn("command -v python", resolver)
+            self.assertIn("PWF_LANG=''", resolver)
+            self.assertIn("^path: ", resolver)
             self.assertNotIn("ACTIVE_FILE=", resolver)
             self.assertNotIn("resolve_from_active_file", resolver)
 
         self.assertIn("plan.py", powershell_resolver)
         self.assertIn("status", powershell_resolver)
+        self.assertIn('$env:PWF_LANG = ""', powershell_resolver)
+        self.assertIn("path: *", powershell_resolver)
         self.assertNotIn("$activeFile", powershell_resolver)
 
     def test_hooks_json_references_existing_hook_files(self):
