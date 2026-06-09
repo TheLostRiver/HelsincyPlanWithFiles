@@ -7,6 +7,7 @@ import json
 import os
 import re
 import sys
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -36,6 +37,25 @@ LEGACY_BIND_SESSION_UNSUPPORTED = (
     "legacy plans do not support session binding; create a named .planning task "
     "with plan.py init \"Task Name\" --bind-session instead."
 )
+
+
+@dataclass(frozen=True)
+class TaskSummary:
+    plan_id: str
+    path: Path
+    short_id: str
+    title: str
+    current_phase: str | None
+    phase_counts: tuple[int, int, int, int] | None
+    workspace_active: bool
+    session_bound: bool
+    lease_owner: str | None
+    lease_status: str
+    shared: bool
+    visible: bool
+    reason: str
+
+
 CLI_MESSAGES = {
     "en": {
         "active_plan_missing": "active plan: missing",
@@ -391,6 +411,137 @@ def _current_phase(paths: planning_state.PlanningPaths) -> str | None:
                 return candidate
         return None
     return None
+
+
+def _paths_for_plan_dir(plan_dir: Path) -> planning_state.PlanningPaths:
+    return planning_state.PlanningPaths(
+        root=plan_dir,
+        task_plan=plan_dir / "task_plan.md",
+        progress=plan_dir / "progress.md",
+        findings=plan_dir / "findings.md",
+    )
+
+
+def _iter_plan_ids(root: Path) -> list[str]:
+    planning_root = root / ".planning"
+    if not planning_root.is_dir():
+        return []
+    plan_ids = []
+    for child in planning_root.iterdir():
+        if not child.is_dir():
+            continue
+        if not planning_state.valid_plan_id(child.name):
+            continue
+        if (child / "task_plan.md").is_file():
+            plan_ids.append(child.name)
+    return sorted(plan_ids)
+
+
+def _task_title(plan_dir: Path) -> str:
+    task_plan = plan_dir / "task_plan.md"
+    if not task_plan.is_file():
+        return ""
+    for line in task_plan.read_text(encoding="utf-8", errors="replace").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("# Task Plan:"):
+            return stripped.removeprefix("# Task Plan:").strip()
+        if stripped.startswith("# "):
+            return stripped[2:].strip()
+    return ""
+
+
+def _phase_counts_for_plan_dir(plan_dir: Path) -> tuple[int, int, int, int] | None:
+    task_plan = plan_dir / "task_plan.md"
+    if not task_plan.is_file():
+        return None
+    text = task_plan.read_text(encoding="utf-8", errors="replace")
+    total = len(re.findall(r"^### Phase", text, flags=re.MULTILINE))
+    complete = text.count("**Status:** complete")
+    in_progress = text.count("**Status:** in_progress")
+    pending = text.count("**Status:** pending")
+
+    if complete == 0 and in_progress == 0 and pending == 0:
+        complete = text.count("[complete]")
+        in_progress = text.count("[in_progress]")
+        pending = text.count("[pending]")
+
+    return total, complete, in_progress, pending
+
+
+def _task_short_id(plan_id: str, length: int = 6) -> str:
+    return hashlib.sha256(plan_id.encode("utf-8")).hexdigest()[:length]
+
+
+def _task_summaries(root: Path, include_all: bool = False, session_id: str | None = None) -> list[TaskSummary]:
+    current_key = planning_state.session_key(session_id) if session_id else None
+    bound_plan = _read_session_binding_plan_id(root, session_id) if session_id else None
+    workspace_plan = _workspace_active_plan_id(root)
+    summaries: list[TaskSummary] = []
+    for plan_id in _iter_plan_ids(root):
+        plan_dir = root / ".planning" / plan_id
+        lease = planning_state.read_task_lease(root, plan_id)
+        status = planning_state.task_lease_status(lease) if lease else "none"
+        owner = lease.owner_session_key if lease else None
+        shared = bool(lease.shared) if lease else False
+        session_bound = plan_id == bound_plan
+        workspace_active = plan_id == workspace_plan
+        visible = False
+        reason = "unowned"
+
+        if session_bound:
+            visible = True
+            reason = "session-bound"
+        elif lease is None:
+            visible = False
+            reason = "unowned"
+        elif current_key and owner == current_key:
+            visible = True
+            reason = "owned-by-current-session"
+        elif shared:
+            visible = session_bound
+            reason = "shared" if visible else "shared-not-joined"
+        elif status == "released":
+            visible = session_bound
+            reason = "released" if visible else "released-not-bound"
+        else:
+            reason = "stale-owner" if status == "stale" else "owned-by-other-session"
+
+        summary = TaskSummary(
+            plan_id=plan_id,
+            path=plan_dir,
+            short_id=_task_short_id(plan_id),
+            title=_task_title(plan_dir),
+            current_phase=_current_phase(_paths_for_plan_dir(plan_dir)),
+            phase_counts=_phase_counts_for_plan_dir(plan_dir),
+            workspace_active=workspace_active,
+            session_bound=session_bound,
+            lease_owner=owner,
+            lease_status=status,
+            shared=shared,
+            visible=visible,
+            reason=reason,
+        )
+        if include_all or summary.visible:
+            summaries.append(summary)
+    return summaries
+
+
+def _task_summary_to_json(summary: TaskSummary) -> dict[str, object]:
+    return {
+        "plan_id": summary.plan_id,
+        "path": str(summary.path),
+        "short_id": summary.short_id,
+        "title": summary.title,
+        "current_phase": summary.current_phase,
+        "phase_counts": summary.phase_counts,
+        "workspace_active": summary.workspace_active,
+        "session_bound": summary.session_bound,
+        "lease_owner": summary.lease_owner,
+        "lease_status": summary.lease_status,
+        "shared": summary.shared,
+        "visible": summary.visible,
+        "reason": summary.reason,
+    }
 
 
 def _compact_threshold() -> int:
@@ -752,6 +903,30 @@ def status(root: Path) -> int:
     return 0 if planning_ok and attestation_ok else 1
 
 
+def tasks(root: Path, include_all: bool = False, as_json: bool = False) -> int:
+    session_id = _current_session_id()
+    summaries = _task_summaries(root, include_all=include_all, session_id=session_id)
+    if as_json:
+        print(json.dumps([_task_summary_to_json(summary) for summary in summaries], ensure_ascii=True, indent=2))
+        return 0
+    if not summaries:
+        print("tasks: none visible for current session")
+        return 0
+    for summary in summaries:
+        markers = []
+        if summary.session_bound:
+            markers.append("session-bound")
+        if summary.workspace_active:
+            markers.append("workspace-active")
+        markers.append(summary.reason)
+        if summary.lease_owner:
+            markers.append(f"owner={summary.lease_owner}")
+        marker_text = ", ".join(markers)
+        title = f" {summary.title}" if summary.title else ""
+        print(f"{summary.short_id}  {summary.plan_id}{title} [{marker_text}]")
+    return 0
+
+
 def init(
     root: Path,
     name: str,
@@ -1071,6 +1246,10 @@ def main(argv: Iterable[str] | None = None) -> int:
     switch_parser.add_argument("--force-claim", action="store_true")
     switch_parser.add_argument("--share", action="store_true")
 
+    tasks_parser = subparsers.add_parser("tasks", help="List PWF tasks visible to the current session")
+    tasks_parser.add_argument("--all", action="store_true")
+    tasks_parser.add_argument("--json", action="store_true")
+
     attest_parser = subparsers.add_parser("attest", help=_help("attest"))
     attest_group = attest_parser.add_mutually_exclusive_group()
     attest_group.add_argument("--show", action="store_true")
@@ -1114,6 +1293,8 @@ def main(argv: Iterable[str] | None = None) -> int:
             force_claim=args.force_claim,
             share=args.share,
         )
+    if args.command == "tasks":
+        return tasks(root, include_all=args.all, as_json=args.json)
     if args.command == "attest":
         return attest(root, show=args.show, clear=args.clear)
     if args.command == "capture":
