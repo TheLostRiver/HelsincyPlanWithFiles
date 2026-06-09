@@ -143,6 +143,8 @@ Copy-Item -Recurse -Force .\HelsincyPlanWithFiles\.codex .\your-project\
 | `/pwf-init` | 创建新的 planning 任务 | `plan.py init <task name>` |
 | `/pwf-status` | 查看当前 active plan 状态 | `plan.py status` |
 | `/pwf-switch` | 查看或切换 active plan | `plan.py switch [plan-id]` |
+| `/pwf-tasks` | 列出当前会话可见的 PWF 任务和短 ID；默认不显示其他会话任务 | `plan.py tasks` |
+| `/pwf-use` | 用 `/pwf-tasks` 显示的短 ID 或 plan id 绑定当前会话 | `plan.py use <id>` |
 | `/pwf-attest` | 创建、查看或清除计划 hash attestation | `plan.py attest [--show or --clear]` |
 | `/pwf-capture` | 把网页、浏览器、图片、PDF、文件或笔记上下文写入 `findings.md` | `plan.py capture ...` |
 | `/pwf-compact` | 归档旧 auto records 并缩短 `progress.md` | `plan.py compact` |

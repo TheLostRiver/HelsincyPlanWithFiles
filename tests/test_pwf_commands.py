@@ -15,6 +15,8 @@ COMMANDS = {
     "pwf-init": "init",
     "pwf-status": "status",
     "pwf-switch": "switch",
+    "pwf-tasks": "tasks",
+    "pwf-use": "use",
     "pwf-attest": "attest",
     "pwf-capture": "capture",
     "pwf-compact": "compact",

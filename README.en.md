@@ -143,6 +143,8 @@ The first batch uses the `/pwf-XXX` naming pattern. `pwf` means planning with fi
 | `/pwf-init` | Create a new planning task | `plan.py init <task name>` |
 | `/pwf-status` | Show the current active plan status | `plan.py status` |
 | `/pwf-switch` | Show or switch the active plan | `plan.py switch [plan-id]` |
+| `/pwf-tasks` | List PWF tasks visible to the current session with short IDs; other sessions' exclusive tasks are hidden by default | `plan.py tasks` |
+| `/pwf-use` | Bind the current session using a short ID or plan id shown by `/pwf-tasks` | `plan.py use <id>` |
 | `/pwf-attest` | Create, show, or clear plan hash attestation | `plan.py attest [--show or --clear]` |
 | `/pwf-capture` | Save web, browser, image, PDF, file, or note context to `findings.md` | `plan.py capture ...` |
 | `/pwf-compact` | Archive old auto records and keep `progress.md` small | `plan.py compact` |
