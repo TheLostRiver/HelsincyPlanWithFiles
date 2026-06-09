@@ -885,6 +885,47 @@ class PlanCliTests(unittest.TestCase):
             self.assertEqual(payload[0]["plan_id"], plan_id)
             self.assertEqual(payload[0]["reason"], "owned-by-current-session")
 
+    def test_tasks_expands_short_ids_when_visible_tasks_collide(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_ids = [
+                "2026-06-09-short-collision-4230",
+                "2026-06-09-short-collision-5295",
+            ]
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            for plan_id in plan_ids:
+                self.assertEqual(hashlib.sha256(plan_id.encode("utf-8")).hexdigest()[:6], "7d0866")
+                write_plan(root / ".planning" / plan_id)
+                (root / ".planning" / plan_id / ".task-lease.json").write_text(
+                    json.dumps(
+                        {
+                            "version": 1,
+                            "plan_id": plan_id,
+                            "owner_session_key": key,
+                            "owner_status": "active",
+                            "shared": False,
+                            "claimed_at": "2026-06-09T10:00:00Z",
+                            "updated_at": "2999-01-01T00:00:00Z",
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+
+            tasks_result = run_plan(root, "tasks", "--json", env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertEqual(tasks_result.returncode, 0, tasks_result.stderr)
+            payload = json.loads(tasks_result.stdout)
+            short_ids = [item["short_id"] for item in payload]
+            self.assertEqual(len(short_ids), 2)
+            self.assertEqual(len(set(short_ids)), 2)
+            self.assertEqual(short_ids, ["7d086686", "7d0866c7"])
+
+            use_result = run_plan(root, "use", short_ids[0], env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertEqual(use_result.returncode, 0, use_result.stderr)
+            binding = root / ".planning" / "session-bindings" / f"{key}.json"
+            self.assertEqual(json.loads(binding.read_text(encoding="utf-8"))["plan_id"], plan_ids[0])
+
     def test_use_short_id_binds_visible_current_session_task(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

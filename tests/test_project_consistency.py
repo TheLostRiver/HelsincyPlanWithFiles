@@ -111,10 +111,11 @@ class ProjectConsistencyTests(unittest.TestCase):
             self.assertIn("plan.py tasks", text)
             self.assertIn("plan.py use", text)
 
-        self.assertIn("默认", readme_cn)
-        self.assertIn("当前会话", readme_cn)
-        self.assertIn("current session", readme_en)
-        self.assertIn("other session", readme_en)
+        self.assertIn("当前会话可见的 PWF 任务和短 ID；默认不显示其他会话任务", readme_cn)
+        self.assertIn("用 `/pwf-tasks` 显示的短 ID 或 plan id 绑定当前会话", readme_cn)
+        self.assertIn("visible to the current session with short IDs", readme_en)
+        self.assertIn("other sessions' exclusive tasks are hidden by default", readme_en)
+        self.assertIn("Bind the current session using a short ID or plan id shown by `/pwf-tasks`", readme_en)
 
     def test_legacy_resolver_scripts_delegate_to_python_resolver(self):
         shell_resolvers = [

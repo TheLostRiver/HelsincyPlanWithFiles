@@ -7,7 +7,7 @@ import json
 import os
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -472,6 +472,33 @@ def _task_short_id(plan_id: str, length: int = 6) -> str:
     return hashlib.sha256(plan_id.encode("utf-8")).hexdigest()[:length]
 
 
+def _expand_colliding_short_ids(summaries: list[TaskSummary]) -> list[TaskSummary]:
+    lengths = {summary.plan_id: 6 for summary in summaries}
+    for _attempt in range(4):
+        short_ids = {
+            summary.plan_id: _task_short_id(summary.plan_id, lengths[summary.plan_id])
+            for summary in summaries
+        }
+        groups: dict[str, list[str]] = {}
+        for plan_id, short_id in short_ids.items():
+            groups.setdefault(short_id, []).append(plan_id)
+        colliding = [plan_ids for plan_ids in groups.values() if len(plan_ids) > 1]
+        if not colliding:
+            break
+        changed = False
+        for plan_ids in colliding:
+            for plan_id in plan_ids:
+                if lengths[plan_id] < 12:
+                    lengths[plan_id] += 2
+                    changed = True
+        if not changed:
+            break
+    return [
+        replace(summary, short_id=_task_short_id(summary.plan_id, lengths[summary.plan_id]))
+        for summary in summaries
+    ]
+
+
 def _task_summaries(root: Path, include_all: bool = False, session_id: str | None = None) -> list[TaskSummary]:
     current_key = planning_state.session_key(session_id) if session_id else None
     bound_plan = _read_session_binding_plan_id(root, session_id) if session_id else None
@@ -523,7 +550,7 @@ def _task_summaries(root: Path, include_all: bool = False, session_id: str | Non
         )
         if include_all or summary.visible:
             summaries.append(summary)
-    return summaries
+    return _expand_colliding_short_ids(summaries)
 
 
 def _task_summary_to_json(summary: TaskSummary) -> dict[str, object]:

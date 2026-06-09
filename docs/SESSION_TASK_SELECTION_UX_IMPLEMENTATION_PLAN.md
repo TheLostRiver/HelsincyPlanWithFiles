@@ -37,6 +37,7 @@ python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --sess
 |------|----------|-----|
 | `/pwf-tasks` | 列出当前会话可见任务、短 ID、状态、当前绑定标记 | `plan.py tasks` |
 | `/pwf-use <id>` | 只在当前会话可见任务内解析短 ID 或 plan id，并绑定当前会话 | `plan.py use <id>` |
+
 `/pwf-status` 继续承担当前 session binding、effective plan、lease 状态的详情诊断。本轮不新增 `/pwf-current`，避免把实现范围扩大到第三个用户入口。
 
 底层 CLI 推荐新增：
@@ -814,7 +815,7 @@ Expected: FAIL，缺少 wrapper 文件。
 
 `.codex/skills/pwf-tasks/SKILL.md`：
 
-```markdown
+````markdown
 ---
 name: pwf-tasks
 description: List Helsincy Plan With Files tasks visible to the current session. Invoke with /pwf-tasks.
@@ -835,13 +836,13 @@ python .codex\skills\planning-with-files\scripts\plan.py tasks <optional flags>
 中文模式：如果用户希望中文输出，先设置 `PWF_LANG=zh-CN`，再运行相同命令。
 
 By default, show only tasks visible to the current session. Do not show tasks owned by other sessions unless the user explicitly passes `--all`.
-```
+````
 
 - [ ] **Step 3: 创建 `/pwf-use` wrapper**
 
 `.codex/skills/pwf-use/SKILL.md`：
 
-```markdown
+````markdown
 ---
 name: pwf-use
 description: Bind the current session to a visible Helsincy Plan With Files task. Invoke with /pwf-use.
@@ -862,7 +863,7 @@ python .codex\skills\planning-with-files\scripts\plan.py use <task selector and 
 中文模式：如果用户希望中文输出，先设置 `PWF_LANG=zh-CN`，再运行相同命令。
 
 The selector may be a plan id or short id from `/pwf-tasks`. By default it only resolves tasks visible to the current session. Use explicit `--claim` or `--share` only when the user intentionally wants to cross an ownership boundary.
-```
+````
 
 - [ ] **Step 4: 运行通过测试**
 
