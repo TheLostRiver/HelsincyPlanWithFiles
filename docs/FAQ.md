@@ -27,7 +27,7 @@ hook 会在会话开始、用户提交提示、工具调用前后和停止前读
 普通用户优先下载：
 
 ```text
-HelsincyPlanWithFiles-v0.2.2-codex.zip
+HelsincyPlanWithFiles-v0.2.3-codex.zip
 ```
 
 这个包只包含安装到目标项目所需的 `.codex/`、hooks、`/pwf-*` commands 和基础文档。
@@ -346,7 +346,7 @@ Hooks read or update those files at session start, user prompt submit, tool use,
 Most users should download:
 
 ```text
-HelsincyPlanWithFiles-v0.2.2-codex.zip
+HelsincyPlanWithFiles-v0.2.3-codex.zip
 ```
 
 It contains the `.codex/` directory, hooks, `/pwf-*` commands, and basic docs needed for project-local installation.

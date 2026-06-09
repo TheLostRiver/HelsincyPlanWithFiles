@@ -60,14 +60,14 @@ The value is not simply creating a few `.md` files. The value is giving Codex a 
 
 ## Version
 
-Current version: `0.2.2`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current version: `0.2.3`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 Important: please do not use `v0.1.0` or earlier anymore. Older versions include the incorrect `/plw-*` command prefix and briefly introduced a global prompts installation route, which can make migration and uninstall confusing. Upgrade to the current version and use `/pwf-*` commands instead.
 
 ## User Documentation
 
 - [FAQ](docs/FAQ.md): user-facing answers for installation, missing commands, context compaction, session policy, progress compaction, attestation, and Chinese mode.
-- [v0.2.2 Release Notes](docs/RELEASE_NOTES_0.2.2.md): bilingual release notes ready to reuse on GitHub Releases.
+- [v0.2.3 Release Notes](docs/RELEASE_NOTES_0.2.3.md): bilingual release notes ready to reuse on GitHub Releases.
 - [CHANGELOG.md](CHANGELOG.md): complete version history.
 
 ## Chinese Mode
@@ -96,12 +96,12 @@ Other `PWF_LANG` values fall back to English; `plan.py doctor` reports `language
 
 ## Installation
 
-For regular users, download `HelsincyPlanWithFiles-v0.2.2-codex.zip` from the release page. This package contains only the project-local `.codex/`, hooks, `/pwf-*` commands, and basic docs needed for installation.
+For regular users, download `HelsincyPlanWithFiles-v0.2.3-codex.zip` from the release page. This package contains only the project-local `.codex/`, hooks, `/pwf-*` commands, and basic docs needed for installation.
 
 ### Option A: Download From Release
 
 1. Open the [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest).
-2. Download `HelsincyPlanWithFiles-v0.2.2-codex.zip`.
+2. Download `HelsincyPlanWithFiles-v0.2.3-codex.zip`.
 3. Unzip it and copy the `.codex/` directory into your target project root.
 4. Restart Codex and approve the hooks when Codex asks for trust.
 5. Run `/pwf-doctor` in Codex to check the installation.
