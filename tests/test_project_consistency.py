@@ -90,6 +90,7 @@ class ProjectConsistencyTests(unittest.TestCase):
             self.assertIn("--share", text)
             self.assertIn("--release-session", text)
             self.assertIn('plan.py init "Task Name" --bind-session', text)
+            self.assertIn("--legacy --bind-session", text)
             self.assertIn("PWF_STRICT_REQUIRES_BINDING=1", text)
             self.assertIn("Session", text)
             self.assertIn("Plan-Source", text)

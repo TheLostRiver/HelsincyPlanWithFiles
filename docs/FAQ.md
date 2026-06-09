@@ -512,6 +512,8 @@ You can also bind while creating a task:
 python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --bind-session
 ```
 
+`--legacy` is only for root-level single-task compatibility mode. `plan.py init "Task Name" --legacy --bind-session` is rejected; use a named `.planning/<plan-id>` task for multi-session isolation.
+
 After binding, context injection and automatic `progress.md` records use the session-bound plan. Auto records include `Session` and `Plan-Source` fields for auditing. To make strict mode require a binding, set:
 
 ```powershell
