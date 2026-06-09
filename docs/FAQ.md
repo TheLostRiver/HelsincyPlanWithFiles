@@ -4,6 +4,8 @@
 
 ## 简体中文
 
+如果你是第一次使用，建议先看 [普通用户使用指南](USER_GUIDE.zh-CN.md)。那篇文档会用更少术语解释“它是干什么的、怎么开始、多个会话怎么不写混”。
+
 ### 1. Helsincy Plan With Files 适合什么场景？
 
 它适合长任务、多轮任务、需要恢复上下文的任务，以及需要记录“做过什么、改过哪些文件、为什么这么做”的 Codex 工作流。典型场景包括复杂 bug 修复、分阶段功能开发、跨会话继续工作、上下文压缩后恢复任务，以及需要保留研究发现和测试结果的任务。
@@ -27,7 +29,7 @@ hook 会在会话开始、用户提交提示、工具调用前后和停止前读
 普通用户优先下载：
 
 ```text
-HelsincyPlanWithFiles-v0.2.3-codex.zip
+HelsincyPlanWithFiles-v0.2.4-codex.zip
 ```
 
 这个包只包含安装到目标项目所需的 `.codex/`、hooks、`/pwf-*` commands 和基础文档。
@@ -334,6 +336,8 @@ $env:PWF_INCLUDE_FINDINGS = "1"
 
 ## English
 
+If this is your first time using the tool and you read Chinese, start with the [plain-language user guide](USER_GUIDE.zh-CN.md). It explains what the tool is for, how to start, and how to avoid mixed progress across multiple sessions with fewer technical terms.
+
 ### 1. When should I use Helsincy Plan With Files?
 
 Use it for long-running, multi-step, or cross-session Codex work where you need recoverable task state. Good examples include complex bug fixes, phased feature work, continuing after context compaction, and tasks that need durable research notes or test evidence.
@@ -357,7 +361,7 @@ Hooks read or update those files at session start, user prompt submit, tool use,
 Most users should download:
 
 ```text
-HelsincyPlanWithFiles-v0.2.3-codex.zip
+HelsincyPlanWithFiles-v0.2.4-codex.zip
 ```
 
 It contains the `.codex/` directory, hooks, `/pwf-*` commands, and basic docs needed for project-local installation.

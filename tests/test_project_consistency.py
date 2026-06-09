@@ -170,9 +170,13 @@ class ProjectConsistencyTests(unittest.TestCase):
         readme_cn = read_text("README.md")
         readme_en = read_text("README.en.md")
         faq = read_text("docs/FAQ.md")
+        user_guide = read_text("docs/USER_GUIDE.zh-CN.md")
 
         self.assertIn("docs/FAQ.md", readme_cn)
         self.assertIn("docs/FAQ.md", readme_en)
+        self.assertIn("docs/USER_GUIDE.zh-CN.md", readme_cn)
+        self.assertIn("docs/USER_GUIDE.zh-CN.md", readme_en)
+        self.assertIn("USER_GUIDE.zh-CN.md", faq)
 
         for phrase in (
             "上下文压缩",
@@ -186,6 +190,18 @@ class ProjectConsistencyTests(unittest.TestCase):
             "PWF_LANG=zh-CN",
         ):
             self.assertIn(phrase, faq)
+
+        for phrase in (
+            "任务记忆本",
+            "/pwf-doctor",
+            "/pwf-init",
+            "/pwf-status",
+            "/pwf-tasks",
+            "/pwf-use",
+            "多个 Codex 会话",
+            "上下文压缩",
+        ):
+            self.assertIn(phrase, user_guide)
 
     def test_release_notes_are_bilingual_for_current_version(self):
         version = read_text("VERSION").strip()
