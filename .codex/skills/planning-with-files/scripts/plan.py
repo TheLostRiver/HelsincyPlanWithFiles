@@ -225,7 +225,11 @@ def _unsupported_session_mode_warning() -> str:
 
 
 def _current_session_id() -> str | None:
-    return os.environ.get("PWF_SESSION_ID", "").strip() or None
+    for name in ("PWF_SESSION_ID", "CODEX_THREAD_ID"):
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    return None
 
 
 def _binding_payload(session_id: str, plan_id: str, source: str) -> dict[str, object]:

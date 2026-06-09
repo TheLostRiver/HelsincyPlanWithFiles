@@ -337,6 +337,20 @@ class PlanCliTests(unittest.TestCase):
             )
             self.assertIn(f"session binding set: {key} -> 2026-06-07-session", result.stdout)
 
+    def test_switch_session_uses_codex_thread_id_when_pwf_session_id_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_id = "2026-06-09-thread"
+            write_plan(root / ".planning" / plan_id)
+
+            result = run_plan(root, "switch", plan_id, "--session", env={"CODEX_THREAD_ID": "thread-a"})
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            key = hashlib.sha256("thread-a".encode("utf-8")).hexdigest()[:12]
+            binding = root / ".planning" / "session-bindings" / f"{key}.json"
+            self.assertTrue(binding.is_file())
+            self.assertIn(f"session binding set: {key} -> {plan_id}", result.stdout)
+
     def test_switch_session_creates_task_lease(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
