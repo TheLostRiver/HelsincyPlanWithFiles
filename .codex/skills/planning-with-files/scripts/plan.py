@@ -544,6 +544,37 @@ def _task_summary_to_json(summary: TaskSummary) -> dict[str, object]:
     }
 
 
+def _resolve_task_selector(
+    root: Path,
+    selector: str,
+    *,
+    include_all: bool,
+    session_id: str | None,
+) -> tuple[TaskSummary | None, str | None]:
+    summaries = _task_summaries(root, include_all=include_all, session_id=session_id)
+    exact = [summary for summary in summaries if summary.plan_id == selector]
+    if len(exact) == 1:
+        return exact[0], None
+    matches = [summary for summary in summaries if summary.short_id.startswith(selector)]
+    if len(matches) == 1:
+        return matches[0], None
+    if not matches:
+        all_matches = _task_summaries(root, include_all=True, session_id=session_id)
+        hidden = [
+            summary
+            for summary in all_matches
+            if summary.plan_id == selector or summary.short_id.startswith(selector)
+        ]
+        if hidden:
+            return (
+                None,
+                "task is not visible to current session; run /pwf-tasks or use --claim/--share explicitly.",
+            )
+        return None, "task selector not found; run /pwf-tasks to list visible tasks."
+    candidates = ", ".join(f"{summary.short_id}={summary.plan_id}" for summary in matches)
+    return None, f"task selector is ambiguous: {candidates}"
+
+
 def _compact_threshold() -> int:
     raw = os.environ.get("PWF_COMPACT_THRESHOLD", "").strip()
     if not raw:
@@ -927,6 +958,23 @@ def tasks(root: Path, include_all: bool = False, as_json: bool = False) -> int:
     return 0
 
 
+def use(root: Path, selector: str, *, claim: bool = False, share: bool = False) -> int:
+    session_id = _current_session_id()
+    if not session_id:
+        print(_message("missing_session_id"))
+        return 1
+    summary, error = _resolve_task_selector(
+        root,
+        selector,
+        include_all=claim or share,
+        session_id=session_id,
+    )
+    if summary is None:
+        print(error or "task selector not found")
+        return 1
+    return switch(root, summary.plan_id, session=True, force_claim=claim, share=share)
+
+
 def init(
     root: Path,
     name: str,
@@ -1250,6 +1298,11 @@ def main(argv: Iterable[str] | None = None) -> int:
     tasks_parser.add_argument("--all", action="store_true")
     tasks_parser.add_argument("--json", action="store_true")
 
+    use_parser = subparsers.add_parser("use", help="Bind current session to a visible PWF task")
+    use_parser.add_argument("selector")
+    use_parser.add_argument("--claim", action="store_true")
+    use_parser.add_argument("--share", action="store_true")
+
     attest_parser = subparsers.add_parser("attest", help=_help("attest"))
     attest_group = attest_parser.add_mutually_exclusive_group()
     attest_group.add_argument("--show", action="store_true")
@@ -1295,6 +1348,8 @@ def main(argv: Iterable[str] | None = None) -> int:
         )
     if args.command == "tasks":
         return tasks(root, include_all=args.all, as_json=args.json)
+    if args.command == "use":
+        return use(root, args.selector, claim=args.claim, share=args.share)
     if args.command == "attest":
         return attest(root, show=args.show, clear=args.clear)
     if args.command == "capture":
