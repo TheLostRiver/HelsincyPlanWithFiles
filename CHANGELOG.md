@@ -2,10 +2,16 @@
 
 ## Unreleased
 
+## 0.2.6 - 2026-06-10
+
 - 中文：新增会话级 context profile 快捷命令，可用 `/pwf-context-expanded`、`/pwf-context-deep`、`/pwf-context-default`、`/pwf-context-lean` 和 `/pwf-context-status` 管理当前会话的上下文注入强度。
 - 中文：新增 context injection notice 开关：`/pwf-context-notice-auto`、`/pwf-context-notice-on`、`/pwf-context-notice-off`，可提示已自动注入任务上下文及大致占用；提示数值为估算值。
+- 中文：忽略本地 `dist/` 发布输出目录，避免生成 release zip 后在工作区显示为未跟踪文件。
+- 中文：更新 FAQ、README、普通用户指南和 release notes，说明 context profile 快捷命令、上下文压缩后的任务上下文注入提示、workspace/strict 边界不变，以及推荐 `v0.2.6` 安装包。
 - English: Added session-scoped context profile shortcuts for `/pwf-context-expanded`, `/pwf-context-deep`, `/pwf-context-default`, `/pwf-context-lean`, and `/pwf-context-status`.
 - English: Added context injection notice controls through `/pwf-context-notice-auto`, `/pwf-context-notice-on`, and `/pwf-context-notice-off`, including approximate prompt-size reporting.
+- English: Ignored the local `dist/` release output directory so generated release zip files do not appear as untracked workspace files.
+- English: Updated the FAQ, READMEs, plain-language user guide, and release notes with context profile shortcuts, task context injection notices after context compaction, unchanged workspace/strict boundaries, and the recommended `v0.2.6` package.
 
 ## 0.2.5 - 2026-06-10
 
