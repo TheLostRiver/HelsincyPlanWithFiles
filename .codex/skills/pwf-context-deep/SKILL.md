@@ -9,8 +9,8 @@ allowed-tools: "Bash"
 
 Run:
 
-```powershell
-python .codex\skills\planning-with-files\scripts\plan.py context set deep
+```bash
+python .codex/skills/planning-with-files/scripts/plan.py context set deep
 ```
 
 中文模式：如果用户希望中文输出，先设置 `PWF_LANG=zh-CN`，再运行相同命令。

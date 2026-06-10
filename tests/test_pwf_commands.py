@@ -67,6 +67,21 @@ class PwfCommandTests(unittest.TestCase):
                 for part in subcommand.split():
                     self.assertIn(part, text)
 
+    def test_context_skill_wrappers_use_bash_path_syntax(self):
+        for command_name in COMMANDS:
+            if not command_name.startswith("pwf-context-"):
+                continue
+            with self.subTest(command=command_name):
+                text = read_repo_text(f".codex/skills/{command_name}/SKILL.md")
+
+                self.assertIn('allowed-tools: "Bash"', text)
+                self.assertIn("```bash\n", text)
+                self.assertNotIn("```powershell", text)
+                for line in text.splitlines():
+                    if line.startswith("python .codex"):
+                        self.assertIn(".codex/skills/planning-with-files/scripts/plan.py", line)
+                        self.assertNotIn("\\", line)
+
     def test_pwf_skill_wrappers_document_chinese_mode(self):
         for command_name in COMMANDS:
             with self.subTest(command=command_name):
