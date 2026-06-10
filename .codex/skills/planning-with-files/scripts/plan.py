@@ -734,15 +734,24 @@ def _context_findings_text(limits: planning_state.ContextLimits) -> str:
     return f"tail {limits.findings_tail_lines}"
 
 
-def _context_status_line() -> str:
-    limits = planning_state.context_limits()
-    return (
-        f"context: profile={limits.profile}, "
-        f"plan=head {limits.plan_head_lines} tail {limits.plan_tail_lines}, "
-        f"progress={_context_progress_text(limits)}, "
-        f"findings={_context_findings_text(limits)}, "
-        f"max={limits.context_max_chars} chars"
-    )
+def _context_status_lines(root: Path, session_id: str | None) -> list[str]:
+    limits = planning_state.context_limits(root=root, session_id=session_id)
+    source = planning_state.context_settings_source(root=root, session_id=session_id)
+    lines = [
+        (
+            f"context: profile={limits.profile}, "
+            f"plan=head {limits.plan_head_lines} tail {limits.plan_tail_lines}, "
+            f"progress={_context_progress_text(limits)}, "
+            f"findings={_context_findings_text(limits)}, "
+            f"max={limits.context_max_chars} chars"
+        ),
+        f"context source: {source.profile_source}",
+        f"context notice: {source.notice}",
+    ]
+    if source.session_profile_overridden and source.session_profile:
+        lines.append(f"context session profile: {source.session_profile} overridden")
+    lines.extend(source.warnings)
+    return lines
 
 
 def _context_source_lines(root: Path, session_id: str | None) -> list[str]:
@@ -778,11 +787,15 @@ def _context_source_lines(root: Path, session_id: str | None) -> list[str]:
     return lines
 
 
-def _context_doctor_lines() -> list[str]:
-    limits = planning_state.context_limits()
+def _context_doctor_lines(root: Path, session_id: str | None) -> list[str]:
+    limits = planning_state.context_limits(root=root, session_id=session_id)
+    source = planning_state.context_settings_source(root=root, session_id=session_id)
     findings_enabled, findings_warning = _findings_context_enabled()
     lines = [
         f"context profile: {limits.profile}",
+        f"context profile source: {source.profile_source}",
+        f"context notice: {source.notice}",
+        f"context notice source: {source.notice_source}",
         (
             f"context findings: on tail {limits.findings_tail_lines}"
             if findings_enabled
@@ -796,6 +809,10 @@ def _context_doctor_lines() -> list[str]:
     ]
     if limits.profile == "custom" and not any(name in os.environ for name in planning_state.NUMERIC_OVERRIDE_FIELDS):
         lines.append("context custom: no overrides; using default limits")
+    if source.session_profile_overridden and source.session_profile:
+        lines.append(f"context session profile: {source.session_profile} overridden")
+    if source.session_notice_overridden and source.session_notice:
+        lines.append(f"context session notice: {source.session_notice} overridden")
     lines.extend(limits.warnings)
     if findings_warning:
         lines.append(findings_warning)
@@ -1011,7 +1028,7 @@ def doctor(root: Path) -> int:
     lines.append(attestation_line)
     ok = ok and attestation_ok
 
-    lines.extend(_context_doctor_lines())
+    lines.extend(_context_doctor_lines(root, session_id))
 
     warning = _progress_doctor_warning(paths)
     if warning:
@@ -1075,7 +1092,8 @@ def status(root: Path) -> int:
     attestation_line, attestation_ok = _attestation_status(root, paths)
     print(attestation_line)
     print(_progress_status_line(paths))
-    print(_context_status_line())
+    for line in _context_status_lines(root, session_id):
+        print(line)
     return 0 if planning_ok and attestation_ok else 1
 
 

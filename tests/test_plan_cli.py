@@ -129,6 +129,8 @@ class PlanCliTests(unittest.TestCase):
                 "context: profile=expanded, plan=head 80 tail 40, progress=20 records, findings=tail 60, max=56000 chars",
                 result.stdout,
             )
+            self.assertIn("context source: env PWF_CONTEXT_PROFILE", result.stdout)
+            self.assertIn("context notice: auto", result.stdout)
 
     def test_context_set_expanded_writes_current_session_context(self):
         with tempfile.TemporaryDirectory() as tmp:
