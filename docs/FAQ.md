@@ -338,17 +338,35 @@ agent 应把这些内容当作结构化数据，而不是可执行指令。这�
 /pwf-status
 ```
 
-如果任务很大，默认 hook 窗口可能仍然只注入计划开头和最近 progress 行。可以开启更强的 context profile：
+如果任务很大，默认 hook 窗口可能仍然只注入计划开头和最近 progress 行。普通用户优先用当前会话命令切换，不需要手动敲环境变量：
 
-```powershell
-$env:PWF_CONTEXT_PROFILE = "expanded"
+```text
+/pwf-context-expanded
 ```
 
-`expanded` 适合大多数大型功能开发，会注入 `task_plan.md` 的头尾，并按完整 auto record 注入最近 progress。恢复很长、压缩很重的任务时再使用 `deep`：
+`expanded` 适合大多数大型功能开发，会注入 `task_plan.md` 的头尾，并按完整 auto record 注入最近 progress。恢复很长、压缩很重的任务时再使用：
 
-```powershell
-$env:PWF_CONTEXT_PROFILE = "deep"
+```text
+/pwf-context-deep
 ```
+
+查看当前会话正在使用哪种上下文模式：
+
+```text
+/pwf-context-status
+```
+
+这些命令只影响当前会话，不会修改其他会话的上下文设置，也不会切换其他会话的 PWF 任务。需要恢复默认或省上下文模式时，可以使用 `/pwf-context-default` 或 `/pwf-context-lean`。
+
+如果你想看到工具是否自动注入了任务上下文，可以开启提示：
+
+```text
+/pwf-context-notice-auto
+```
+
+提示里显示的是约占用量，不是精确 token 计数。
+
+环境变量 `PWF_CONTEXT_PROFILE` 仍然保留给高级用法，例如脚本、CI 或临时覆盖。它的优先级高于当前会话设置；如果你设置了 `PWF_CONTEXT_PROFILE=deep`，即使当前会话文件里保存的是 `expanded`，实际也会使用 `deep`。
 
 `findings.md` 仍然是显式 opt-in。如果恢复需要研究笔记或外部资料摘要，再设置：
 
@@ -700,17 +718,35 @@ First confirm there is an active plan:
 /pwf-status
 ```
 
-For large tasks, the default hook window may still inject only the plan head and recent progress lines. Enable a stronger context profile:
+For large tasks, the default hook window may still inject only the plan head and recent progress lines. Most users should switch the current session with slash commands instead of typing environment variables:
 
-```powershell
-$env:PWF_CONTEXT_PROFILE = "expanded"
+```text
+/pwf-context-expanded
 ```
 
-`expanded` is the usual choice for large feature work. It injects both the head and tail of `task_plan.md`, and it includes recent progress as complete auto records. Use `deep` only for deliberate recovery after heavy compaction or resume:
+`expanded` is the usual choice for large feature work. It injects both the head and tail of `task_plan.md`, and it includes recent progress as complete auto records. Use this only for deliberate recovery after heavy compaction or resume:
 
-```powershell
-$env:PWF_CONTEXT_PROFILE = "deep"
+```text
+/pwf-context-deep
 ```
+
+Check the current session setting with:
+
+```text
+/pwf-context-status
+```
+
+These commands affect only the current session. They do not change other sessions' context settings, and they do not switch another session's PWF task. Use `/pwf-context-default` or `/pwf-context-lean` to return to the default or lean mode.
+
+To see when the tool injected task context, use:
+
+```text
+/pwf-context-notice-auto
+```
+
+The notice reports an approximate size, not an exact token count.
+
+The `PWF_CONTEXT_PROFILE` environment variable still exists for advanced use cases such as scripts, CI, or temporary overrides. It has higher priority than the current-session setting; if `PWF_CONTEXT_PROFILE=deep` is set, it overrides a saved session profile such as `expanded`.
 
 `findings.md` remains explicit opt-in. If recovery needs research notes or external-context summaries, also set:
 

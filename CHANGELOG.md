@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- 中文：新增会话级 context profile 快捷命令，可用 `/pwf-context-expanded`、`/pwf-context-deep`、`/pwf-context-default`、`/pwf-context-lean` 和 `/pwf-context-status` 管理当前会话的上下文注入强度。
+- 中文：新增 context injection notice 开关：`/pwf-context-notice-auto`、`/pwf-context-notice-on`、`/pwf-context-notice-off`，可提示已自动注入任务上下文及大致占用；提示数值为估算值。
+- English: Added session-scoped context profile shortcuts for `/pwf-context-expanded`, `/pwf-context-deep`, `/pwf-context-default`, `/pwf-context-lean`, and `/pwf-context-status`.
+- English: Added context injection notice controls through `/pwf-context-notice-auto`, `/pwf-context-notice-on`, and `/pwf-context-notice-off`, including approximate prompt-size reporting.
+
 ## 0.2.5 - 2026-06-10
 
 - 中文：将 `/pwf-init` / `plan.py init` 调整为 session-first 默认行为；能识别当前会话时，新任务会自动绑定当前会话并写入 task lease，降低同项目多会话并发时写混 progress 的风险。
