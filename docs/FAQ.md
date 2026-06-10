@@ -84,6 +84,20 @@ python .codex\skills\planning-with-files\scripts\plan.py doctor
 /pwf-init My Task
 ```
 
+如果当前 Codex 会话可以识别，`/pwf-init` 默认会绑定当前会话，并给新任务写入 task lease。这样同一项目多个会话分别创建任务时，默认不会把进度写到同一本 `progress.md`。
+
+如果你明确想使用旧的 workspace-only 行为，可以运行：
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py init "My Task" --no-bind-session
+```
+
+如果你想只绑定当前会话、不更新 `.planning/.active_plan`，可以运行：
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py init "My Task" --no-workspace-active
+```
+
 查看状态：
 
 ```text
@@ -97,7 +111,7 @@ python .codex\skills\planning-with-files\scripts\plan.py doctor
 /pwf-switch 2026-06-06-my-task
 ```
 
-创建任务后，当前任务 ID 会写入 `.planning/.active_plan`。
+创建任务后，当前任务 ID 通常也会写入 `.planning/.active_plan`。workspace active 是兼容层，用于单会话和旧工作流；多会话下当前 session binding 优先。
 
 ### 8. `.planning/` 要提交到 git 吗？
 
@@ -183,13 +197,27 @@ strict 模式更隔离，但也更依赖 Codex hook payload 中的 `session_id`�
 
 ### 11a. 同一项目里多个对话会不会混用 `progress.md`？
 
-默认 `workspace` 模式仍然使用 `.planning/.active_plan`，适合单任务项目。如果同一项目同时打开多个 Codex 对话，请为每个对话绑定自己的 PWF 任务：
+默认 `workspace` 模式仍保留 `.planning/.active_plan`，但 workspace active 是兼容层。现在 `/pwf-init` / `plan.py init` 在能识别当前会话时默认会绑定当前会话，所以同一项目多个 Codex 对话各自新建任务时，会自然拥有各自的 PWF 任务。
+
+需要明确恢复旧 workspace-only 行为时，使用 `--no-bind-session`：
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --no-bind-session
+```
+
+需要只绑定当前会话、不更新 workspace active 时，使用 `--no-workspace-active`：
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --no-workspace-active
+```
+
+绑定已有任务时仍使用：
 
 ```powershell
 python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session
 ```
 
-也可以在创建任务时直接绑定：
+显式创建并绑定的旧写法仍然可用，适合脚本或旧文档迁移：
 
 ```powershell
 python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --bind-session
@@ -201,7 +229,7 @@ python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --bind
 $env:PWF_STRICT_REQUIRES_BINDING=1
 ```
 
-如果 workspace active task 已经由另一个 session 拥有，新的未绑定对话不会自动接管它；owner stale 也仍然需要显式选择。接管用 `--force-claim`，有意共享用 `--share`，释放当前 session 的 ownership 用 `--release-session`：
+如果 workspace active task 已经由另一个 session 拥有，新的未绑定对话不会自动接管它；owner stale 也仍然需要显式选择。接管或共享仍必须显式表达意图：接管用 `--force-claim` 或 `plan.py use <id> --claim`，有意共享用 `--share`，释放当前 session 的 ownership 用 `--release-session`：
 
 ```powershell
 python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session --force-claim
@@ -416,6 +444,20 @@ Create a task:
 /pwf-init My Task
 ```
 
+When the current Codex conversation can be identified, `/pwf-init` is session-first by default. It binds the new task to the current session and claims a task lease, so concurrent conversations in the same project get separate PWF tasks by default.
+
+To intentionally use the old workspace-only behavior, run:
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py init "My Task" --no-bind-session
+```
+
+To bind only the current session without updating `.planning/.active_plan`, run:
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py init "My Task" --no-workspace-active
+```
+
 Check status:
 
 ```text
@@ -429,7 +471,7 @@ Switch tasks:
 /pwf-switch 2026-06-06-my-task
 ```
 
-The active task ID is stored in `.planning/.active_plan`.
+The active task ID is usually also stored in `.planning/.active_plan`. workspace active remains a compatibility fallback for single-session and older workflows; in multi-session work, the current session binding takes precedence.
 
 ### 8. Should I commit `.planning/` to git?
 
@@ -515,13 +557,27 @@ Strict mode provides more isolation, but depends on `session_id` in the Codex ho
 
 ### 11a. Will multiple conversations in one project mix `progress.md`?
 
-Default `workspace` mode still uses `.planning/.active_plan`, which is best for one active task. When multiple Codex conversations work in the same project at the same time, bind each conversation to its own PWF task:
+Default `workspace` mode still preserves `.planning/.active_plan`, but workspace active remains a compatibility fallback. `/pwf-init` / `plan.py init` is session-first by default when the current session can be identified, so multiple Codex conversations that create their own tasks get separate PWF tasks automatically.
+
+To intentionally use the old workspace-only behavior, use `--no-bind-session`:
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --no-bind-session
+```
+
+To bind the task to the current session without updating workspace active, use `--no-workspace-active`:
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --no-workspace-active
+```
+
+To bind an existing task, use:
 
 ```powershell
 python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session
 ```
 
-You can also bind while creating a task:
+The explicit create-and-bind form is still supported for scripts or older docs:
 
 ```powershell
 python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --bind-session
@@ -535,7 +591,7 @@ After binding, context injection and automatic `progress.md` records use the ses
 $env:PWF_STRICT_REQUIRES_BINDING=1
 ```
 
-If the workspace active task is already owned by another session, an unbound new conversation will not automatically take it over; a stale owner still requires an explicit choice. Use `--force-claim` to take ownership, `--share` for intentional sharing, and `--release-session` to release the current session:
+If the workspace active task is already owned by another session, an unbound new conversation will not automatically take it over; a stale owner still requires an explicit choice. claim or share still requires explicit intent: use `--force-claim` or `plan.py use <id> --claim` to take ownership, `--share` for intentional sharing, and `--release-session` to release the current session:
 
 ```powershell
 python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session --force-claim

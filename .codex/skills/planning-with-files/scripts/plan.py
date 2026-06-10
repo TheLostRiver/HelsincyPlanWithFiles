@@ -97,6 +97,9 @@ CLI_MESSAGES = {
         "help_force": "Overwrite existing planning files",
         "help_init": "Create a new planning session",
         "help_legacy": "Create root-level planning files",
+        "help_bind_session": "Bind the created plan to the current session",
+        "help_no_bind_session": "Do not bind the created plan to the current session",
+        "help_no_workspace_active": "Do not update .planning/.active_plan",
         "help_root": "Project root to inspect",
         "help_status": "Show active plan status",
         "help_switch": "Set or show active plan",
@@ -128,6 +131,15 @@ CLI_MESSAGES = {
         "session_binding_none": "session binding: none for current session",
         "session_binding_required": "session binding required: {value}",
         "session_binding_set": "session binding set: {key} -> {plan_id}",
+        "session_binding_auto_unavailable": (
+            "session id: unavailable; created workspace active plan without session binding"
+        ),
+        "session_binding_required_for_no_workspace": (
+            "session binding is required when --no-workspace-active is used"
+        ),
+        "session_binding_unavailable_no_workspace": (
+            "session id: unavailable; cannot create a task with --no-workspace-active unless session binding is enabled"
+        ),
         "session_released": "session binding released: {key}",
         "session_dir_ignored": "session mode: sessions directory ignored unless PWF_SESSION_MODE=strict",
         "session_mode": "session mode: {mode}",
@@ -176,6 +188,9 @@ CLI_MESSAGES = {
         "help_force": "覆盖已有 planning 文件",
         "help_init": "创建新的 planning 会话",
         "help_legacy": "创建根目录级 planning 文件",
+        "help_bind_session": "将新建计划绑定到当前会话",
+        "help_no_bind_session": "不要将新建计划绑定到当前会话",
+        "help_no_workspace_active": "不要更新 .planning/.active_plan",
         "help_root": "要检查的项目根目录",
         "help_status": "显示当前计划状态",
         "help_switch": "设置或显示当前计划",
@@ -207,6 +222,11 @@ CLI_MESSAGES = {
         "session_binding_none": "session binding: none for current session",
         "session_binding_required": "session binding required: {value}",
         "session_binding_set": "session binding set: {key} -> {plan_id}",
+        "session_binding_auto_unavailable": "session id: 不可用；已创建 workspace active plan，但未绑定会话",
+        "session_binding_required_for_no_workspace": "使用 --no-workspace-active 时必须启用 session binding",
+        "session_binding_unavailable_no_workspace": (
+            "session id: 不可用；没有 session binding 时不能创建 --no-workspace-active 任务"
+        ),
         "session_released": "session binding released: {key}",
         "session_dir_ignored": "session mode: sessions directory ignored unless PWF_SESSION_MODE=strict",
         "session_mode": "session mode: {mode}",
@@ -1007,11 +1027,22 @@ def init(
     name: str,
     legacy: bool = False,
     force: bool = False,
-    bind_session: bool = False,
+    bind_session: bool | None = None,
     workspace_active: bool = True,
 ) -> int:
-    if legacy and bind_session:
+    session_id = _current_session_id()
+    auto_bind = bind_session is None and not legacy and session_id is not None
+    effective_bind_session = bind_session is True or auto_bind
+
+    if legacy and effective_bind_session:
         print(LEGACY_BIND_SESSION_UNSUPPORTED)
+        return 1
+
+    if not legacy and not workspace_active and not effective_bind_session:
+        if not session_id:
+            print(_message("session_binding_unavailable_no_workspace"))
+        else:
+            print(_message("session_binding_required_for_no_workspace"))
         return 1
 
     if legacy:
@@ -1028,10 +1059,8 @@ def init(
         print(_message("plan_already_exists", label=label, path=target))
         return 1
 
-    session_id = None
     lease = None
-    if bind_session:
-        session_id = _current_session_id()
+    if effective_bind_session:
         if not session_id:
             print(_message("missing_session_id"))
             return 1
@@ -1068,7 +1097,7 @@ def init(
 
     print(_message("created", label=label, plan_id=plan_id))
     print(_message("path", path=target))
-    if bind_session:
+    if effective_bind_session:
         assert session_id is not None
         assert lease is not None
         key = _write_session_binding(root, session_id, plan_id, "plan.py init --bind-session")
@@ -1082,6 +1111,8 @@ def init(
                 shared=str(lease.shared).lower(),
             )
         )
+    elif bind_session is None and not legacy and session_id is None:
+        print(_message("session_binding_auto_unavailable"))
     return 0
 
 
@@ -1308,8 +1339,21 @@ def main(argv: Iterable[str] | None = None) -> int:
     init_parser.add_argument("name")
     init_parser.add_argument("--legacy", action="store_true", help=_help("legacy"))
     init_parser.add_argument("--force", action="store_true", help=_help("force"))
-    init_parser.add_argument("--bind-session", action="store_true")
-    init_parser.add_argument("--no-workspace-active", action="store_true")
+    init_bind_group = init_parser.add_mutually_exclusive_group()
+    init_bind_group.add_argument(
+        "--bind-session",
+        dest="bind_session",
+        action="store_true",
+        help=_help("bind_session"),
+    )
+    init_bind_group.add_argument(
+        "--no-bind-session",
+        dest="bind_session",
+        action="store_false",
+        help=_help("no_bind_session"),
+    )
+    init_parser.set_defaults(bind_session=None)
+    init_parser.add_argument("--no-workspace-active", action="store_true", help=_help("no_workspace_active"))
 
     switch_parser = subparsers.add_parser("switch", help=_help("switch"))
     switch_parser.add_argument("plan_id", nargs="?")

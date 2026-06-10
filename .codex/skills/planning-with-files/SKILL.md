@@ -106,22 +106,36 @@ Agent-written notes are interpretive: rationale, conclusions, risks, and next st
 
 ## Session Task Binding
 
-When several Codex conversations work in the same project, bind each conversation to its own PWF task before relying on hooks:
+`/pwf-init` and `plan.py init` are session-first by default. When `PWF_SESSION_ID` or `CODEX_THREAD_ID` is available, a new named task is automatically bound to the current session and protected by a task lease.
+
+When several Codex conversations work in the same project, create a task in each conversation normally:
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py init "Task Name"
+python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --no-workspace-active
+```
+
+To intentionally use the old workspace-only behavior:
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --no-bind-session
+```
+
+To bind an existing task:
 
 ```powershell
 python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session
 ```
 
-To create a task and bind the current session immediately:
+The explicit binding form remains available:
 
 ```powershell
 python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --bind-session
-python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --bind-session --no-workspace-active
 ```
 
 `--session` writes only `.planning/session-bindings/<session-key>.json`; it does not change `.planning/.active_plan`. Plain `plan.py switch <plan-id>` still changes the workspace active plan.
 
-`--legacy` is only for root-level single-task compatibility mode and does not support session binding; `plan.py init "Task Name" --legacy --bind-session` is rejected. For multi-session isolation, use named `.planning/<plan-id>` tasks with `--bind-session`.
+`--legacy` is only for root-level single-task compatibility mode and does not support session binding; `plan.py init "Task Name" --legacy --bind-session` is rejected. For multi-session isolation, use named `.planning/<plan-id>` tasks with the default session-first behavior.
 
 Task ownership is separate from routing. If another session owns a task, a new session must not automatically take it over, even if the owner is stale. Use explicit commands:
 

@@ -151,7 +151,7 @@ The first batch uses the `/pwf-XXX` naming pattern. `pwf` means planning with fi
 | Command | Purpose | Equivalent CLI |
 |---------|---------|----------------|
 | `/pwf-doctor` | Diagnose hooks, active plan, and attestation state | `plan.py doctor` |
-| `/pwf-init` | Create a new planning task | `plan.py init <task name>` |
+| `/pwf-init` | Create a new planning task; session-first by default when the session is identifiable | `plan.py init <task name>` |
 | `/pwf-status` | Show the current active plan status | `plan.py status` |
 | `/pwf-switch` | Show or switch the active plan | `plan.py switch [plan-id]` |
 | `/pwf-tasks` | List PWF tasks visible to the current session with short IDs; other sessions' exclusive tasks are hidden by default | `plan.py tasks` |
@@ -200,7 +200,9 @@ root-level task_plan.md
 
 ### Session Policy
 
-By default, hooks use workspace session mode. The current `.planning/.active_plan` is the source of truth, and planning context is injected even if `.planning/sessions/` exists. This keeps context recovery reliable after Codex compaction, resume, and the next user prompt.
+By default, `/pwf-init` and `plan.py init` are session-first by default. When the tool can identify the current Codex conversation through `PWF_SESSION_ID` or `CODEX_THREAD_ID`, a new task is bound to that session automatically and protected by a task lease. This makes concurrent conversations in the same project use their own new PWF tasks by default.
+
+`.planning/.active_plan` is still written by default, but workspace active remains a compatibility fallback for single-session and older workflows. In multi-session work, the current session binding takes precedence. Hooks still use workspace session mode as the default policy, which keeps context recovery reliable after Codex compaction, resume, and the next user prompt.
 
 Strict per-session isolation is opt-in. Enable `PWF_SESSION_MODE=strict` only when multiple Codex sessions in the same project must not share the active plan:
 
@@ -216,24 +218,35 @@ or create `.planning/session-policy.json`:
 
 In strict mode, hook payloads must include an attached `session_id`; otherwise the hook emits a diagnostic message instead of silently skipping planning context. Run `/pwf-doctor` to inspect the current session mode.
 
-When multiple Codex conversations work in the same project, bind each conversation to its own PWF task:
+When multiple Codex conversations work in the same project, usually run `/pwf-init <task name>` in each conversation. To intentionally use the old workspace-only behavior, pass:
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --no-bind-session
+```
+
+To bind the task to the current session without updating `.planning/.active_plan`, pass:
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --no-workspace-active
+```
+
+To bind an existing task:
 
 ```powershell
 python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session
 ```
 
-To create a side task and bind the current session immediately:
+The explicit form remains available:
 
 ```powershell
 python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --bind-session
-python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --bind-session --no-workspace-active
 ```
 
 `--session` writes only `.planning/session-bindings/<session-key>.json`; it does not change `.planning/.active_plan`. The old `plan.py switch <plan-id>` behavior still switches the workspace active plan.
 
-For a lower-friction workflow, run `/pwf-tasks` first. It lists only tasks visible to the current session by default. Copy a short ID and run `/pwf-use <short-id>` to bind this conversation. Use `plan.py tasks --all` only for read-only diagnostics; crossing another session's ownership boundary still requires explicit `plan.py use <id> --claim` or `plan.py use <id> --share`.
+For a lower-friction workflow, run `/pwf-tasks` first. It lists only tasks visible to the current session by default. Copy a short ID and run `/pwf-use <short-id>` to bind this conversation. Use `plan.py tasks --all` only for read-only diagnostics; claim or share still requires explicit intent through `plan.py use <id> --claim` or `plan.py use <id> --share`.
 
-`--legacy` is only for root-level single-task compatibility mode and does not support session binding; `plan.py init "Task Name" --legacy --bind-session` is rejected. For multi-session isolation, use named `.planning/<plan-id>` tasks with `--bind-session`.
+`--legacy` is only for root-level single-task compatibility mode and does not support session binding; `plan.py init "Task Name" --legacy --bind-session` is rejected. For multi-session isolation, use named `.planning/<plan-id>` tasks with the default session-first behavior.
 
 If the workspace active task is already owned by another session, a new session will not automatically take it over, even when the owner is stale. Explicit claim, sharing, and release use:
 

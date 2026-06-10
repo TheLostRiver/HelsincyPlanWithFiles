@@ -17,6 +17,7 @@ PLAN_SCRIPT = REPO_ROOT / ".codex" / "skills" / "planning-with-files" / "scripts
 def run_plan(project_root, *args, env=None):
     run_env = {key: value for key, value in os.environ.items() if not key.startswith("PWF_")}
     run_env.pop("PLAN_ID", None)
+    run_env.pop("CODEX_THREAD_ID", None)
     if env is not None:
         run_env.update(env)
     return subprocess.run(
@@ -170,6 +171,153 @@ class PlanCliTests(unittest.TestCase):
             self.assertEqual((root / ".planning" / ".active_plan").read_text(encoding="utf-8"), plan_id)
             self.assertIn(f"created plan: {plan_id}", result.stdout.lower())
 
+    def test_init_defaults_to_session_binding_when_session_id_available(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            result = run_plan(root, "init", "Session First", env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            today = datetime.now().strftime("%Y-%m-%d")
+            plan_id = f"{today}-session-first"
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            self.assertEqual((root / ".planning" / ".active_plan").read_text(encoding="utf-8"), plan_id)
+            binding = root / ".planning" / "session-bindings" / f"{key}.json"
+            self.assertEqual(json.loads(binding.read_text(encoding="utf-8"))["plan_id"], plan_id)
+            lease = json.loads((root / ".planning" / plan_id / ".task-lease.json").read_text(encoding="utf-8"))
+            self.assertEqual(lease["owner_session_key"], key)
+            self.assertFalse(lease["shared"])
+            self.assertIn(f"session binding set: {key} -> {plan_id}", result.stdout)
+            self.assertIn(f"task lease: owner={key} status=active shared=false", result.stdout)
+
+    def test_init_no_bind_session_preserves_workspace_only_behavior(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            result = run_plan(
+                root,
+                "init",
+                "Workspace Only",
+                "--no-bind-session",
+                env={"PWF_SESSION_ID": "session-a"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            today = datetime.now().strftime("%Y-%m-%d")
+            plan_id = f"{today}-workspace-only"
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            self.assertEqual((root / ".planning" / ".active_plan").read_text(encoding="utf-8"), plan_id)
+            self.assertFalse((root / ".planning" / "session-bindings" / f"{key}.json").exists())
+            self.assertFalse((root / ".planning" / plan_id / ".task-lease.json").exists())
+
+    def test_init_no_workspace_active_defaults_to_session_binding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            result = run_plan(
+                root,
+                "init",
+                "Side Task",
+                "--no-workspace-active",
+                env={"PWF_SESSION_ID": "session-a"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            today = datetime.now().strftime("%Y-%m-%d")
+            plan_id = f"{today}-side-task"
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            self.assertFalse((root / ".planning" / ".active_plan").exists())
+            binding = root / ".planning" / "session-bindings" / f"{key}.json"
+            self.assertEqual(json.loads(binding.read_text(encoding="utf-8"))["plan_id"], plan_id)
+            self.assertTrue((root / ".planning" / plan_id / ".task-lease.json").is_file())
+
+    def test_init_without_session_id_keeps_workspace_behavior_with_warning(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            result = run_plan(root, "init", "Workspace Fallback")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            today = datetime.now().strftime("%Y-%m-%d")
+            plan_id = f"{today}-workspace-fallback"
+            self.assertEqual((root / ".planning" / ".active_plan").read_text(encoding="utf-8"), plan_id)
+            self.assertFalse((root / ".planning" / "session-bindings").exists())
+            self.assertFalse((root / ".planning" / plan_id / ".task-lease.json").exists())
+            self.assertIn("created workspace active plan without session binding", result.stdout)
+
+    def test_init_no_workspace_active_without_session_id_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            result = run_plan(root, "init", "Orphan", "--no-workspace-active")
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("cannot create a task with --no-workspace-active", result.stdout)
+            self.assertFalse((root / ".planning" / "task_plan.md").exists())
+            self.assertFalse((root / ".planning" / ".active_plan").exists())
+            self.assertFalse(any((root / ".planning").glob("*")) if (root / ".planning").exists() else False)
+
+    def test_init_explicit_bind_session_without_session_id_still_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            result = run_plan(root, "init", "Needs Session", "--bind-session")
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("session id: unavailable", result.stdout)
+            self.assertFalse((root / ".planning").exists())
+
+    def test_multiple_sessions_init_default_to_separate_bound_tasks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            first = run_plan(root, "init", "Write Docs", env={"PWF_SESSION_ID": "session-a"})
+            second = run_plan(root, "init", "Fix Bug", env={"PWF_SESSION_ID": "session-b"})
+
+            self.assertEqual(first.returncode, 0, first.stderr)
+            self.assertEqual(second.returncode, 0, second.stderr)
+            today = datetime.now().strftime("%Y-%m-%d")
+            docs_plan = f"{today}-write-docs"
+            bug_plan = f"{today}-fix-bug"
+            key_a = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            key_b = hashlib.sha256("session-b".encode("utf-8")).hexdigest()[:12]
+
+            binding_a = root / ".planning" / "session-bindings" / f"{key_a}.json"
+            binding_b = root / ".planning" / "session-bindings" / f"{key_b}.json"
+            self.assertEqual(json.loads(binding_a.read_text(encoding="utf-8"))["plan_id"], docs_plan)
+            self.assertEqual(json.loads(binding_b.read_text(encoding="utf-8"))["plan_id"], bug_plan)
+
+            lease_a = json.loads((root / ".planning" / docs_plan / ".task-lease.json").read_text(encoding="utf-8"))
+            lease_b = json.loads((root / ".planning" / bug_plan / ".task-lease.json").read_text(encoding="utf-8"))
+            self.assertEqual(lease_a["owner_session_key"], key_a)
+            self.assertEqual(lease_b["owner_session_key"], key_b)
+
+            tasks_a = run_plan(root, "tasks", env={"PWF_SESSION_ID": "session-a"})
+            tasks_b = run_plan(root, "tasks", env={"PWF_SESSION_ID": "session-b"})
+            self.assertIn(docs_plan, tasks_a.stdout)
+            self.assertNotIn(bug_plan, tasks_a.stdout)
+            self.assertIn(bug_plan, tasks_b.stdout)
+            self.assertNotIn(docs_plan, tasks_b.stdout)
+
+            status_a = run_plan(root, "status", env={"PWF_SESSION_ID": "session-a"})
+            status_b = run_plan(root, "status", env={"PWF_SESSION_ID": "session-b"})
+            self.assertIn(f"effective plan: {docs_plan}", status_a.stdout)
+            self.assertIn(f"effective plan: {bug_plan}", status_b.stdout)
+
+    def test_init_default_binding_uses_codex_thread_id_when_pwf_session_id_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            result = run_plan(root, "init", "Thread Task", env={"CODEX_THREAD_ID": "thread-a"})
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            today = datetime.now().strftime("%Y-%m-%d")
+            plan_id = f"{today}-thread-task"
+            key = hashlib.sha256("thread-a".encode("utf-8")).hexdigest()[:12]
+            binding = root / ".planning" / "session-bindings" / f"{key}.json"
+            self.assertEqual(json.loads(binding.read_text(encoding="utf-8"))["plan_id"], plan_id)
+            self.assertIn(f"session binding set: {key} -> {plan_id}", result.stdout)
+
     def test_init_default_template_reports_phase_one_status(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -269,6 +417,19 @@ class PlanCliTests(unittest.TestCase):
             self.assertTrue((root / "task_plan.md").is_file())
             self.assertTrue((root / "progress.md").is_file())
             self.assertTrue((root / "findings.md").is_file())
+            self.assertIn("created legacy plan", result.stdout.lower())
+
+    def test_init_legacy_no_workspace_active_keeps_legacy_behavior(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            result = run_plan(root, "init", "Legacy Task", "--legacy", "--no-workspace-active")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue((root / "task_plan.md").is_file())
+            self.assertTrue((root / "progress.md").is_file())
+            self.assertTrue((root / "findings.md").is_file())
+            self.assertFalse((root / ".planning").exists())
             self.assertIn("created legacy plan", result.stdout.lower())
 
     def test_init_legacy_bind_session_is_rejected(self):
