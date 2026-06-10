@@ -349,6 +349,24 @@ def _read_session_context_payload(root: Path, session_id: str) -> dict[str, obje
     return payload if isinstance(payload, dict) else {}
 
 
+def _valid_context_profiles_text() -> str:
+    return ", ".join(sorted(planning_state.SESSION_CONTEXT_PROFILES))
+
+
+def _valid_context_notice_modes_text() -> str:
+    return ", ".join(sorted(planning_state.CONTEXT_NOTICE_MODES))
+
+
+def _normalized_existing_context_value(
+    payload: dict[str, object],
+    key: str,
+    allowed: set[str],
+    default: str,
+) -> str:
+    value = payload.get(key)
+    return value if isinstance(value, str) and value in allowed else default
+
+
 def _write_session_context(
     root: Path,
     session_id: str,
@@ -361,11 +379,23 @@ def _write_session_context(
     context_dir.mkdir(parents=True, exist_ok=True)
     existing = _read_session_context_payload(root, session_id)
     now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    existing_profile = _normalized_existing_context_value(
+        existing,
+        "profile",
+        planning_state.SESSION_CONTEXT_PROFILES,
+        "default",
+    )
+    existing_notice = _normalized_existing_context_value(
+        existing,
+        "notice",
+        planning_state.CONTEXT_NOTICE_MODES,
+        "auto",
+    )
     payload = {
         "version": 1,
         "session_id": session_id,
-        "profile": profile if profile is not None else existing.get("profile", "default"),
-        "notice": notice if notice is not None else existing.get("notice", "auto"),
+        "profile": profile if profile is not None else existing_profile,
+        "notice": notice if notice is not None else existing_notice,
         "created_at": existing.get("created_at", now),
         "updated_at": now,
         "source": "plan.py context",
@@ -1110,7 +1140,10 @@ def context(root: Path, action: str, value: str | None = None) -> int:
     if action == "set":
         profile = (value or "").lower()
         if profile not in planning_state.SESSION_CONTEXT_PROFILES:
-            print(_message("context_invalid_profile", profile=profile))
+            print(
+                f"{_message('context_invalid_profile', profile=profile)}; "
+                f"valid profiles: {_valid_context_profiles_text()}"
+            )
             return 1
         _write_session_context(root, session_id, profile=profile)
         print(_message("context_profile_set", profile=profile))
@@ -1120,7 +1153,10 @@ def context(root: Path, action: str, value: str | None = None) -> int:
     if action == "notice":
         notice = (value or "").lower()
         if notice not in planning_state.CONTEXT_NOTICE_MODES:
-            print(_message("context_invalid_notice", notice=notice))
+            print(
+                f"{_message('context_invalid_notice', notice=notice)}; "
+                f"valid notice modes: {_valid_context_notice_modes_text()}"
+            )
             return 1
         _write_session_context(root, session_id, notice=notice)
         print(_message("context_notice_set", notice=notice))

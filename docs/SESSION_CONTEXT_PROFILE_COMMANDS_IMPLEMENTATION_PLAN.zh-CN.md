@@ -706,7 +706,7 @@ python -m unittest tests.test_pwf_commands -v
 
 每个 wrapper 都是薄文档，运行对应 CLI。示例：
 
-```markdown
+````markdown
 ---
 name: pwf-context-expanded
 description: Switch the current session to expanded PWF context injection. Invoke with /pwf-context-expanded.
@@ -725,7 +725,7 @@ python .codex\skills\planning-with-files\scripts\plan.py context set expanded
 中文模式：如果用户希望中文输出，先设置 `PWF_LANG=zh-CN`，再运行相同命令。
 
 This changes only the current session context profile. It does not change other sessions or workspace active plan.
-```
+````
 
 `deep/default/lean/status/notice-*` 按同一结构写清楚对应命令和“只影响当前会话”。
 

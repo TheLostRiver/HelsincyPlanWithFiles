@@ -1235,7 +1235,7 @@ In `README.en.md`, add equivalent English rows.
 
 Replace the environment-variable-only guidance in README and FAQ with slash command first:
 
-```markdown
+````markdown
 大型任务优先使用：
 
 ```text
@@ -1249,7 +1249,7 @@ Replace the environment-variable-only guidance in README and FAQ with slash comm
 ```
 
 这些命令只影响当前会话。环境变量 `PWF_CONTEXT_PROFILE` 仍然保留，并且优先级高于会话设置。
-```
+````
 
 Keep the environment variable examples in an advanced note.
 
@@ -1257,7 +1257,7 @@ Keep the environment variable examples in an advanced note.
 
 In `docs/USER_GUIDE.zh-CN.md`, add a plain-language section:
 
-```markdown
+````markdown
 ### 任务很长时，让工具多带一点上下文
 
 如果任务已经做了很久，或者 Codex 上下文压缩后你担心它忘了前面的步骤，可以在当前会话运行：
@@ -1273,7 +1273,7 @@ In `docs/USER_GUIDE.zh-CN.md`, add a plain-language section:
 ```
 
 这些命令只影响当前会话，不会改到同项目其他 Codex 会话。
-```
+````
 
 - [ ] **Step 6: Update changelog**
 

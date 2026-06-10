@@ -9,10 +9,12 @@ allowed-tools: "Bash"
 
 Run:
 
-```powershell
-python .codex\skills\planning-with-files\scripts\plan.py context status
+```bash
+python .codex/skills/planning-with-files/scripts/plan.py context status
 ```
 
 中文模式：如果用户希望中文输出，先设置 `PWF_LANG=zh-CN`，再运行相同命令。
 
-Show the effective profile, source, notice mode, progress mode, findings state, and context budget for the current session.
+Session context is selected from `PWF_SESSION_ID` when it is available; without it, the command shows default and environment-derived context settings.
+
+Show the effective profile, source, session profile, notice mode, notice source, progress mode, plan head/tail limits, findings state, and max chars for the current session.

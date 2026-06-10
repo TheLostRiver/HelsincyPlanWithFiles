@@ -189,6 +189,48 @@ class PlanCliTests(unittest.TestCase):
             self.assertEqual(payload["profile"], "expanded")
             self.assertEqual(payload["notice"], "off")
 
+    def test_context_rejects_invalid_values_with_supported_options(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            profile_result = run_plan(root, "context", "set", "custom", env={"PWF_SESSION_ID": "session-a"})
+            notice_result = run_plan(root, "context", "notice", "sometimes", env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertNotEqual(profile_result.returncode, 0)
+            self.assertIn("unsupported context profile: custom", profile_result.stdout)
+            self.assertIn("valid profiles: deep, default, expanded, lean", profile_result.stdout)
+            self.assertNotEqual(notice_result.returncode, 0)
+            self.assertIn("unsupported context notice mode: sometimes", notice_result.stdout)
+            self.assertIn("valid notice modes: auto, off, on", notice_result.stdout)
+
+    def test_context_notice_update_normalizes_invalid_existing_profile(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            context_dir = root / ".planning" / "session-context"
+            context_dir.mkdir(parents=True)
+            path = context_dir / f"{key}.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "session_id": "session-a",
+                        "profile": "custom",
+                        "notice": "maybe",
+                        "created_at": "2026-06-10T00:00:00Z",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_plan(root, "context", "notice", "off", env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["profile"], "default")
+            self.assertEqual(payload["notice"], "off")
+            self.assertEqual(payload["created_at"], "2026-06-10T00:00:00Z")
+
     def test_context_clear_removes_current_session_context(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
