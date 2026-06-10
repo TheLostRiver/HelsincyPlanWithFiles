@@ -119,6 +119,46 @@ class PlanDoctorTests(unittest.TestCase):
             self.assertIn("context findings: on tail 60", result.stdout)
             self.assertIn("context progress mode: record-aware 20 records", result.stdout)
 
+    def test_doctor_reports_session_context_profile_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_hooks(root)
+            write_active_plan(root)
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            context_dir = root / ".planning" / "session-context"
+            context_dir.mkdir(parents=True)
+            (context_dir / f"{key}.json").write_text(
+                json.dumps({"version": 1, "session_id": "session-a", "profile": "expanded", "notice": "auto"}),
+                encoding="utf-8",
+            )
+
+            result = run_plan(root, "doctor", env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("context profile: expanded", result.stdout)
+            self.assertIn("context profile source: session", result.stdout)
+            self.assertIn("context notice: auto", result.stdout)
+            self.assertIn("context progress mode: record-aware 20 records", result.stdout)
+
+    def test_doctor_reports_env_override_for_session_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_hooks(root)
+            write_active_plan(root)
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            context_dir = root / ".planning" / "session-context"
+            context_dir.mkdir(parents=True)
+            (context_dir / f"{key}.json").write_text(
+                json.dumps({"version": 1, "session_id": "session-a", "profile": "expanded", "notice": "auto"}),
+                encoding="utf-8",
+            )
+
+            result = run_plan(root, "doctor", env={"PWF_SESSION_ID": "session-a", "PWF_CONTEXT_PROFILE": "deep"})
+
+            self.assertIn("context profile: deep", result.stdout)
+            self.assertIn("context profile source: env PWF_CONTEXT_PROFILE", result.stdout)
+            self.assertIn("context session profile: expanded overridden", result.stdout)
+
     def test_doctor_reports_custom_profile_without_overrides(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

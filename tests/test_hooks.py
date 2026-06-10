@@ -153,6 +153,78 @@ class ContextLimitResolverTests(unittest.TestCase):
         self.assertEqual(limits.context_max_chars, 32000)
         self.assertEqual(len(limits.warnings), 3)
 
+    def test_context_limits_use_session_profile_when_env_profile_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            key = PLANNING_STATE.session_key("session-a")
+            context_dir = root / ".planning" / "session-context"
+            context_dir.mkdir(parents=True)
+            (context_dir / f"{key}.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "session_id": "session-a",
+                        "profile": "expanded",
+                        "notice": "auto",
+                        "created_at": "2026-06-10T00:00:00Z",
+                        "updated_at": "2026-06-10T00:00:00Z",
+                        "source": "test",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            limits = PLANNING_STATE.context_limits({}, root=root, session_id="session-a")
+            source = PLANNING_STATE.context_settings_source({}, root=root, session_id="session-a")
+
+            self.assertEqual(limits.profile, "expanded")
+            self.assertEqual(limits.progress_recent_records, 20)
+            self.assertEqual(source.profile_source, "session")
+            self.assertEqual(source.session_profile, "expanded")
+
+    def test_env_context_profile_overrides_session_profile(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            key = PLANNING_STATE.session_key("session-a")
+            context_dir = root / ".planning" / "session-context"
+            context_dir.mkdir(parents=True)
+            (context_dir / f"{key}.json").write_text(
+                json.dumps({"version": 1, "session_id": "session-a", "profile": "expanded", "notice": "auto"}),
+                encoding="utf-8",
+            )
+
+            limits = PLANNING_STATE.context_limits(
+                {"PWF_CONTEXT_PROFILE": "deep"},
+                root=root,
+                session_id="session-a",
+            )
+            source = PLANNING_STATE.context_settings_source(
+                {"PWF_CONTEXT_PROFILE": "deep"},
+                root=root,
+                session_id="session-a",
+            )
+
+            self.assertEqual(limits.profile, "deep")
+            self.assertEqual(limits.progress_recent_records, 40)
+            self.assertEqual(source.profile_source, "env PWF_CONTEXT_PROFILE")
+            self.assertEqual(source.session_profile, "expanded")
+            self.assertTrue(source.session_profile_overridden)
+
+    def test_malformed_session_context_falls_back_without_crashing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            key = PLANNING_STATE.session_key("session-a")
+            context_dir = root / ".planning" / "session-context"
+            context_dir.mkdir(parents=True)
+            (context_dir / f"{key}.json").write_text("{not json", encoding="utf-8")
+
+            limits = PLANNING_STATE.context_limits({}, root=root, session_id="session-a")
+            source = PLANNING_STATE.context_settings_source({}, root=root, session_id="session-a")
+
+            self.assertEqual(limits.profile, "default")
+            self.assertEqual(source.profile_source, "default")
+            self.assertTrue(any("session-context" in warning for warning in source.warnings))
+
     def test_env_bool_rejects_invalid_findings_value(self):
         value, warning = PLANNING_STATE.env_bool(
             "PWF_INCLUDE_FINDINGS",
@@ -1355,6 +1427,108 @@ class HookTests(unittest.TestCase):
             self.assertNotIn("src/file_4.py", context)
             self.assertIn("src/file_5.py", context)
             self.assertIn("src/file_44.py", context)
+
+    def test_user_prompt_submit_session_expanded_profile_shows_auto_notice(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            key = PLANNING_STATE.session_key("session-a")
+            context_dir = root / ".planning" / "session-context"
+            context_dir.mkdir(parents=True)
+            (context_dir / f"{key}.json").write_text(
+                json.dumps({"version": 1, "session_id": "session-a", "profile": "expanded", "notice": "auto"}),
+                encoding="utf-8",
+            )
+            records = []
+            for index in range(25):
+                records.extend(
+                    [
+                        f"### Auto Record: 2026-05-12 10:{index:02d}:00",
+                        "- Tool: apply_patch",
+                        "- Files:",
+                        f"  - `src/file_{index}.py` (update)",
+                        "  - `src/extra_a.py` (update)",
+                        "  - `src/extra_b.py` (update)",
+                        "  - `src/extra_c.py` (update)",
+                        "  - `src/extra_d.py` (update)",
+                        "  - `src/extra_e.py` (update)",
+                        "",
+                    ]
+                )
+            (root / "progress.md").write_text("# Progress Log\n\n" + "\n".join(records), encoding="utf-8")
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue", "session_id": "session-a"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("Injected current-session planning context", context)
+            self.assertIn("profile=expanded", context)
+            self.assertIn("progress=20 records", context)
+            self.assertRegex(context, r"approx [0-9.]+k chars \(~[0-9.]+k tokens\)")
+
+    def test_user_prompt_submit_default_profile_auto_notice_stays_quiet(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue", "session_id": "session-a"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertNotIn("Injected current-session planning context", context)
+
+    def test_user_prompt_submit_notice_off_suppresses_expanded_notice(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            key = PLANNING_STATE.session_key("session-a")
+            context_dir = root / ".planning" / "session-context"
+            context_dir.mkdir(parents=True)
+            (context_dir / f"{key}.json").write_text(
+                json.dumps({"version": 1, "session_id": "session-a", "profile": "expanded", "notice": "off"}),
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue", "session_id": "session-a"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertNotIn("Injected current-session planning context", context)
+
+    def test_user_prompt_submit_notice_on_shows_default_notice(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            key = PLANNING_STATE.session_key("session-a")
+            context_dir = root / ".planning" / "session-context"
+            context_dir.mkdir(parents=True)
+            (context_dir / f"{key}.json").write_text(
+                json.dumps({"version": 1, "session_id": "session-a", "profile": "default", "notice": "on"}),
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue", "session_id": "session-a"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("Injected current-session planning context", context)
+            self.assertIn("profile=default", context)
 
     def test_user_prompt_submit_includes_compacted_progress_summary(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -77,6 +77,34 @@ class ProjectConsistencyTests(unittest.TestCase):
             self.assertIn("deep", text)
             self.assertIn("PWF_INCLUDE_FINDINGS", text)
 
+    def test_docs_document_session_context_profile_commands(self):
+        readme_cn = read_text("README.md")
+        readme_en = read_text("README.en.md")
+        faq = read_text("docs/FAQ.md")
+        user_guide = read_text("docs/USER_GUIDE.zh-CN.md")
+        changelog = read_text("CHANGELOG.md")
+        combined = "\n".join([readme_cn, readme_en, faq, user_guide, changelog])
+
+        for phrase in (
+            "/pwf-context-expanded",
+            "/pwf-context-deep",
+            "/pwf-context-status",
+            "/pwf-context-notice-auto",
+            "current session",
+            "当前会话",
+            "record-aware",
+            "PWF_CONTEXT_PROFILE",
+        ):
+            self.assertIn(phrase, combined)
+
+        for text in (readme_cn, readme_en, faq, changelog):
+            self.assertIn("/pwf-context-expanded", text)
+            self.assertIn("/pwf-context-notice-auto", text)
+
+        self.assertIn("这些命令只影响当前会话", user_guide)
+        self.assertIn("环境变量 `PWF_CONTEXT_PROFILE`", faq)
+        self.assertIn("context injection notice", changelog)
+
     def test_docs_document_session_task_bindings(self):
         readme_cn = read_text("README.md")
         readme_en = read_text("README.en.md")

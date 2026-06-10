@@ -86,6 +86,12 @@ CLI_MESSAGES = {
         "compact_would_archive": "would archive auto records: {count}",
         "compact_would_keep": "would keep recent auto records: {count}",
         "compacted": "compacted progress.md",
+        "context_cleared": "context settings cleared: {key}",
+        "context_invalid_notice": "unsupported context notice mode: {notice}",
+        "context_invalid_profile": "unsupported context profile: {profile}",
+        "context_missing_session": "session id: unavailable; context commands only affect the current session",
+        "context_notice_set": "context notice set: {notice}",
+        "context_profile_set": "context profile set: {profile}",
         "created": "created {label}: {plan_id}",
         "current_phase": "current phase: {phase}",
         "effective_plan": "effective plan: {plan_id}",
@@ -93,6 +99,7 @@ CLI_MESSAGES = {
         "help_attest": "Lock, show, or clear plan attestation",
         "help_capture": "Append external context to findings.md",
         "help_compact": "Archive old progress.md auto records",
+        "help_context": "Manage current-session context profile",
         "help_doctor": "Diagnose hooks, active plan, and attestation",
         "help_force": "Overwrite existing planning files",
         "help_init": "Create a new planning session",
@@ -177,6 +184,12 @@ CLI_MESSAGES = {
         "compact_would_archive": "将归档 auto records: {count}",
         "compact_would_keep": "将保留最近 auto records: {count}",
         "compacted": "已压缩 progress.md",
+        "context_cleared": "context settings cleared: {key}",
+        "context_invalid_notice": "unsupported context notice mode: {notice}",
+        "context_invalid_profile": "unsupported context profile: {profile}",
+        "context_missing_session": "session id: 不可用；context 命令只影响当前会话",
+        "context_notice_set": "context notice set: {notice}",
+        "context_profile_set": "context profile set: {profile}",
         "created": "已创建{label}: {plan_id}",
         "current_phase": "当前阶段: {phase}",
         "effective_plan": "effective plan: {plan_id}",
@@ -184,6 +197,7 @@ CLI_MESSAGES = {
         "help_attest": "锁定、查看或清除计划 attestation",
         "help_capture": "将外部上下文追加到 findings.md",
         "help_compact": "归档旧的 progress.md auto records",
+        "help_context": "管理当前会话的 context profile",
         "help_doctor": "诊断 hooks、当前计划和 attestation",
         "help_force": "覆盖已有 planning 文件",
         "help_init": "创建新的 planning 会话",
@@ -318,6 +332,87 @@ def _read_session_binding_plan_id(root: Path, session_id: str) -> str | None:
         return None
     plan_id = payload.get("plan_id") if isinstance(payload, dict) else None
     return plan_id if isinstance(plan_id, str) and planning_state.valid_plan_id(plan_id) else None
+
+
+def _session_context_path(root: Path, session_id: str) -> Path:
+    return planning_state.session_context_path(root, session_id)
+
+
+def _read_session_context_payload(root: Path, session_id: str) -> dict[str, object]:
+    path = _session_context_path(root, session_id)
+    if not path.is_file():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _valid_context_profiles_text() -> str:
+    return ", ".join(sorted(planning_state.SESSION_CONTEXT_PROFILES))
+
+
+def _valid_context_notice_modes_text() -> str:
+    return ", ".join(sorted(planning_state.CONTEXT_NOTICE_MODES))
+
+
+def _normalized_existing_context_value(
+    payload: dict[str, object],
+    key: str,
+    allowed: set[str],
+    default: str,
+) -> str:
+    value = payload.get(key)
+    return value if isinstance(value, str) and value in allowed else default
+
+
+def _write_session_context(
+    root: Path,
+    session_id: str,
+    *,
+    profile: str | None = None,
+    notice: str | None = None,
+) -> str:
+    key = planning_state.session_key(session_id)
+    context_dir = root / ".planning" / "session-context"
+    context_dir.mkdir(parents=True, exist_ok=True)
+    existing = _read_session_context_payload(root, session_id)
+    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    existing_profile = _normalized_existing_context_value(
+        existing,
+        "profile",
+        planning_state.SESSION_CONTEXT_PROFILES,
+        "default",
+    )
+    existing_notice = _normalized_existing_context_value(
+        existing,
+        "notice",
+        planning_state.CONTEXT_NOTICE_MODES,
+        "auto",
+    )
+    payload = {
+        "version": 1,
+        "session_id": session_id,
+        "profile": profile if profile is not None else existing_profile,
+        "notice": notice if notice is not None else existing_notice,
+        "created_at": existing.get("created_at", now),
+        "updated_at": now,
+        "source": "plan.py context",
+    }
+    target = context_dir / f"{key}.json"
+    tmp = context_dir / f"{key}.json.tmp"
+    tmp.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8", newline="\n")
+    tmp.replace(target)
+    return key
+
+
+def _clear_session_context(root: Path, session_id: str) -> str:
+    key = planning_state.session_key(session_id)
+    path = _session_context_path(root, session_id)
+    if path.exists():
+        path.unlink()
+    return key
 
 
 def _workspace_active_plan_id(root: Path) -> str | None:
@@ -669,22 +764,68 @@ def _context_findings_text(limits: planning_state.ContextLimits) -> str:
     return f"tail {limits.findings_tail_lines}"
 
 
-def _context_status_line() -> str:
-    limits = planning_state.context_limits()
-    return (
-        f"context: profile={limits.profile}, "
-        f"plan=head {limits.plan_head_lines} tail {limits.plan_tail_lines}, "
-        f"progress={_context_progress_text(limits)}, "
-        f"findings={_context_findings_text(limits)}, "
-        f"max={limits.context_max_chars} chars"
+def _context_status_lines(root: Path, session_id: str | None) -> list[str]:
+    limits = planning_state.context_limits(root=root, session_id=session_id)
+    source = planning_state.context_settings_source(root=root, session_id=session_id)
+    lines = [
+        (
+            f"context: profile={limits.profile}, "
+            f"plan=head {limits.plan_head_lines} tail {limits.plan_tail_lines}, "
+            f"progress={_context_progress_text(limits)}, "
+            f"findings={_context_findings_text(limits)}, "
+            f"max={limits.context_max_chars} chars"
+        ),
+        f"context source: {source.profile_source}",
+        f"context notice: {source.notice}",
+    ]
+    if source.session_profile_overridden and source.session_profile:
+        lines.append(f"context session profile: {source.session_profile} overridden")
+    lines.extend(source.warnings)
+    return lines
+
+
+def _context_source_lines(root: Path, session_id: str | None) -> list[str]:
+    limits = planning_state.context_limits(root=root, session_id=session_id)
+    source = planning_state.context_settings_source(root=root, session_id=session_id)
+    progress_mode = (
+        f"record-aware {limits.progress_recent_records} records"
+        if limits.progress_recent_records > 0
+        else f"line tail {limits.progress_tail_lines}"
     )
+    lines = [
+        "session context:",
+        f"  profile: {limits.profile}",
+        f"  source: {source.profile_source}",
+    ]
+    if source.session_profile_overridden and source.session_profile:
+        lines.append(f"  session profile: {source.session_profile}, currently overridden")
+    elif source.session_profile:
+        lines.append(f"  session profile: {source.session_profile}")
+    else:
+        lines.append("  session profile: none")
+    lines.extend(
+        [
+            f"  notice: {source.notice}",
+            f"  notice source: {source.notice_source}",
+            f"  progress mode: {progress_mode}",
+            f"  plan: head {limits.plan_head_lines} tail {limits.plan_tail_lines}",
+            f"  findings: {_context_findings_text(limits)}",
+            f"  max: {limits.context_max_chars} chars",
+        ]
+    )
+    lines.extend(source.warnings)
+    return lines
 
 
-def _context_doctor_lines() -> list[str]:
-    limits = planning_state.context_limits()
+def _context_doctor_lines(root: Path, session_id: str | None) -> list[str]:
+    limits = planning_state.context_limits(root=root, session_id=session_id)
+    source = planning_state.context_settings_source(root=root, session_id=session_id)
     findings_enabled, findings_warning = _findings_context_enabled()
     lines = [
         f"context profile: {limits.profile}",
+        f"context profile source: {source.profile_source}",
+        f"context notice: {source.notice}",
+        f"context notice source: {source.notice_source}",
         (
             f"context findings: on tail {limits.findings_tail_lines}"
             if findings_enabled
@@ -698,6 +839,10 @@ def _context_doctor_lines() -> list[str]:
     ]
     if limits.profile == "custom" and not any(name in os.environ for name in planning_state.NUMERIC_OVERRIDE_FIELDS):
         lines.append("context custom: no overrides; using default limits")
+    if source.session_profile_overridden and source.session_profile:
+        lines.append(f"context session profile: {source.session_profile} overridden")
+    if source.session_notice_overridden and source.session_notice:
+        lines.append(f"context session notice: {source.session_notice} overridden")
     lines.extend(limits.warnings)
     if findings_warning:
         lines.append(findings_warning)
@@ -913,7 +1058,7 @@ def doctor(root: Path) -> int:
     lines.append(attestation_line)
     ok = ok and attestation_ok
 
-    lines.extend(_context_doctor_lines())
+    lines.extend(_context_doctor_lines(root, session_id))
 
     warning = _progress_doctor_warning(paths)
     if warning:
@@ -977,8 +1122,53 @@ def status(root: Path) -> int:
     attestation_line, attestation_ok = _attestation_status(root, paths)
     print(attestation_line)
     print(_progress_status_line(paths))
-    print(_context_status_line())
+    for line in _context_status_lines(root, session_id):
+        print(line)
     return 0 if planning_ok and attestation_ok else 1
+
+
+def context(root: Path, action: str, value: str | None = None) -> int:
+    session_id = _current_session_id()
+    if action == "status":
+        print("\n".join(_context_source_lines(root, session_id)))
+        return 0
+
+    if not session_id:
+        print(_message("context_missing_session"))
+        return 1
+
+    if action == "set":
+        profile = (value or "").lower()
+        if profile not in planning_state.SESSION_CONTEXT_PROFILES:
+            print(
+                f"{_message('context_invalid_profile', profile=profile)}; "
+                f"valid profiles: {_valid_context_profiles_text()}"
+            )
+            return 1
+        _write_session_context(root, session_id, profile=profile)
+        print(_message("context_profile_set", profile=profile))
+        print("\n".join(_context_source_lines(root, session_id)))
+        return 0
+
+    if action == "notice":
+        notice = (value or "").lower()
+        if notice not in planning_state.CONTEXT_NOTICE_MODES:
+            print(
+                f"{_message('context_invalid_notice', notice=notice)}; "
+                f"valid notice modes: {_valid_context_notice_modes_text()}"
+            )
+            return 1
+        _write_session_context(root, session_id, notice=notice)
+        print(_message("context_notice_set", notice=notice))
+        print("\n".join(_context_source_lines(root, session_id)))
+        return 0
+
+    if action == "clear":
+        key = _clear_session_context(root, session_id)
+        print(_message("context_cleared", key=key))
+        return 0
+
+    raise ValueError(f"unsupported context action: {action}")
 
 
 def tasks(root: Path, include_all: bool = False, as_json: bool = False) -> int:
@@ -1335,6 +1525,15 @@ def main(argv: Iterable[str] | None = None) -> int:
     subparsers.add_parser("doctor", help=_help("doctor"))
     subparsers.add_parser("status", help=_help("status"))
 
+    context_parser = subparsers.add_parser("context", help=_help("context"))
+    context_subparsers = context_parser.add_subparsers(dest="context_command", required=True)
+    context_subparsers.add_parser("status")
+    context_set = context_subparsers.add_parser("set")
+    context_set.add_argument("profile")
+    context_notice = context_subparsers.add_parser("notice")
+    context_notice.add_argument("mode")
+    context_subparsers.add_parser("clear")
+
     init_parser = subparsers.add_parser("init", help=_help("init"))
     init_parser.add_argument("name")
     init_parser.add_argument("--legacy", action="store_true", help=_help("legacy"))
@@ -1397,6 +1596,15 @@ def main(argv: Iterable[str] | None = None) -> int:
         return doctor(root)
     if args.command == "status":
         return status(root)
+    if args.command == "context":
+        if args.context_command == "status":
+            return context(root, "status")
+        if args.context_command == "set":
+            return context(root, "set", args.profile)
+        if args.context_command == "notice":
+            return context(root, "notice", args.mode)
+        if args.context_command == "clear":
+            return context(root, "clear")
     if args.command == "init":
         return init(
             root,

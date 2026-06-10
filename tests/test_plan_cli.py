@@ -129,6 +129,118 @@ class PlanCliTests(unittest.TestCase):
                 "context: profile=expanded, plan=head 80 tail 40, progress=20 records, findings=tail 60, max=56000 chars",
                 result.stdout,
             )
+            self.assertIn("context source: env PWF_CONTEXT_PROFILE", result.stdout)
+            self.assertIn("context notice: auto", result.stdout)
+
+    def test_context_set_expanded_writes_current_session_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            result = run_plan(root, "context", "set", "expanded", env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            path = root / ".planning" / "session-context" / f"{key}.json"
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["profile"], "expanded")
+            self.assertEqual(payload["notice"], "auto")
+            self.assertIn("context profile set: expanded", result.stdout)
+
+    def test_context_set_without_session_id_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            result = run_plan(root, "context", "set", "expanded")
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("session id: unavailable", result.stdout + result.stderr)
+            self.assertFalse((root / ".planning" / "session-context").exists())
+
+    def test_context_status_reports_session_profile_and_env_override(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            set_result = run_plan(root, "context", "set", "expanded", env={"PWF_SESSION_ID": "session-a"})
+            self.assertEqual(set_result.returncode, 0, set_result.stderr)
+
+            status_result = run_plan(root, "context", "status", env={"PWF_SESSION_ID": "session-a"})
+            self.assertIn("profile: expanded", status_result.stdout)
+            self.assertIn("source: session", status_result.stdout)
+            self.assertIn("notice: auto", status_result.stdout)
+            self.assertIn("progress mode: record-aware 20 records", status_result.stdout)
+
+            override_result = run_plan(
+                root,
+                "context",
+                "status",
+                env={"PWF_SESSION_ID": "session-a", "PWF_CONTEXT_PROFILE": "deep"},
+            )
+            self.assertIn("profile: deep", override_result.stdout)
+            self.assertIn("source: env PWF_CONTEXT_PROFILE", override_result.stdout)
+            self.assertIn("session profile: expanded, currently overridden", override_result.stdout)
+
+    def test_context_notice_commands_update_current_session_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            set_result = run_plan(root, "context", "set", "expanded", env={"PWF_SESSION_ID": "session-a"})
+            notice_result = run_plan(root, "context", "notice", "off", env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertEqual(set_result.returncode, 0, set_result.stderr)
+            self.assertEqual(notice_result.returncode, 0, notice_result.stderr)
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            payload = json.loads((root / ".planning" / "session-context" / f"{key}.json").read_text(encoding="utf-8"))
+            self.assertEqual(payload["profile"], "expanded")
+            self.assertEqual(payload["notice"], "off")
+
+    def test_context_rejects_invalid_values_with_supported_options(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            profile_result = run_plan(root, "context", "set", "custom", env={"PWF_SESSION_ID": "session-a"})
+            notice_result = run_plan(root, "context", "notice", "sometimes", env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertNotEqual(profile_result.returncode, 0)
+            self.assertIn("unsupported context profile: custom", profile_result.stdout)
+            self.assertIn("valid profiles: deep, default, expanded, lean", profile_result.stdout)
+            self.assertNotEqual(notice_result.returncode, 0)
+            self.assertIn("unsupported context notice mode: sometimes", notice_result.stdout)
+            self.assertIn("valid notice modes: auto, off, on", notice_result.stdout)
+
+    def test_context_notice_update_normalizes_invalid_existing_profile(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            context_dir = root / ".planning" / "session-context"
+            context_dir.mkdir(parents=True)
+            path = context_dir / f"{key}.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "session_id": "session-a",
+                        "profile": "custom",
+                        "notice": "maybe",
+                        "created_at": "2026-06-10T00:00:00Z",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_plan(root, "context", "notice", "off", env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["profile"], "default")
+            self.assertEqual(payload["notice"], "off")
+            self.assertEqual(payload["created_at"], "2026-06-10T00:00:00Z")
+
+    def test_context_clear_removes_current_session_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            set_result = run_plan(root, "context", "set", "expanded", env={"PWF_SESSION_ID": "session-a"})
+            clear_result = run_plan(root, "context", "clear", env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertEqual(set_result.returncode, 0, set_result.stderr)
+            self.assertEqual(clear_result.returncode, 0, clear_result.stderr)
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            self.assertFalse((root / ".planning" / "session-context" / f"{key}.json").exists())
 
     def test_status_reports_chinese_output_when_enabled(self):
         with tempfile.TemporaryDirectory() as tmp:

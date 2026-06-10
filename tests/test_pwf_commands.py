@@ -20,6 +20,14 @@ COMMANDS = {
     "pwf-attest": "attest",
     "pwf-capture": "capture",
     "pwf-compact": "compact",
+    "pwf-context-expanded": "context set expanded",
+    "pwf-context-deep": "context set deep",
+    "pwf-context-default": "context set default",
+    "pwf-context-lean": "context set lean",
+    "pwf-context-status": "context status",
+    "pwf-context-notice-on": "context notice on",
+    "pwf-context-notice-off": "context notice off",
+    "pwf-context-notice-auto": "context notice auto",
 }
 
 
@@ -56,7 +64,23 @@ class PwfCommandTests(unittest.TestCase):
                 text = read_repo_text(f".codex/skills/{command_name}/SKILL.md")
 
                 self.assertIn("plan.py", text)
-                self.assertIn(subcommand, text)
+                for part in subcommand.split():
+                    self.assertIn(part, text)
+
+    def test_context_skill_wrappers_use_bash_path_syntax(self):
+        for command_name in COMMANDS:
+            if not command_name.startswith("pwf-context-"):
+                continue
+            with self.subTest(command=command_name):
+                text = read_repo_text(f".codex/skills/{command_name}/SKILL.md")
+
+                self.assertIn('allowed-tools: "Bash"', text)
+                self.assertIn("```bash\n", text)
+                self.assertNotIn("```powershell", text)
+                for line in text.splitlines():
+                    if line.startswith("python .codex"):
+                        self.assertIn(".codex/skills/planning-with-files/scripts/plan.py", line)
+                        self.assertNotIn("\\", line)
 
     def test_pwf_skill_wrappers_document_chinese_mode(self):
         for command_name in COMMANDS:

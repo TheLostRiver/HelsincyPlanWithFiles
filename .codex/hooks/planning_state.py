@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import hashlib
@@ -100,8 +101,31 @@ class ContextLimits:
     warnings: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class SessionContextSettings:
+    session_key: str
+    profile: str | None
+    notice: str | None
+    warnings: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ContextSettingsSource:
+    profile: str
+    profile_source: str
+    session_profile: str | None
+    session_profile_overridden: bool
+    notice: str
+    notice_source: str
+    session_notice: str | None
+    session_notice_overridden: bool
+    warnings: tuple[str, ...] = ()
+
+
 SUPPORTED_LANGS = {"en", "zh-CN"}
 CONTEXT_PROFILES = {"lean", "default", "expanded", "deep", "custom"}
+SESSION_CONTEXT_PROFILES = {"lean", "default", "expanded", "deep"}
+CONTEXT_NOTICE_MODES = {"auto", "on", "off"}
 MAX_LINE_COUNT = 2000
 MAX_AUTO_RECORD_COUNT = 200
 MAX_BLOCK_CHARS = 200000
@@ -198,6 +222,10 @@ MESSAGES = {
             "[planning-with-files] progress.md has {count} auto records. "
             "Consider running /pwf-compact to archive old objective records."
         ),
+        "context_injection_notice": (
+            "[planning-with-files] Injected current-session planning context: "
+            "profile={profile}, progress={progress}, approx {chars} chars (~{tokens} tokens)."
+        ),
         "post_tool_recorded": (
             "[planning-with-files] Recorded PostToolUse context in progress.md. "
             "If a phase is now complete, update task_plan.md status."
@@ -230,6 +258,10 @@ MESSAGES = {
         "progress_compaction_notice": (
             "[planning-with-files] progress.md 已有 {count} 条 auto records。"
             "建议运行 /pwf-compact 归档旧的客观记录。"
+        ),
+        "context_injection_notice": (
+            "[planning-with-files] 已自动注入当前会话的任务上下文："
+            "profile={profile}，progress={progress}，约 {chars} chars（估算 {tokens} tokens）。"
         ),
         "post_tool_recorded": (
             "[planning-with-files] 已将 PostToolUse 上下文记录到 progress.md。"
@@ -310,6 +342,10 @@ def _paths_for_plan_dir(plan_dir: Path) -> PlanningPaths:
 
 def _session_binding_path(root: Path, session_id: str) -> Path:
     return root / ".planning" / "session-bindings" / f"{session_key(session_id)}.json"
+
+
+def session_context_path(root: Path, session_id: str) -> Path:
+    return root / ".planning" / "session-context" / f"{session_key(session_id)}.json"
 
 
 def _utc_now() -> str:
@@ -492,25 +528,127 @@ def env_bool(
     return default, f'[warn] invalid {name}="{safe_env_value(raw)}"; using default {str(default).lower()}'
 
 
-def _resolved_context_profile(env: Mapping[str, str] | None = None) -> tuple[str, list[str]]:
+def read_session_context(root: Path, session_id: str | None) -> SessionContextSettings | None:
+    if not session_id:
+        return None
+    key = session_key(session_id)
+    path = session_context_path(root, session_id)
+    if not path.is_file():
+        return None
+    warnings: list[str] = []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return SessionContextSettings(key, None, None, (f"[warn] invalid session-context file: {path}",))
+    if not isinstance(payload, dict):
+        return SessionContextSettings(key, None, None, (f"[warn] invalid session-context file: {path}",))
+
+    profile = payload.get("profile")
+    if not isinstance(profile, str) or profile not in SESSION_CONTEXT_PROFILES:
+        profile = None
+        warnings.append(f"[warn] invalid session context profile in {path}")
+
+    notice = payload.get("notice")
+    if notice is not None and (not isinstance(notice, str) or notice not in CONTEXT_NOTICE_MODES):
+        notice = None
+        warnings.append(f"[warn] invalid session context notice in {path}")
+
+    return SessionContextSettings(
+        key,
+        profile,
+        notice if isinstance(notice, str) else None,
+        tuple(warnings),
+    )
+
+
+def context_settings_source(
+    env: Mapping[str, str] | None = None,
+    *,
+    root: Path | None = None,
+    session_id: str | None = None,
+) -> ContextSettingsSource:
     source = env if env is not None else os.environ
-    raw = source.get("PWF_CONTEXT_PROFILE", "")
-    normalized = raw.strip(" \t\r\n").lower()
-    if not normalized:
-        return "default", []
-    if normalized in CONTEXT_PROFILES:
-        return normalized, []
-    warning = f'[warn] invalid PWF_CONTEXT_PROFILE="{safe_env_value(raw)}"; using default'
-    return "default", [warning]
+    session_settings = read_session_context(root, session_id) if root is not None else None
+    warnings = list(session_settings.warnings if session_settings else ())
+
+    raw_profile = source.get("PWF_CONTEXT_PROFILE", "")
+    normalized_profile = raw_profile.strip(" \t\r\n").lower()
+    if normalized_profile:
+        if normalized_profile in CONTEXT_PROFILES:
+            profile = normalized_profile
+            profile_source = "env PWF_CONTEXT_PROFILE"
+        else:
+            profile = "default"
+            profile_source = "default"
+            warnings.append(f'[warn] invalid PWF_CONTEXT_PROFILE="{safe_env_value(raw_profile)}"; using default')
+    elif session_settings and session_settings.profile:
+        profile = session_settings.profile
+        profile_source = "session"
+    else:
+        profile = "default"
+        profile_source = "default"
+
+    raw_notice = source.get("PWF_CONTEXT_NOTICE", "")
+    normalized_notice = raw_notice.strip(" \t\r\n").lower()
+    if normalized_notice:
+        if normalized_notice in CONTEXT_NOTICE_MODES:
+            notice = normalized_notice
+            notice_source = "env PWF_CONTEXT_NOTICE"
+        else:
+            notice = "auto"
+            notice_source = "default"
+            warnings.append(f'[warn] invalid PWF_CONTEXT_NOTICE="{safe_env_value(raw_notice)}"; using auto')
+    elif session_settings and session_settings.notice:
+        notice = session_settings.notice
+        notice_source = "session"
+    else:
+        notice = "auto"
+        notice_source = "default"
+
+    return ContextSettingsSource(
+        profile=profile,
+        profile_source=profile_source,
+        session_profile=session_settings.profile if session_settings else None,
+        session_profile_overridden=bool(
+            session_settings and session_settings.profile and profile_source.startswith("env ")
+        ),
+        notice=notice,
+        notice_source=notice_source,
+        session_notice=session_settings.notice if session_settings else None,
+        session_notice_overridden=bool(
+            session_settings and session_settings.notice and notice_source.startswith("env ")
+        ),
+        warnings=tuple(warnings),
+    )
 
 
-def current_context_profile(env: Mapping[str, str] | None = None) -> str:
-    profile, _warnings = _resolved_context_profile(env)
+def _resolved_context_profile(
+    env: Mapping[str, str] | None = None,
+    *,
+    root: Path | None = None,
+    session_id: str | None = None,
+) -> tuple[str, list[str]]:
+    settings = context_settings_source(env, root=root, session_id=session_id)
+    return settings.profile, list(settings.warnings)
+
+
+def current_context_profile(
+    env: Mapping[str, str] | None = None,
+    *,
+    root: Path | None = None,
+    session_id: str | None = None,
+) -> str:
+    profile, _warnings = _resolved_context_profile(env, root=root, session_id=session_id)
     return profile
 
 
-def context_limits(env: Mapping[str, str] | None = None) -> ContextLimits:
-    profile, warnings = _resolved_context_profile(env)
+def context_limits(
+    env: Mapping[str, str] | None = None,
+    *,
+    root: Path | None = None,
+    session_id: str | None = None,
+) -> ContextLimits:
+    profile, warnings = _resolved_context_profile(env, root=root, session_id=session_id)
     base_profile = "default" if profile == "custom" else profile
     base = PROFILE_PRESETS[base_profile]
     values = {
@@ -543,8 +681,13 @@ def context_limits(env: Mapping[str, str] | None = None) -> ContextLimits:
     return ContextLimits(profile=profile, warnings=tuple(warnings), **values)
 
 
-def context_profile_warnings(env: Mapping[str, str] | None = None) -> tuple[str, ...]:
-    return context_limits(env).warnings
+def context_profile_warnings(
+    env: Mapping[str, str] | None = None,
+    *,
+    root: Path | None = None,
+    session_id: str | None = None,
+) -> tuple[str, ...]:
+    return context_limits(env, root=root, session_id=session_id).warnings
 
 
 def message(key: str, env: Mapping[str, str] | None = None, **values: object) -> str:
@@ -1193,16 +1336,64 @@ def render_pre_tool_context(root: Path, session_id: str | None = None) -> str:
     paths = planning_paths(root, session_id=session_id)
     if paths is None:
         return ""
-    limits = context_limits()
+    limits = context_limits(root=root, session_id=session_id)
     return _render_plan_data(root, paths, limits.pre_tool_plan_head_lines)
 
 
-def render_prompt_context(root: Path, session_id: str | None = None) -> str:
+def _format_approx_count(value: int) -> str:
+    if value >= 1000:
+        return f"{value / 1000:.1f}k"
+    return str(value)
+
+
+def _estimated_tokens(chars: int) -> int:
+    return max(1, math.ceil(chars / 4))
+
+
+def _progress_notice_text(limits: ContextLimits) -> str:
+    if limits.progress_recent_records > 0:
+        return f"{limits.progress_recent_records} records"
+    return f"tail {limits.progress_tail_lines} lines"
+
+
+def _should_show_context_notice(settings: ContextSettingsSource, limits: ContextLimits, *, event: str) -> bool:
+    if settings.notice == "off":
+        return False
+    if settings.notice == "on":
+        return True
+    return limits.profile in {"expanded", "deep"} or event == "SessionStart"
+
+
+def _append_context_notice(
+    rendered: str,
+    *,
+    settings: ContextSettingsSource,
+    limits: ContextLimits,
+    event: str,
+) -> str:
+    if not rendered:
+        return rendered
+    if not _should_show_context_notice(settings, limits, event=event):
+        return rendered
+    chars = len(rendered)
+    tokens = _estimated_tokens(chars)
+    notice = message(
+        "context_injection_notice",
+        profile=limits.profile,
+        progress=_progress_notice_text(limits),
+        chars=_format_approx_count(chars),
+        tokens=_format_approx_count(tokens),
+    )
+    return f"{notice}\n{rendered}"
+
+
+def render_prompt_context(root: Path, session_id: str | None = None, event: str = "UserPromptSubmit") -> str:
     paths = planning_paths(root, session_id=session_id)
     if paths is None:
         return ""
 
-    limits = context_limits()
+    settings = context_settings_source(root=root, session_id=session_id)
+    limits = context_limits(root=root, session_id=session_id)
     plan_context = _render_plan_data(
         root,
         paths,
@@ -1241,7 +1432,9 @@ def render_prompt_context(root: Path, session_id: str | None = None) -> str:
             ]
         )
     parts.extend(["", message("plan_context_footer")])
-    return apply_total_context_budget("\n".join(parts).rstrip(), limits)
+    rendered = apply_total_context_budget("\n".join(parts).rstrip(), limits)
+    rendered = _append_context_notice(rendered, settings=settings, limits=limits, event=event)
+    return apply_total_context_budget(rendered, limits)
 
 
 def _operation_from_change_value(value: Any) -> str:
