@@ -2,10 +2,14 @@
 
 ## Unreleased
 
+## 0.2.5 - 2026-06-10
+
 - 中文：将 `/pwf-init` / `plan.py init` 调整为 session-first 默认行为；能识别当前会话时，新任务会自动绑定当前会话并写入 task lease，降低同项目多会话并发时写混 progress 的风险。
 - 中文：新增显式兼容逃生口 `--no-bind-session`；`--no-workspace-active` 在默认绑定下可创建只属于当前会话的任务。
+- 中文：更新 FAQ、README、普通用户指南和 release notes，说明默认会话绑定、workspace/strict 边界、workspace active 兼容层、上下文压缩后确认任务，以及推荐 `v0.2.5` 安装包。
 - English: Made `/pwf-init` / `plan.py init` session-first by default; when the current session is identifiable, new tasks bind to that session and claim a task lease automatically.
 - English: Added explicit compatibility escape hatch `--no-bind-session`; `--no-workspace-active` can create session-only tasks under the default binding behavior.
+- English: Updated the FAQ, READMEs, plain-language user guide, and release notes with default session binding, workspace/strict boundaries, the workspace active compatibility fallback, task confirmation after context compaction, and the recommended `v0.2.5` package.
 
 ## 0.2.4 - 2026-06-10
 
