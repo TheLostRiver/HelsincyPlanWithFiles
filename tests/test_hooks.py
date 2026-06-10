@@ -153,6 +153,78 @@ class ContextLimitResolverTests(unittest.TestCase):
         self.assertEqual(limits.context_max_chars, 32000)
         self.assertEqual(len(limits.warnings), 3)
 
+    def test_context_limits_use_session_profile_when_env_profile_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            key = PLANNING_STATE.session_key("session-a")
+            context_dir = root / ".planning" / "session-context"
+            context_dir.mkdir(parents=True)
+            (context_dir / f"{key}.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "session_id": "session-a",
+                        "profile": "expanded",
+                        "notice": "auto",
+                        "created_at": "2026-06-10T00:00:00Z",
+                        "updated_at": "2026-06-10T00:00:00Z",
+                        "source": "test",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            limits = PLANNING_STATE.context_limits({}, root=root, session_id="session-a")
+            source = PLANNING_STATE.context_settings_source({}, root=root, session_id="session-a")
+
+            self.assertEqual(limits.profile, "expanded")
+            self.assertEqual(limits.progress_recent_records, 20)
+            self.assertEqual(source.profile_source, "session")
+            self.assertEqual(source.session_profile, "expanded")
+
+    def test_env_context_profile_overrides_session_profile(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            key = PLANNING_STATE.session_key("session-a")
+            context_dir = root / ".planning" / "session-context"
+            context_dir.mkdir(parents=True)
+            (context_dir / f"{key}.json").write_text(
+                json.dumps({"version": 1, "session_id": "session-a", "profile": "expanded", "notice": "auto"}),
+                encoding="utf-8",
+            )
+
+            limits = PLANNING_STATE.context_limits(
+                {"PWF_CONTEXT_PROFILE": "deep"},
+                root=root,
+                session_id="session-a",
+            )
+            source = PLANNING_STATE.context_settings_source(
+                {"PWF_CONTEXT_PROFILE": "deep"},
+                root=root,
+                session_id="session-a",
+            )
+
+            self.assertEqual(limits.profile, "deep")
+            self.assertEqual(limits.progress_recent_records, 40)
+            self.assertEqual(source.profile_source, "env PWF_CONTEXT_PROFILE")
+            self.assertEqual(source.session_profile, "expanded")
+            self.assertTrue(source.session_profile_overridden)
+
+    def test_malformed_session_context_falls_back_without_crashing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            key = PLANNING_STATE.session_key("session-a")
+            context_dir = root / ".planning" / "session-context"
+            context_dir.mkdir(parents=True)
+            (context_dir / f"{key}.json").write_text("{not json", encoding="utf-8")
+
+            limits = PLANNING_STATE.context_limits({}, root=root, session_id="session-a")
+            source = PLANNING_STATE.context_settings_source({}, root=root, session_id="session-a")
+
+            self.assertEqual(limits.profile, "default")
+            self.assertEqual(source.profile_source, "default")
+            self.assertTrue(any("session-context" in warning for warning in source.warnings))
+
     def test_env_bool_rejects_invalid_findings_value(self):
         value, warning = PLANNING_STATE.env_bool(
             "PWF_INCLUDE_FINDINGS",
