@@ -159,6 +159,14 @@ Copy-Item -Recurse -Force .\HelsincyPlanWithFiles\.codex .\your-project\
 | `/pwf-attest` | 创建、查看或清除计划 hash attestation | `plan.py attest [--show or --clear]` |
 | `/pwf-capture` | 把网页、浏览器、图片、PDF、文件或笔记上下文写入 `findings.md` | `plan.py capture ...` |
 | `/pwf-compact` | 归档旧 auto records 并缩短 `progress.md` | `plan.py compact` |
+| `/pwf-context-expanded` | 当前会话切到大型任务上下文模式 | `plan.py context set expanded` |
+| `/pwf-context-deep` | 当前会话切到深度恢复上下文模式 | `plan.py context set deep` |
+| `/pwf-context-default` | 当前会话恢复默认上下文模式 | `plan.py context set default` |
+| `/pwf-context-lean` | 当前会话切到省上下文模式 | `plan.py context set lean` |
+| `/pwf-context-status` | 查看当前会话上下文设置和来源 | `plan.py context status` |
+| `/pwf-context-notice-auto` | 自动提示上下文注入情况 | `plan.py context notice auto` |
+| `/pwf-context-notice-on` | 每次注入上下文都提示 | `plan.py context notice on` |
+| `/pwf-context-notice-off` | 关闭上下文注入提示 | `plan.py context notice off` |
 
 ## 与原版对比
 

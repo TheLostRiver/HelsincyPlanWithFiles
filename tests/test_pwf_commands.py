@@ -20,6 +20,14 @@ COMMANDS = {
     "pwf-attest": "attest",
     "pwf-capture": "capture",
     "pwf-compact": "compact",
+    "pwf-context-expanded": "context set expanded",
+    "pwf-context-deep": "context set deep",
+    "pwf-context-default": "context set default",
+    "pwf-context-lean": "context set lean",
+    "pwf-context-status": "context status",
+    "pwf-context-notice-on": "context notice on",
+    "pwf-context-notice-off": "context notice off",
+    "pwf-context-notice-auto": "context notice auto",
 }
 
 
@@ -56,7 +64,8 @@ class PwfCommandTests(unittest.TestCase):
                 text = read_repo_text(f".codex/skills/{command_name}/SKILL.md")
 
                 self.assertIn("plan.py", text)
-                self.assertIn(subcommand, text)
+                for part in subcommand.split():
+                    self.assertIn(part, text)
 
     def test_pwf_skill_wrappers_document_chinese_mode(self):
         for command_name in COMMANDS:

@@ -159,6 +159,14 @@ The first batch uses the `/pwf-XXX` naming pattern. `pwf` means planning with fi
 | `/pwf-attest` | Create, show, or clear plan hash attestation | `plan.py attest [--show or --clear]` |
 | `/pwf-capture` | Save web, browser, image, PDF, file, or note context to `findings.md` | `plan.py capture ...` |
 | `/pwf-compact` | Archive old auto records and keep `progress.md` small | `plan.py compact` |
+| `/pwf-context-expanded` | Switch the current session to expanded context mode | `plan.py context set expanded` |
+| `/pwf-context-deep` | Switch the current session to deep recovery context mode | `plan.py context set deep` |
+| `/pwf-context-default` | Restore default context mode for the current session | `plan.py context set default` |
+| `/pwf-context-lean` | Switch the current session to lean context mode | `plan.py context set lean` |
+| `/pwf-context-status` | Show current-session context settings and sources | `plan.py context status` |
+| `/pwf-context-notice-auto` | Automatically show useful context injection notices | `plan.py context notice auto` |
+| `/pwf-context-notice-on` | Show a notice whenever PWF injects context | `plan.py context notice on` |
+| `/pwf-context-notice-off` | Hide context injection notices | `plan.py context notice off` |
 
 ## Compared With Upstream
 
