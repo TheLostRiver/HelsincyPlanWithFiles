@@ -203,6 +203,23 @@ class ProjectConsistencyTests(unittest.TestCase):
         ):
             self.assertIn(phrase, user_guide)
 
+        for phrase in (
+            "默认会绑定当前会话",
+            "--no-bind-session",
+            "--no-workspace-active",
+            "workspace active 是兼容层",
+            "接管或共享仍必须显式",
+        ):
+            self.assertIn(phrase, readme_cn + faq + user_guide)
+
+        for phrase in (
+            "session-first by default",
+            "--no-bind-session",
+            "workspace active remains a compatibility fallback",
+            "claim or share still requires explicit intent",
+        ):
+            self.assertIn(phrase, readme_en + faq)
+
     def test_release_notes_are_bilingual_for_current_version(self):
         version = read_text("VERSION").strip()
         changelog = read_text("CHANGELOG.md")

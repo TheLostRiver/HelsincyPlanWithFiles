@@ -151,7 +151,7 @@ Copy-Item -Recurse -Force .\HelsincyPlanWithFiles\.codex .\your-project\
 | 命令 | 作用 | 等价 CLI |
 |------|------|----------|
 | `/pwf-doctor` | 诊断 hook、active plan 和 attestation 状态 | `plan.py doctor` |
-| `/pwf-init` | 创建新的 planning 任务 | `plan.py init <task name>` |
+| `/pwf-init` | 创建新的 planning 任务；能识别会话时默认会绑定当前会话 | `plan.py init <task name>` |
 | `/pwf-status` | 查看当前 active plan 状态 | `plan.py status` |
 | `/pwf-switch` | 查看或切换 active plan | `plan.py switch [plan-id]` |
 | `/pwf-tasks` | 列出当前会话可见的 PWF 任务和短 ID；默认不显示其他会话任务 | `plan.py tasks` |
@@ -200,7 +200,9 @@ PLAN_ID 环境变量
 
 ### Session Policy
 
-默认情况下，hook 使用 workspace session mode。当前 `.planning/.active_plan` 是唯一真相；即使 `.planning/sessions/` 目录存在，也会继续注入 planning 上下文。这样 Codex 压缩上下文、resume、以及下一次用户提示后都更稳定。
+默认情况下，`/pwf-init` 和 `plan.py init` 是 session-first：如果工具能识别当前 Codex 会话，也就是存在 `PWF_SESSION_ID` 或 `CODEX_THREAD_ID`，新建任务默认会绑定当前会话并写入 task lease。这样同一项目里开多个会话时，每个会话新建的 PWF 任务会自然归属各自会话。
+
+`.planning/.active_plan` 仍会默认写入，但 workspace active 是兼容层，用来照顾单会话和旧工作流；多会话下优先使用当前 session binding。hook 仍使用 workspace session mode 作为默认 policy，因此 Codex 压缩上下文、resume、以及下一次用户提示后都更稳定。
 
 严格的按会话隔离是显式 opt-in。只有当同一个项目里多个 Codex 会话必须互不共享 active plan 时才开启 `PWF_SESSION_MODE=strict`：
 
@@ -216,24 +218,35 @@ $env:PWF_SESSION_MODE = "strict"
 
 strict 模式下，hook payload 必须包含已 attach 的 `session_id`；否则 hook 会输出诊断消息，而不是静默跳过 planning 上下文。运行 `/pwf-doctor` 可以查看当前 session mode。
 
-同一项目多会话并发时，请给每个会话绑定自己的 PWF 任务：
+同一项目多会话并发时，通常直接在每个会话里运行 `/pwf-init <task name>` 即可。需要恢复旧的 workspace-only 行为时，显式使用：
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --no-bind-session
+```
+
+需要只绑定当前会话、不更新 `.planning/.active_plan` 时使用：
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --no-workspace-active
+```
+
+绑定已有任务时使用：
 
 ```powershell
 python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session
 ```
 
-新建旁路任务时也可以直接绑定当前 session：
+显式写法仍然可用：
 
 ```powershell
 python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --bind-session
-python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --bind-session --no-workspace-active
 ```
 
 `--session` 只写 `.planning/session-bindings/<session-key>.json`，不会修改 `.planning/.active_plan`。旧的 `plan.py switch <plan-id>` 仍然切换 workspace active plan。
 
-更省心的方式是先运行 `/pwf-tasks`。它默认只显示当前会话可见任务，不会列出其他会话独占任务。复制列表中的短 ID 后运行 `/pwf-use <short-id>` 即可绑定当前会话。需要诊断所有任务时才使用 `plan.py tasks --all`；即使在 `--all` 中看到了其他会话任务，也必须显式使用 `plan.py use <id> --claim` 或 `plan.py use <id> --share` 才能跨 ownership 边界。
+更省心的方式是先运行 `/pwf-tasks`。它默认只显示当前会话可见任务，不会列出其他会话独占任务。复制列表中的短 ID 后运行 `/pwf-use <short-id>` 即可绑定当前会话。需要诊断所有任务时才使用 `plan.py tasks --all`；即使在 `--all` 中看到了其他会话任务，接管或共享仍必须显式使用 `plan.py use <id> --claim` 或 `plan.py use <id> --share` 才能跨 ownership 边界。
 
-`--legacy` 只用于根目录单任务兼容模式，不支持 session binding；`plan.py init "Task Name" --legacy --bind-session` 会被拒绝。需要多会话隔离时，请使用 `.planning/<plan-id>` 命名任务和 `--bind-session`。
+`--legacy` 只用于根目录单任务兼容模式，不支持 session binding；`plan.py init "Task Name" --legacy --bind-session` 会被拒绝。需要多会话隔离时，请使用 `.planning/<plan-id>` 命名任务和默认 session-first 行为。
 
 如果 workspace active task 已经由另一个 session 拥有，新的 session 不会自动接管；即使 owner 已经 stale，也必须显式选择。接管、共享和释放当前会话分别使用：
 
