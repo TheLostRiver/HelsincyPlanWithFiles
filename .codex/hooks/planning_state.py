@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import hashlib
@@ -221,6 +222,10 @@ MESSAGES = {
             "[planning-with-files] progress.md has {count} auto records. "
             "Consider running /pwf-compact to archive old objective records."
         ),
+        "context_injection_notice": (
+            "[planning-with-files] Injected current-session planning context: "
+            "profile={profile}, progress={progress}, approx {chars} chars (~{tokens} tokens)."
+        ),
         "post_tool_recorded": (
             "[planning-with-files] Recorded PostToolUse context in progress.md. "
             "If a phase is now complete, update task_plan.md status."
@@ -253,6 +258,10 @@ MESSAGES = {
         "progress_compaction_notice": (
             "[planning-with-files] progress.md 已有 {count} 条 auto records。"
             "建议运行 /pwf-compact 归档旧的客观记录。"
+        ),
+        "context_injection_notice": (
+            "[planning-with-files] 已自动注入当前会话的任务上下文："
+            "profile={profile}，progress={progress}，约 {chars} chars（估算 {tokens} tokens）。"
         ),
         "post_tool_recorded": (
             "[planning-with-files] 已将 PostToolUse 上下文记录到 progress.md。"
@@ -1331,11 +1340,59 @@ def render_pre_tool_context(root: Path, session_id: str | None = None) -> str:
     return _render_plan_data(root, paths, limits.pre_tool_plan_head_lines)
 
 
-def render_prompt_context(root: Path, session_id: str | None = None) -> str:
+def _format_approx_count(value: int) -> str:
+    if value >= 1000:
+        return f"{value / 1000:.1f}k"
+    return str(value)
+
+
+def _estimated_tokens(chars: int) -> int:
+    return max(1, math.ceil(chars / 4))
+
+
+def _progress_notice_text(limits: ContextLimits) -> str:
+    if limits.progress_recent_records > 0:
+        return f"{limits.progress_recent_records} records"
+    return f"tail {limits.progress_tail_lines} lines"
+
+
+def _should_show_context_notice(settings: ContextSettingsSource, limits: ContextLimits, *, event: str) -> bool:
+    if settings.notice == "off":
+        return False
+    if settings.notice == "on":
+        return True
+    return limits.profile in {"expanded", "deep"} or event == "SessionStart"
+
+
+def _append_context_notice(
+    rendered: str,
+    *,
+    settings: ContextSettingsSource,
+    limits: ContextLimits,
+    event: str,
+) -> str:
+    if not rendered:
+        return rendered
+    if not _should_show_context_notice(settings, limits, event=event):
+        return rendered
+    chars = len(rendered)
+    tokens = _estimated_tokens(chars)
+    notice = message(
+        "context_injection_notice",
+        profile=limits.profile,
+        progress=_progress_notice_text(limits),
+        chars=_format_approx_count(chars),
+        tokens=_format_approx_count(tokens),
+    )
+    return f"{notice}\n{rendered}"
+
+
+def render_prompt_context(root: Path, session_id: str | None = None, event: str = "UserPromptSubmit") -> str:
     paths = planning_paths(root, session_id=session_id)
     if paths is None:
         return ""
 
+    settings = context_settings_source(root=root, session_id=session_id)
     limits = context_limits(root=root, session_id=session_id)
     plan_context = _render_plan_data(
         root,
@@ -1375,7 +1432,9 @@ def render_prompt_context(root: Path, session_id: str | None = None) -> str:
             ]
         )
     parts.extend(["", message("plan_context_footer")])
-    return apply_total_context_budget("\n".join(parts).rstrip(), limits)
+    rendered = apply_total_context_budget("\n".join(parts).rstrip(), limits)
+    rendered = _append_context_notice(rendered, settings=settings, limits=limits, event=event)
+    return apply_total_context_budget(rendered, limits)
 
 
 def _operation_from_change_value(value: Any) -> str:

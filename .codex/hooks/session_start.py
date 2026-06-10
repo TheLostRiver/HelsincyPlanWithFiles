@@ -46,7 +46,7 @@ def main() -> None:
     planning_dir = access.resolution.paths.root if access.resolution is not None else None
     parts = [
         _run_session_catchup(root, planning_dir),
-        planning_state.render_prompt_context(root, session_id=session_id),
+        planning_state.render_prompt_context(root, session_id=session_id, event="SessionStart"),
     ]
     output = "\n\n".join(part for part in parts if part)
     if output:
