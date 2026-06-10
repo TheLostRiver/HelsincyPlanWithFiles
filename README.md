@@ -70,7 +70,7 @@ Helsincy Plan With Files 把这些易丢失的信息落到项目文件里，让�
 
 ## 版本
 
-当前版本：`0.2.5`。变更记录见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本：`0.2.6`。变更记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 重要：请不要再使用 `v0.1.0` 或更早版本。旧版本包含错误的 `/plw-*` 命令前缀，并且曾经引入过全局 prompts 安装路线，容易造成迁移和卸载混乱。请升级到当前版本并使用 `/pwf-*` 命令。
 
@@ -78,7 +78,7 @@ Helsincy Plan With Files 把这些易丢失的信息落到项目文件里，让�
 
 - [普通用户使用指南](docs/USER_GUIDE.zh-CN.md)：用通俗语言说明这个工具是干什么的、什么时候用、怎么开始、怎么继续任务，以及多个会话怎么避免写混。
 - [FAQ](docs/FAQ.md)：面向普通用户的常见问题，覆盖安装、命令不可见、上下文压缩、session policy、progress compaction、attestation 和中文模式。
-- [v0.2.5 Release Notes](docs/RELEASE_NOTES_0.2.5.md)：本次发布的中英双语说明，可直接用于 GitHub Release。
+- [v0.2.6 Release Notes](docs/RELEASE_NOTES_0.2.6.md)：本次发布的中英双语说明，可直接用于 GitHub Release。
 - [CHANGELOG.md](CHANGELOG.md)：完整版本变更记录。
 
 ## 中文模式
@@ -107,12 +107,12 @@ $env:PWF_LANG="en"
 
 ## 安装
 
-推荐普通用户从 Release 下载 `HelsincyPlanWithFiles-v0.2.5-codex.zip`。这个包只包含安装到项目所需的 `.codex/`、hooks、`/pwf-*` commands 和基础文档。
+推荐普通用户从 Release 下载 `HelsincyPlanWithFiles-v0.2.6-codex.zip`。这个包只包含安装到项目所需的 `.codex/`、hooks、`/pwf-*` commands 和基础文档。
 
 ### 方式 A：从 Release 下载
 
 1. 打开 [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest)。
-2. 下载 `HelsincyPlanWithFiles-v0.2.5-codex.zip`。
+2. 下载 `HelsincyPlanWithFiles-v0.2.6-codex.zip`。
 3. 解压后，把里面的 `.codex/` 复制到你的项目根目录。
 4. 重启 Codex，第一次提示信任 hook 时选择批准。
 5. 在 Codex 中运行 `/pwf-doctor` 检查安装状态。
