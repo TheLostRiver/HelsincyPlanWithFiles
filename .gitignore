@@ -1,6 +1,7 @@
 .planning/
 .plan-attestation
 docs/superpowers/
+dist/
 __pycache__/
 *.pyc
 .pytest_cache/
