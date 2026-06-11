@@ -63,6 +63,49 @@ class RolloverResult:
     summary: str
 
 
+@dataclass(frozen=True)
+class ProgressDoctorIssue:
+    severity: str
+    code: str
+    path: str
+    message: str
+    effect: str
+    action: str
+
+
+@dataclass(frozen=True)
+class ProgressDoctorReport:
+    progress_path: Path
+    active_path: Path
+    index_path: Path
+    index_exists: bool
+    rollover_events: int
+    referenced_paths: tuple[str, ...]
+    orphan_paths: tuple[str, ...]
+    issues: tuple[ProgressDoctorIssue, ...]
+
+    @property
+    def has_errors(self) -> bool:
+        return any(issue.severity == "error" for issue in self.issues)
+
+    @property
+    def has_warnings(self) -> bool:
+        return any(issue.severity == "warn" for issue in self.issues)
+
+
+INVALID_INDEX_JSON = "invalid_index_json"
+INVALID_EVENT_SCHEMA = "invalid_event_schema"
+PATH_ESCAPES_ROOT = "path_escapes_root"
+ACTIVE_ROLE_MISMATCH = "active_role_mismatch"
+ARCHIVE_ROLE_MISMATCH = "archive_role_mismatch"
+MISSING_LATEST_ACTIVE = "missing_latest_active"
+MISSING_ARCHIVE = "missing_archive"
+HASH_MISMATCH = "hash_mismatch"
+ORPHAN_SEGMENT = "orphan_segment"
+LEGACY_PROGRESS_ONLY = "legacy_progress_only"
+LEGACY_ARCHIVE_FILE = "legacy_archive_file"
+
+
 def count_auto_records(progress_path: Path) -> int:
     if not progress_path.is_file():
         return 0
@@ -215,6 +258,47 @@ def _sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _sha256_file_text(path: Path) -> str:
+    return _sha256_text(path.read_text(encoding="utf-8", errors="replace"))
+
+
+def _is_hex_sha256(value: object) -> bool:
+    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+
+def _is_safe_relative_ref(value: str) -> bool:
+    if not value or "\\" in value:
+        return False
+    parts = PurePosixPath(value).parts
+    return (
+        bool(parts)
+        and all(part not in {"", ".", ".."} for part in parts)
+        and not PurePosixPath(value).is_absolute()
+    )
+
+
+def _is_archive_segment_ref(value: str) -> bool:
+    parts = PurePosixPath(value).parts
+    return (
+        len(parts) >= 3
+        and parts[0] == "progress-archive"
+        and all(part not in {"", ".", ".."} for part in parts)
+        and parts[-1].startswith("archive-")
+        and parts[-1].endswith(".md")
+    )
+
+
+def _issue(severity: str, code: str, path: str, message: str, effect: str, action: str) -> ProgressDoctorIssue:
+    return ProgressDoctorIssue(
+        severity=severity,
+        code=code,
+        path=path,
+        message=message,
+        effect=effect,
+        action=action,
+    )
+
+
 def _relative_to_progress_root(progress_path: Path, target: Path) -> str:
     try:
         return target.relative_to(progress_path.parent).as_posix()
@@ -236,6 +320,90 @@ def _read_index_events(index_path: Path) -> list[dict[str, object]]:
         if isinstance(payload, dict):
             events.append(payload)
     return events
+
+
+def _read_index_events_with_issues(
+    index_path: Path,
+) -> tuple[list[tuple[int, dict[str, object]]], list[ProgressDoctorIssue]]:
+    if not index_path.is_file():
+        return [], []
+    events: list[tuple[int, dict[str, object]]] = []
+    issues: list[ProgressDoctorIssue] = []
+    lines = index_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    for line_number, line in enumerate(lines, start=1):
+        if not line.strip():
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError as exc:
+            issues.append(
+                _issue(
+                    "error",
+                    INVALID_INDEX_JSON,
+                    f"{index_path.name}:{line_number}",
+                    f"invalid JSON: {exc.msg}",
+                    "Doctor cannot fully trust the rollover event chain after this line.",
+                    "Inspect progress-index.ndjson manually; PWF did not modify files.",
+                )
+            )
+            continue
+        if not isinstance(payload, dict):
+            issues.append(
+                _issue(
+                    "error",
+                    INVALID_EVENT_SCHEMA,
+                    f"{index_path.name}:{line_number}",
+                    "index line is not a JSON object",
+                    "The rollover event chain contains data that cannot describe progress storage.",
+                    "Inspect progress-index.ndjson manually; PWF did not modify files.",
+                )
+            )
+            continue
+        events.append((line_number, payload))
+    return events, issues
+
+
+def _resolve_index_ref(
+    progress_path: Path, value: object, *, role: str, line_number: int
+) -> tuple[str | None, Path | None, list[ProgressDoctorIssue]]:
+    index_path = progress_index_path(progress_path)
+    if not isinstance(value, str) or not value:
+        return None, None, [
+            _issue(
+                "error",
+                INVALID_EVENT_SCHEMA,
+                f"{index_path.name}:{line_number}",
+                f"missing {role} path",
+                "The rollover event cannot be used safely.",
+                "Inspect progress-index.ndjson manually; PWF did not modify files.",
+            )
+        ]
+    if not _is_safe_relative_ref(value):
+        return value, None, [
+            _issue(
+                "error",
+                PATH_ESCAPES_ROOT,
+                value,
+                f"{role} path is not a safe relative path",
+                "A malformed reference could point outside the progress storage root.",
+                "Inspect progress-index.ndjson manually; PWF did not modify files.",
+            )
+        ]
+    candidate = progress_path.parent / value
+    try:
+        candidate.resolve().relative_to(progress_path.parent.resolve())
+    except (OSError, ValueError):
+        return value, None, [
+            _issue(
+                "error",
+                PATH_ESCAPES_ROOT,
+                value,
+                f"{role} path escapes the progress storage root",
+                "A malformed reference could point outside the progress storage root.",
+                "Inspect progress-index.ndjson manually; PWF did not modify files.",
+            )
+        ]
+    return value, candidate, []
 
 
 def latest_rollover_event(progress_path: Path) -> dict[str, object] | None:
@@ -273,6 +441,221 @@ def current_active_progress(progress_path: Path) -> Path:
         if candidate.is_file():
             return candidate
     return progress_path
+
+
+def doctor_progress_storage(progress_path: Path) -> ProgressDoctorReport:
+    index_path = progress_index_path(progress_path)
+    events_with_lines, issues = _read_index_events_with_issues(index_path)
+    rollover_events = [(line, event) for line, event in events_with_lines if event.get("event") == "rollover"]
+    referenced: set[str] = set()
+    active_path = progress_path
+
+    if not index_path.is_file():
+        if progress_path.is_file():
+            issues.append(
+                _issue(
+                    "info",
+                    LEGACY_PROGRESS_ONLY,
+                    progress_path.name,
+                    "legacy progress.md is the active progress file",
+                    "No append-only rollover index exists yet.",
+                    "No action is needed.",
+                )
+            )
+        legacy_archive = progress_path.parent / "progress.archive.md"
+        if legacy_archive.is_file():
+            issues.append(
+                _issue(
+                    "info",
+                    LEGACY_ARCHIVE_FILE,
+                    "progress.archive.md",
+                    "legacy progress archive file is present",
+                    "This file is old-format cold storage and is not modified by rollover.",
+                    "Keep it for audit, or remove it manually only if you no longer need it.",
+                )
+            )
+        return ProgressDoctorReport(progress_path, active_path, index_path, False, 0, (), (), tuple(issues))
+
+    for line_number, event in rollover_events:
+        if event.get("version") != 1:
+            issues.append(
+                _issue(
+                    "warn",
+                    INVALID_EVENT_SCHEMA,
+                    f"{index_path.name}:{line_number}",
+                    f"unexpected rollover version={event.get('version')!r}",
+                    "This doctor version may not understand every field in the event.",
+                    "Upgrade PWF if this was written by a newer version.",
+                )
+            )
+
+        archive_ref, archive_path, archive_issues = _resolve_index_ref(
+            progress_path,
+            event.get("archive"),
+            role="archive",
+            line_number=line_number,
+        )
+        issues.extend(archive_issues)
+        if archive_ref:
+            referenced.add(archive_ref)
+            if not _is_archive_segment_ref(archive_ref):
+                issues.append(
+                    _issue(
+                        "error",
+                        ARCHIVE_ROLE_MISMATCH,
+                        archive_ref,
+                        "archive path is not under progress-archive/",
+                        "Archive and active directories are role-separated to prevent writes to sealed history.",
+                        "Inspect the index manually; PWF did not move files.",
+                    )
+                )
+            elif archive_path is not None and not archive_path.is_file():
+                issues.append(
+                    _issue(
+                        "warn",
+                        MISSING_ARCHIVE,
+                        archive_ref,
+                        "indexed archive file is missing",
+                        "Historical auto records referenced by this event may be unavailable.",
+                        "Inspect storage manually; PWF did not recreate files.",
+                    )
+                )
+            elif archive_path is not None and _is_hex_sha256(event.get("archive_sha256")):
+                actual = _sha256_file_text(archive_path)
+                if actual != event["archive_sha256"]:
+                    issues.append(
+                        _issue(
+                            "error",
+                            HASH_MISMATCH,
+                            archive_ref,
+                            "archive SHA-256 does not match progress-index.ndjson",
+                            "The archive audit chain is not trustworthy.",
+                            "Inspect the file and index manually; PWF did not modify either file.",
+                        )
+                    )
+
+        active_ref, candidate_active, active_issues = _resolve_index_ref(
+            progress_path,
+            event.get("new_active"),
+            role="new_active",
+            line_number=line_number,
+        )
+        issues.extend(active_issues)
+        if active_ref:
+            referenced.add(active_ref)
+            is_latest = (line_number, event) == rollover_events[-1]
+            if not _is_active_segment_ref(active_ref):
+                issues.append(
+                    _issue(
+                        "error",
+                        ACTIVE_ROLE_MISMATCH,
+                        active_ref,
+                        "active path is not under progress-active/",
+                        "Hooks must only append to active progress segments.",
+                        "Inspect the index manually; PWF did not move files.",
+                    )
+                )
+            elif candidate_active is not None and not candidate_active.is_file() and is_latest:
+                issues.append(
+                    _issue(
+                        "error",
+                        MISSING_LATEST_ACTIVE,
+                        active_ref,
+                        "latest indexed active progress segment is missing",
+                        "Hooks may fall back to legacy progress.md instead of the intended active segment.",
+                        "Inspect storage manually; PWF did not recreate files.",
+                    )
+                )
+            elif candidate_active is not None and candidate_active.is_file():
+                if is_latest:
+                    active_path = candidate_active
+                if _is_hex_sha256(event.get("new_active_sha256")):
+                    actual = _sha256_file_text(candidate_active)
+                    if actual != event["new_active_sha256"]:
+                        issues.append(
+                            _issue(
+                                "error",
+                                HASH_MISMATCH,
+                                active_ref,
+                                "active segment SHA-256 does not match progress-index.ndjson",
+                                "The active progress audit chain is not trustworthy.",
+                                "Inspect the file and index manually; PWF did not modify either file.",
+                            )
+                        )
+
+    inventory: list[tuple[str, str]] = []
+    for directory, matcher in (("progress-active", "active-*.md"), ("progress-archive", "archive-*.md")):
+        base = progress_path.parent / directory
+        if base.is_dir():
+            inventory.extend(
+                (directory, _relative_to_progress_root(progress_path, path))
+                for path in sorted(base.glob(f"**/{matcher}"))
+            )
+
+    orphan_paths: list[str] = []
+    for directory, rel in inventory:
+        if rel not in referenced:
+            orphan_paths.append(rel)
+            issues.append(
+                _issue(
+                    "warn",
+                    ORPHAN_SEGMENT,
+                    rel,
+                    "generated progress segment is not referenced by progress-index.ndjson",
+                    "A previous rollover may have created files before appending the index.",
+                    "Keep it for analysis, or remove manually only if you are sure it is no longer needed.",
+                )
+            )
+
+    for path in sorted((progress_path.parent / "progress-active").glob("**/archive-*.md")):
+        rel = _relative_to_progress_root(progress_path, path)
+        issues.append(
+            _issue(
+                "error",
+                ARCHIVE_ROLE_MISMATCH,
+                rel,
+                "archive-shaped file is under progress-active/",
+                "Archive and active directories are role-separated to prevent writes to sealed history.",
+                "Inspect storage manually; PWF did not move files.",
+            )
+        )
+
+    for path in sorted((progress_path.parent / "progress-archive").glob("**/active-*.md")):
+        rel = _relative_to_progress_root(progress_path, path)
+        issues.append(
+            _issue(
+                "error",
+                ACTIVE_ROLE_MISMATCH,
+                rel,
+                "active-shaped file is under progress-archive/",
+                "Hooks must only append to active progress segments.",
+                "Inspect storage manually; PWF did not move files.",
+            )
+        )
+
+    legacy_archive = progress_path.parent / "progress.archive.md"
+    if legacy_archive.is_file():
+        issues.append(
+            _issue(
+                "info",
+                LEGACY_ARCHIVE_FILE,
+                "progress.archive.md",
+                "legacy progress archive file is present",
+                "The new append-only rollover does not write to this file.",
+                "Keep it for audit, or remove it manually only if you no longer need it.",
+            )
+        )
+
+    return ProgressDoctorReport(
+        progress_path=progress_path,
+        active_path=active_path,
+        index_path=index_path,
+        index_exists=True,
+        rollover_events=len(rollover_events),
+        referenced_paths=tuple(sorted(referenced)),
+        orphan_paths=tuple(sorted(orphan_paths)),
+        issues=tuple(issues),
+    )
 
 
 def _render_rollover_archive(
