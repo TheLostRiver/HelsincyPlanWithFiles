@@ -309,6 +309,108 @@ class PlanDoctorTests(unittest.TestCase):
             self.assertIn("[warn] progress.md has 101 auto records", result.stdout)
             self.assertIn("run /pwf-compact or plan.py compact", result.stdout)
 
+    def test_doctor_reports_progress_storage_summary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_hooks(root)
+            plan_dir = write_active_plan(root)
+            active = plan_dir / "progress-active" / "abc123" / "active-20260611100300-fixed01.md"
+            archive = plan_dir / "progress-archive" / "abc123" / "archive-20260611100300-fixed01.md"
+            active.parent.mkdir(parents=True)
+            archive.parent.mkdir(parents=True)
+            active_text = "# Progress Log\n\nactive\n"
+            archive_text = "# Progress Archive\n\nsealed\n"
+            active.write_text(active_text, encoding="utf-8")
+            archive.write_text(archive_text, encoding="utf-8")
+            (plan_dir / "progress-index.ndjson").write_text(
+                json.dumps(
+                    {
+                        "event": "rollover",
+                        "version": 1,
+                        "archive": "progress-archive/abc123/archive-20260611100300-fixed01.md",
+                        "new_active": "progress-active/abc123/active-20260611100300-fixed01.md",
+                        "archive_sha256": hashlib.sha256(archive_text.encode("utf-8")).hexdigest(),
+                        "new_active_sha256": hashlib.sha256(active_text.encode("utf-8")).hexdigest(),
+                    },
+                    ensure_ascii=True,
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            result = run_plan(root, "doctor")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("progress storage: ok", result.stdout)
+            self.assertIn("progress active: progress-active/abc123/active-20260611100300-fixed01.md", result.stdout)
+            self.assertIn("progress index: 1 rollover event", result.stdout)
+            self.assertIn("No automatic repair was attempted.", result.stdout)
+
+    def test_doctor_progress_storage_error_returns_nonzero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_hooks(root)
+            plan_dir = write_active_plan(root)
+            (plan_dir / "progress-index.ndjson").write_text("{not json\n", encoding="utf-8")
+
+            result = run_plan(root, "doctor")
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("progress storage: error", result.stdout)
+            self.assertIn("[error] invalid_index_json", result.stdout)
+
+    def test_doctor_strict_returns_nonzero_for_progress_storage_warning(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_hooks(root)
+            plan_dir = write_active_plan(root)
+            orphan = plan_dir / "progress-archive" / "abc123" / "archive-20260611100400-orphan.md"
+            orphan.parent.mkdir(parents=True)
+            orphan.write_text("# Progress Archive\n", encoding="utf-8")
+
+            normal = run_plan(root, "doctor")
+            strict = run_plan(root, "doctor", "--strict")
+
+            self.assertEqual(normal.returncode, 0, normal.stderr)
+            self.assertEqual(strict.returncode, 1)
+            self.assertIn("[warn] orphan_segment", strict.stdout)
+
+    def test_doctor_json_reports_progress_storage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_hooks(root)
+            write_active_plan(root)
+
+            result = run_plan(root, "doctor", "--json")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertIn("progress_storage", payload)
+            self.assertEqual(payload["progress_storage"]["status"], "info")
+            self.assertIn("issues", payload["progress_storage"])
+
+    def test_doctor_does_not_modify_progress_storage_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_hooks(root)
+            plan_dir = write_active_plan(root)
+            index = plan_dir / "progress-index.ndjson"
+            index.write_text("{not json\n", encoding="utf-8")
+            before = {
+                path: hashlib.sha256(path.read_bytes()).hexdigest()
+                for path in (plan_dir / "progress.md", index)
+            }
+
+            result = run_plan(root, "doctor", "--verbose")
+
+            after = {
+                path: hashlib.sha256(path.read_bytes()).hexdigest()
+                for path in (plan_dir / "progress.md", index)
+            }
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(before, after)
+
     def test_doctor_warns_about_unsupported_language(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -751,6 +751,121 @@ def _progress_doctor_warning(paths: planning_state.PlanningPaths | None) -> str:
     return _message("progress_warning", count=count)
 
 
+def _relative_to_plan_root(paths: planning_state.PlanningPaths, path: Path) -> str:
+    try:
+        return path.relative_to(paths.root).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def _progress_storage_status(report: progress_lifecycle.ProgressDoctorReport, strict: bool = False) -> str:
+    if report.has_errors:
+        return "error"
+    if report.has_warnings:
+        return "warning" if strict else "warning"
+    if report.issues:
+        return "info"
+    return "ok"
+
+
+def _progress_storage_has_blocking_errors(report: progress_lifecycle.ProgressDoctorReport) -> bool:
+    return any(
+        issue.severity == "error" and issue.code != progress_lifecycle.INVALID_EVENT_SCHEMA
+        for issue in report.issues
+    )
+
+
+def _unindexed_progress_segment_issues(paths: planning_state.PlanningPaths) -> tuple[progress_lifecycle.ProgressDoctorIssue, ...]:
+    issues: list[progress_lifecycle.ProgressDoctorIssue] = []
+    for directory, pattern in (("progress-active", "active-*.md"), ("progress-archive", "archive-*.md")):
+        base = paths.root / directory
+        if not base.is_dir():
+            continue
+        for path in sorted(base.glob(f"**/{pattern}")):
+            rel = path.relative_to(paths.root).as_posix()
+            issues.append(
+                progress_lifecycle.ProgressDoctorIssue(
+                    "warn",
+                    progress_lifecycle.ORPHAN_SEGMENT,
+                    rel,
+                    "generated progress segment is not referenced by progress-index.ndjson",
+                    "A previous rollover may have created files before appending the index.",
+                    "Keep it for analysis, or remove manually only if you are sure it is no longer needed.",
+                )
+            )
+    return tuple(issues)
+
+
+def _progress_storage_report(paths: planning_state.PlanningPaths) -> progress_lifecycle.ProgressDoctorReport:
+    report = progress_lifecycle.doctor_progress_storage(paths.progress)
+    if report.index_exists:
+        return report
+    extra_issues = _unindexed_progress_segment_issues(paths)
+    if not extra_issues:
+        return report
+    return progress_lifecycle.ProgressDoctorReport(
+        progress_path=report.progress_path,
+        active_path=report.active_path,
+        index_path=report.index_path,
+        index_exists=report.index_exists,
+        rollover_events=report.rollover_events,
+        referenced_paths=report.referenced_paths,
+        orphan_paths=tuple(sorted({*(report.orphan_paths), *(issue.path for issue in extra_issues)})),
+        issues=(*report.issues, *extra_issues),
+    )
+
+
+def _progress_storage_summary_lines(
+    paths: planning_state.PlanningPaths,
+    report: progress_lifecycle.ProgressDoctorReport,
+    *,
+    verbose: bool = False,
+) -> list[str]:
+    status = _progress_storage_status(report)
+    event_word = "event" if report.rollover_events == 1 else "events"
+    lines = [
+        f"progress storage: {status}",
+        f"progress active: {_relative_to_plan_root(paths, report.active_path)}",
+        f"progress index: {report.rollover_events} rollover {event_word}",
+    ]
+    for issue in report.issues:
+        if issue.severity == "info" and not verbose:
+            continue
+        lines.append(f"[{issue.severity}] {issue.code}: {issue.message}")
+        lines.append(f"  path: {issue.path}")
+        if verbose:
+            lines.append(f"  effect: {issue.effect}")
+            lines.append(f"  action: {issue.action}")
+    lines.append("No automatic repair was attempted.")
+    return lines
+
+
+def _progress_storage_json(
+    paths: planning_state.PlanningPaths,
+    report: progress_lifecycle.ProgressDoctorReport,
+) -> dict[str, object]:
+    return {
+        "status": _progress_storage_status(report),
+        "active_path": _relative_to_plan_root(paths, report.active_path),
+        "index_path": _relative_to_plan_root(paths, report.index_path),
+        "index_exists": report.index_exists,
+        "rollover_events": report.rollover_events,
+        "referenced_paths": list(report.referenced_paths),
+        "orphan_paths": list(report.orphan_paths),
+        "issues": [
+            {
+                "severity": issue.severity,
+                "code": issue.code,
+                "path": issue.path,
+                "message": issue.message,
+                "effect": issue.effect,
+                "action": issue.action,
+            }
+            for issue in report.issues
+        ],
+    }
+
+
 def _findings_context_enabled() -> tuple[bool, str | None]:
     return planning_state.env_bool("PWF_INCLUDE_FINDINGS", default=False)
 
@@ -1004,9 +1119,10 @@ def _attestation_status(root: Path, paths: planning_state.PlanningPaths | None) 
     )
 
 
-def doctor(root: Path) -> int:
+def doctor(root: Path, *, verbose: bool = False, as_json: bool = False, strict: bool = False) -> int:
     lines: list[str] = []
     ok = True
+    progress_report = None
     language_warning = _unsupported_language_warning()
     if language_warning:
         lines.append(language_warning)
@@ -1062,11 +1178,28 @@ def doctor(root: Path) -> int:
     lines.append(attestation_line)
     ok = ok and attestation_ok
 
+    if paths is not None:
+        progress_report = _progress_storage_report(paths)
+        if _progress_storage_has_blocking_errors(progress_report) or (strict and progress_report.has_warnings):
+            ok = False
+        lines.extend(_progress_storage_summary_lines(paths, progress_report, verbose=verbose))
+
     lines.extend(_context_doctor_lines(root, session_id))
 
     warning = _progress_doctor_warning(paths)
     if warning:
         lines.append(warning)
+
+    if as_json:
+        payload: dict[str, object] = {
+            "ok": ok,
+            "strict": strict,
+            "checks": lines,
+        }
+        if paths is not None and progress_report is not None:
+            payload["progress_storage"] = _progress_storage_json(paths, progress_report)
+        print(json.dumps(payload, ensure_ascii=True, indent=2))
+        return 0 if ok else 1
 
     print("\n".join(lines))
     return 0 if ok else 1
@@ -1527,7 +1660,10 @@ def main(argv: Iterable[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="plan.py")
     parser.add_argument("--root", default=".", help=_help("root"))
     subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser("doctor", help=_help("doctor"))
+    doctor_parser = subparsers.add_parser("doctor", help=_help("doctor"))
+    doctor_parser.add_argument("--verbose", action="store_true")
+    doctor_parser.add_argument("--json", action="store_true", dest="as_json")
+    doctor_parser.add_argument("--strict", action="store_true")
     subparsers.add_parser("status", help=_help("status"))
 
     context_parser = subparsers.add_parser("context", help=_help("context"))
@@ -1598,7 +1734,7 @@ def main(argv: Iterable[str] | None = None) -> int:
     root = Path(args.root).resolve()
 
     if args.command == "doctor":
-        return doctor(root)
+        return doctor(root, verbose=args.verbose, as_json=args.as_json, strict=args.strict)
     if args.command == "status":
         return status(root)
     if args.command == "context":
