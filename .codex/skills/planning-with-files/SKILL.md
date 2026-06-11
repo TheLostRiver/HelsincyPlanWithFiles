@@ -163,7 +163,7 @@ $env:PWF_STRICT_REQUIRES_BINDING=1
 python .codex\skills\planning-with-files\scripts\plan.py compact
 ```
 
-The command archives old objective auto records to `progress.archive.md`, keeps recent records in `progress.md`, and writes a deterministic compact summary. The summary is factual only: counts, time ranges, tools, and file paths. Agent-written summaries remain interpretive and should be verified when accuracy matters.
+The command performs append-only rollover. It writes old objective auto records to a newly created `progress-archive/<session-key>/archive-*.md`, continues future records in a newly created `progress-active/<session-key>/active-*.md`, and appends a linking event to `progress-index.ndjson`. It does not delete or overwrite existing progress/archive files. Agent-written summaries remain interpretive and should be verified when accuracy matters.
 
 ## Security Boundary
 

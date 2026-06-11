@@ -268,7 +268,7 @@ python .codex\skills\planning-with-files\scripts\plan.py compact --keep-records 
 python .codex\skills\planning-with-files\scripts\plan.py compact --dry-run
 ```
 
-它会把旧 auto records 归档到 `progress.archive.md`，并在 `progress.md` 保留 compact summary 和最近记录。
+它会做 append-only rollover：旧 auto records 写入新建的 `progress-archive/<session-key>/archive-*.md`，后续记录写入新建的 `progress-active/<session-key>/active-*.md`，并通过 `progress-index.ndjson` 追加索引关联。工具不会删除或覆盖已有的 progress/archive 文件。
 
 ### 13. `findings.md` 什么时候用？
 
@@ -553,7 +553,7 @@ Check these lines:
 - `active plan: ok ...`: the active plan resolves.
 - `session mode: workspace`: the recommended default.
 
-If doctor is clean but a specific Codex UI turn does not show visible hook text, it may be Codex display, context compaction, or resume behavior. Check whether `.planning/<plan-id>/progress.md` still records file changes and whether the next user prompt injects the active plan.
+If doctor is clean but a specific Codex UI turn does not show visible hook text, it may be Codex display, context compaction, or resume behavior. Check whether the active progress file for `.planning/<plan-id>/` still records file changes and whether the next user prompt injects the active plan.
 
 If doctor reports missing hook files, Python failure, missing active plan, or strict session mismatch, treat it as a tool configuration issue first.
 
@@ -652,7 +652,7 @@ python .codex\skills\planning-with-files\scripts\plan.py compact --keep-records 
 python .codex\skills\planning-with-files\scripts\plan.py compact --dry-run
 ```
 
-It archives old auto records into `progress.archive.md` while keeping a compact summary and recent records in `progress.md`.
+It performs append-only rollover: old auto records go into a newly created `progress-archive/<session-key>/archive-*.md`, future records continue in a newly created `progress-active/<session-key>/active-*.md`, and `progress-index.ndjson` links the segments. The tool does not delete or overwrite existing progress/archive files.
 
 ### 13. When should I use `findings.md`?
 

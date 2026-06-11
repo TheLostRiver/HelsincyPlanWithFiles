@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- 中文：将 `plan.py compact` 改为 append-only rollover，旧 auto records 写入新建的 `progress-archive/<session-key>/archive-*.md`，后续记录写入新建的 `progress-active/<session-key>/active-*.md`，并拒绝自定义 `--archive` 路径，避免删除或覆盖任何已有 progress/archive 文件。
+- English: Changed `plan.py compact` to append-only rollover using generated `progress-archive/<session-key>/archive-*.md` and `progress-active/<session-key>/active-*.md` files, while rejecting custom `--archive` paths so existing progress/archive files are not deleted or overwritten.
+
 ## 0.2.7 - 2026-06-11
 
 - 中文：强化多会话 task ownership 安全边界；`PLAN_ID` 现在只是 routing override，不再作为 permission override 绕过其他 session 的独占任务。

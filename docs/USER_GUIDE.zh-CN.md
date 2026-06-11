@@ -184,7 +184,7 @@ your-project/
 /pwf-compact
 ```
 
-长期任务中，`progress.md` 会越来越长。这个命令会把旧记录归档，保留摘要和最近记录，让后续恢复更轻。
+长期任务中，`progress.md` 会越来越长。这个命令会做 append-only rollover：旧记录写入新建的 `progress-archive/<session-key>/archive-*.md`，后续记录写入新建的 `progress-active/<session-key>/active-*.md`，并用 `progress-index.ndjson` 关联。工具不会删除或覆盖已有 progress/archive 文件。
 
 ## 一个完整例子
 

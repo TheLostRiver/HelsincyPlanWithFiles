@@ -82,10 +82,12 @@ CLI_MESSAGES = {
         "compact_kept": "kept recent auto records: {count}",
         "compact_no_plan": "No active plan found. Create or switch to a plan before compacting progress.",
         "compact_not_needed": "progress compaction not needed",
+        "compact_active": "active progress: {path}",
+        "compact_archive_custom_unsupported": "archive paths are generated automatically; --archive is no longer supported",
         "compact_total": "auto records: {count}",
         "compact_would_archive": "would archive auto records: {count}",
         "compact_would_keep": "would keep recent auto records: {count}",
-        "compacted": "compacted progress.md",
+        "compacted": "rolled over progress records",
         "context_cleared": "context settings cleared: {key}",
         "context_invalid_notice": "unsupported context notice mode: {notice}",
         "context_invalid_profile": "unsupported context profile: {profile}",
@@ -98,7 +100,7 @@ CLI_MESSAGES = {
         "findings_path": "findings: {path}",
         "help_attest": "Lock, show, or clear plan attestation",
         "help_capture": "Append external context to findings.md",
-        "help_compact": "Archive old progress.md auto records",
+        "help_compact": "Roll over old progress auto records into append-only active/archive segments",
         "help_context": "Manage current-session context profile",
         "help_doctor": "Diagnose hooks, active plan, and attestation",
         "help_force": "Overwrite existing planning files",
@@ -180,10 +182,12 @@ CLI_MESSAGES = {
         "compact_kept": "保留最近 auto records: {count}",
         "compact_no_plan": "未找到当前计划。请先创建或切换计划，再压缩 progress。",
         "compact_not_needed": "progress 暂不需要压缩",
+        "compact_active": "active progress: {path}",
+        "compact_archive_custom_unsupported": "archive paths are generated automatically; --archive is no longer supported",
         "compact_total": "auto records: {count}",
         "compact_would_archive": "将归档 auto records: {count}",
         "compact_would_keep": "将保留最近 auto records: {count}",
-        "compacted": "已压缩 progress.md",
+        "compacted": "已轮转 progress records",
         "context_cleared": "context settings cleared: {key}",
         "context_invalid_notice": "unsupported context notice mode: {notice}",
         "context_invalid_profile": "unsupported context profile: {profile}",
@@ -196,7 +200,7 @@ CLI_MESSAGES = {
         "findings_path": "findings: {path}",
         "help_attest": "锁定、查看或清除计划 attestation",
         "help_capture": "将外部上下文追加到 findings.md",
-        "help_compact": "归档旧的 progress.md auto records",
+        "help_compact": "将旧 progress auto records 轮转到 append-only active/archive segments",
         "help_context": "管理当前会话的 context profile",
         "help_doctor": "诊断 hooks、当前计划和 attestation",
         "help_force": "覆盖已有 planning 文件",
@@ -731,7 +735,7 @@ def _compact_threshold() -> int:
 def _progress_record_count(paths: planning_state.PlanningPaths | None) -> int:
     if paths is None:
         return 0
-    return progress_lifecycle.count_auto_records(paths.progress)
+    return progress_lifecycle.count_auto_records(planning_state.current_progress_path(paths))
 
 
 def _progress_status_line(paths: planning_state.PlanningPaths | None) -> str:
@@ -1478,25 +1482,25 @@ def capture(root: Path, kind: str, source: str, summary: str, trust: str = "untr
     return 0
 
 
-def compact(root: Path, keep_records: int = 30, dry_run: bool = False, archive: str = "progress.archive.md") -> int:
+def compact(root: Path, keep_records: int = 30, dry_run: bool = False, archive: str | None = None) -> int:
     session_id = _current_session_id()
     paths = planning_state.planning_paths(root, session_id=session_id)
     if paths is None:
         print(_message("compact_no_plan"))
         return 1
-
-    archive_path = Path(archive)
-    if not archive_path.is_absolute():
-        archive_path = paths.root / archive_path
+    if archive is not None:
+        print(_message("compact_archive_custom_unsupported"))
+        return 1
 
     try:
-        result = progress_lifecycle.compact_progress(
+        result = progress_lifecycle.rollover_progress(
             paths.progress,
-            archive_path,
+            plan_id=paths.root.name,
+            session_key=planning_state.session_key(session_id) if session_id else "unavailable",
             keep_records=keep_records,
             dry_run=dry_run,
         )
-    except ValueError as exc:
+    except (FileExistsError, ValueError) as exc:
         print(str(exc))
         return 1
 
@@ -1515,6 +1519,7 @@ def compact(root: Path, keep_records: int = 30, dry_run: bool = False, archive: 
         print(_message("compact_archived", count=result.archived_count))
         print(_message("compact_kept", count=result.kept_count))
     print(_message("compact_archive", path=result.archive_path))
+    print(_message("compact_active", path=result.active_path))
     return 0
 
 
@@ -1587,7 +1592,7 @@ def main(argv: Iterable[str] | None = None) -> int:
     compact_parser = subparsers.add_parser("compact", help=_help("compact"))
     compact_parser.add_argument("--keep-records", type=int, default=30)
     compact_parser.add_argument("--dry-run", action="store_true")
-    compact_parser.add_argument("--archive", default="progress.archive.md")
+    compact_parser.add_argument("--archive", default=None, help=argparse.SUPPRESS)
 
     args = parser.parse_args(list(argv) if argv is not None else None)
     root = Path(args.root).resolve()

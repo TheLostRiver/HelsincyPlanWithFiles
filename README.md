@@ -102,7 +102,7 @@ $env:PWF_LANG="en"
 ## 项目规划
 
 - [中文化实现方案](docs/CHINESE_LOCALIZATION_PLAN.md)：规划项目内中文模式、中文模板、中文 CLI/hook 文案和后续 `v0.2.0` 发布路线。
-- [Progress compaction 实现方案](docs/PROGRESS_COMPACTION_PLAN.md)：规划 `progress.md` 长期增长后的 compact、归档、summary 注入和 `/pwf-compact` 命令。
+- [Append-only progress rollover 设计](docs/APPEND_ONLY_PROGRESS_ROLLOVER_DESIGN.md)：规划 `progress.md` 长期增长后的 active/archive segment、索引和 `/pwf-compact` 安全边界。
 - [Context injection profiles 实现方案](docs/CONTEXT_INJECTION_PROFILES_PLAN.md)：规划可配置 hook 上下文注入窗口、record-aware progress 注入和诊断输出。
 
 ## 安装
@@ -158,7 +158,7 @@ Copy-Item -Recurse -Force .\HelsincyPlanWithFiles\.codex .\your-project\
 | `/pwf-use` | 用 `/pwf-tasks` 显示的短 ID 或 plan id 绑定当前会话 | `plan.py use <id>` |
 | `/pwf-attest` | 创建、查看或清除计划 hash attestation | `plan.py attest [--show or --clear]` |
 | `/pwf-capture` | 把网页、浏览器、图片、PDF、文件或笔记上下文写入 `findings.md` | `plan.py capture ...` |
-| `/pwf-compact` | 归档旧 auto records 并缩短 `progress.md` | `plan.py compact` |
+| `/pwf-compact` | 将旧 auto records 轮转到 append-only active/archive segments | `plan.py compact` |
 | `/pwf-context-expanded` | 当前会话切到大型任务上下文模式 | `plan.py context set expanded` |
 | `/pwf-context-deep` | 当前会话切到深度恢复上下文模式 | `plan.py context set deep` |
 | `/pwf-context-default` | 当前会话恢复默认上下文模式 | `plan.py context set default` |
@@ -366,7 +366,7 @@ python .codex\skills\planning-with-files\scripts\plan.py status
 
 ## Progress 生命周期
 
-`progress.md` 是热日志，不是永久审计文件。长期任务中可以运行 `/pwf-compact`，把旧的客观 auto records 归档到 `progress.archive.md`，并在 `progress.md` 保留 compact summary 和最近记录。
+`progress.md` 是初始热日志，不是唯一的永久审计文件。长期任务中可以运行 `/pwf-compact` 做 append-only rollover：旧的客观 auto records 会写入新建的 `progress-archive/<session-key>/archive-*.md`，后续记录会继续写入新建的 `progress-active/<session-key>/active-*.md`，两者通过 `progress-index.ndjson` 追加索引关联。
 
 ```text
 /pwf-compact
@@ -380,7 +380,7 @@ python .codex\skills\planning-with-files\scripts\plan.py compact --keep-records 
 python .codex\skills\planning-with-files\scripts\plan.py compact --dry-run
 ```
 
-compact summary 只统计客观事实，例如归档数量、时间范围、工具计数和文件数量。agent 写入的解释性总结仍然只是参考，需要在关键场景结合 hook 记录、测试和实际代码核对。
+rollover 不会删除或覆盖已有的 `progress.md`、active segment 或 archive 文件；如果用户认为归档文件占空间，可以自行删除。agent 写入的解释性总结仍然只是参考，需要在关键场景结合 hook 记录、测试和实际代码核对。
 
 ## 安全边界
 
