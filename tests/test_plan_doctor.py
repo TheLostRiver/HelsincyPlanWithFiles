@@ -83,6 +83,43 @@ def write_auto_records(progress, count):
     progress.write_text("# Progress Log\n\n" + "\n".join(records), encoding="utf-8")
 
 
+def write_rollover_index_fixture(
+    plan_dir,
+    *,
+    active_rel="progress-active/abc123/active-20260611100300-fixed01.md",
+    archive_rel="progress-archive/abc123/archive-20260611100300-fixed01.md",
+    progress_text="# Progress Log\n\nlegacy\n",
+    active_text="# Progress Log\n\nactive\n",
+    archive_text="# Progress Archive\n\nsealed\n",
+    active_auto_records=None,
+):
+    (plan_dir / "progress.md").write_text(progress_text, encoding="utf-8")
+    active = plan_dir / active_rel
+    archive = plan_dir / archive_rel
+    active.parent.mkdir(parents=True)
+    archive.parent.mkdir(parents=True)
+    if active_auto_records is None:
+        active.write_text(active_text, encoding="utf-8")
+    else:
+        write_auto_records(active, active_auto_records)
+    archive.write_text(archive_text, encoding="utf-8")
+    event = {
+        "event": "rollover",
+        "version": 1,
+        "old_active": "progress.md",
+        "archive": archive_rel,
+        "new_active": active_rel,
+        "source_sha256": hashlib.sha256(progress_text.encode("utf-8")).hexdigest(),
+        "archive_sha256": hashlib.sha256(archive_text.encode("utf-8")).hexdigest(),
+        "new_active_sha256": hashlib.sha256(active.read_text(encoding="utf-8").encode("utf-8")).hexdigest(),
+    }
+    (plan_dir / "progress-index.ndjson").write_text(
+        json.dumps(event, ensure_ascii=True, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return active, archive
+
+
 class PlanDoctorTests(unittest.TestCase):
     def test_doctor_reports_healthy_project(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -294,35 +331,7 @@ class PlanDoctorTests(unittest.TestCase):
             root = Path(tmp)
             write_hooks(root)
             plan_dir = write_active_plan(root)
-            progress_text = "# Progress Log\n\nlegacy\n"
-            (plan_dir / "progress.md").write_text(progress_text, encoding="utf-8")
-            active = plan_dir / "progress-active" / "abc123" / "active-20260611100300-fixed01.md"
-            archive = plan_dir / "progress-archive" / "abc123" / "archive-20260611100300-fixed01.md"
-            active.parent.mkdir(parents=True)
-            archive.parent.mkdir(parents=True)
-            write_auto_records(active, 101)
-            archive_text = "# Progress Archive\n\nsealed\n"
-            archive.write_text(archive_text, encoding="utf-8")
-            (plan_dir / "progress-index.ndjson").write_text(
-                json.dumps(
-                    {
-                        "event": "rollover",
-                        "version": 1,
-                        "old_active": "progress.md",
-                        "archive": "progress-archive/abc123/archive-20260611100300-fixed01.md",
-                        "new_active": "progress-active/abc123/active-20260611100300-fixed01.md",
-                        "source_sha256": hashlib.sha256(progress_text.encode("utf-8")).hexdigest(),
-                        "archive_sha256": hashlib.sha256(archive_text.encode("utf-8")).hexdigest(),
-                        "new_active_sha256": hashlib.sha256(
-                            active.read_text(encoding="utf-8").encode("utf-8")
-                        ).hexdigest(),
-                    },
-                    ensure_ascii=True,
-                    sort_keys=True,
-                )
-                + "\n",
-                encoding="utf-8",
-            )
+            write_rollover_index_fixture(plan_dir, active_auto_records=101)
 
             result = run_plan(root, "doctor")
 
@@ -335,34 +344,7 @@ class PlanDoctorTests(unittest.TestCase):
             root = Path(tmp)
             write_hooks(root)
             plan_dir = write_active_plan(root)
-            progress_text = "# Progress Log\n\nlegacy\n"
-            (plan_dir / "progress.md").write_text(progress_text, encoding="utf-8")
-            active = plan_dir / "progress-active" / "abc123" / "active-20260611100300-fixed01.md"
-            archive = plan_dir / "progress-archive" / "abc123" / "archive-20260611100300-fixed01.md"
-            active.parent.mkdir(parents=True)
-            archive.parent.mkdir(parents=True)
-            active_text = "# Progress Log\n\nactive\n"
-            archive_text = "# Progress Archive\n\nsealed\n"
-            active.write_text(active_text, encoding="utf-8")
-            archive.write_text(archive_text, encoding="utf-8")
-            (plan_dir / "progress-index.ndjson").write_text(
-                json.dumps(
-                    {
-                        "event": "rollover",
-                        "version": 1,
-                        "old_active": "progress.md",
-                        "archive": "progress-archive/abc123/archive-20260611100300-fixed01.md",
-                        "new_active": "progress-active/abc123/active-20260611100300-fixed01.md",
-                        "source_sha256": hashlib.sha256(progress_text.encode("utf-8")).hexdigest(),
-                        "archive_sha256": hashlib.sha256(archive_text.encode("utf-8")).hexdigest(),
-                        "new_active_sha256": hashlib.sha256(active_text.encode("utf-8")).hexdigest(),
-                    },
-                    ensure_ascii=True,
-                    sort_keys=True,
-                )
-                + "\n",
-                encoding="utf-8",
-            )
+            write_rollover_index_fixture(plan_dir)
 
             result = run_plan(root, "doctor")
 

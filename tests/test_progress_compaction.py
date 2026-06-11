@@ -1,3 +1,4 @@
+import hashlib
 import json
 import tempfile
 from importlib.machinery import SourceFileLoader
@@ -10,6 +11,10 @@ MODULE = SourceFileLoader(
     "progress_lifecycle",
     str(REPO_ROOT / ".codex" / "skills" / "planning-with-files" / "scripts" / "progress_lifecycle.py"),
 ).load_module()
+
+
+def sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def write_indexed_rollover(root: Path, *, session: str = "abc123", nonce: str = "fixed01") -> tuple[Path, Path]:
@@ -31,9 +36,9 @@ def write_indexed_rollover(root: Path, *, session: str = "abc123", nonce: str = 
         "old_active": "progress.md",
         "archive": f"progress-archive/{session}/archive-20260611100300-{nonce}.md",
         "new_active": f"progress-active/{session}/active-20260611100300-{nonce}.md",
-        "source_sha256": MODULE._sha256_text("# Progress Log\n\nlegacy\n"),
-        "archive_sha256": MODULE._sha256_text(archive_text),
-        "new_active_sha256": MODULE._sha256_text(active_text),
+        "source_sha256": sha256_text("# Progress Log\n\nlegacy\n"),
+        "archive_sha256": sha256_text(archive_text),
+        "new_active_sha256": sha256_text(active_text),
         "archived_auto_records": 2,
         "kept_recent_auto_records": 1,
     }
@@ -264,7 +269,7 @@ class ProgressCompactionTests(unittest.TestCase):
                 "old_active": "progress-active/abc123/active-20260611100300-first01.md",
                 "archive": "progress-archive/abc123/archive-20260611100400-second01.md",
                 "new_active": "progress-active/abc123/active-20260611100400-second01.md",
-                "archive_sha256": MODULE._sha256_text("# Progress Archive\n\nsecond\n"),
+                "archive_sha256": sha256_text("# Progress Archive\n\nsecond\n"),
             }
             with (root / "progress-index.ndjson").open("a", encoding="utf-8", newline="\n") as handle:
                 handle.write(json.dumps(event, ensure_ascii=True, sort_keys=True) + "\n")

@@ -81,9 +81,10 @@ class ProjectConsistencyTests(unittest.TestCase):
         readme_cn = read_text("README.md")
         readme_en = read_text("README.en.md")
         faq = read_text("docs/FAQ.md")
+        changelog = read_text("CHANGELOG.md")
         skill = read_text(".codex/skills/pwf-doctor/SKILL.md")
         design = read_text("docs/APPEND_ONLY_PROGRESS_ROLLOVER_DESIGN.md")
-        combined = "\n".join([readme_cn, readme_en, faq, skill, design])
+        combined = "\n".join([readme_cn, readme_en, faq, changelog, skill, design])
 
         for phrase in (
             "progress storage",
