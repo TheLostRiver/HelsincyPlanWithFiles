@@ -361,7 +361,17 @@ def rollover_progress(
     source_path = current_active_progress(progress_path)
 
     if not source_path.is_file():
-        return RolloverResult(0, 0, 0, archive_path, active_path, index_path, False, dry_run, "")
+        return RolloverResult(
+            archived_count=0,
+            kept_count=0,
+            total_auto_records=0,
+            archive_path=archive_path,
+            active_path=active_path,
+            index_path=index_path,
+            changed=False,
+            dry_run=dry_run,
+            summary="",
+        )
 
     source_text = source_path.read_text(encoding="utf-8", errors="replace")
     lines = _remove_managed_summary(source_text.splitlines())
@@ -372,7 +382,17 @@ def rollover_progress(
     archived_count = len(archived_records)
 
     if archived_count == 0:
-        return RolloverResult(0, kept_count, total_records, archive_path, active_path, index_path, False, dry_run, "")
+        return RolloverResult(
+            archived_count=0,
+            kept_count=kept_count,
+            total_auto_records=total_records,
+            archive_path=archive_path,
+            active_path=active_path,
+            index_path=index_path,
+            changed=False,
+            dry_run=dry_run,
+            summary="",
+        )
 
     source_sha = _sha256_text(source_text)
     archived_indexes = {record.index for record in archived_records}
@@ -424,15 +444,15 @@ def rollover_progress(
             handle.write(json.dumps(event, ensure_ascii=True, sort_keys=True) + "\n")
 
     return RolloverResult(
-        archived_count,
-        kept_count,
-        total_records,
-        archive_path,
-        active_path,
-        index_path,
-        not dry_run,
-        dry_run,
-        summary,
+        archived_count=archived_count,
+        kept_count=kept_count,
+        total_auto_records=total_records,
+        archive_path=archive_path,
+        active_path=active_path,
+        index_path=index_path,
+        changed=not dry_run,
+        dry_run=dry_run,
+        summary=summary,
     )
 
 
