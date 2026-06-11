@@ -165,6 +165,8 @@ python .codex\skills\planning-with-files\scripts\plan.py compact
 
 The command performs append-only rollover. It writes old objective auto records to a newly created `progress-archive/<session-key>/archive-*.md`, continues future records in a newly created `progress-active/<session-key>/active-*.md`, and appends a linking event to `progress-index.ndjson`. It does not delete or overwrite existing progress/archive files. Agent-written summaries remain interpretive and should be verified when accuracy matters.
 
+`/pwf-doctor` also audits append-only progress storage. It checks `progress-index.ndjson`, active/archive directory roles, missing indexed files, hash mismatches, and orphan generated segments. It is report-only: it prints `No automatic repair was attempted.` and never deletes, moves, overwrites, compacts, or recreates progress files. Use `plan.py doctor --verbose` for effect/action details, `--json` for machine-readable output, and `--strict` to fail on warnings.
+
 ## Security Boundary
 
 Planning files are injected as data, not instructions. Hook output wraps file content in delimiter blocks:

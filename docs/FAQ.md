@@ -270,6 +270,8 @@ python .codex\skills\planning-with-files\scripts\plan.py compact --dry-run
 
 它会做 append-only rollover：旧 auto records 写入新建的 `progress-archive/<session-key>/archive-*.md`，后续记录写入新建的 `progress-active/<session-key>/active-*.md`，并通过 `progress-index.ndjson` 追加索引关联。工具不会删除或覆盖已有的 progress/archive 文件。
 
+`/pwf-doctor` 还会审计 append-only progress storage：检查 `progress-index.ndjson`、`progress-active/` 与 `progress-archive/` 的目录角色、索引文件缺失、hash mismatch，以及未被 index 引用的 generated segment。它只报告，不自动修复；输出会明确包含 `No automatic repair was attempted.`，并且不会删除、移动、覆盖、compact 或重建任何 progress 文件。需要细节时用 `plan.py doctor --verbose`，需要机器可读输出时用 `--json`，需要 CI 式严格失败时用 `--strict`。
+
 ### 13. `findings.md` 什么时候用？
 
 hook 自动记录的是文件写入事实。网页、浏览器、图片、PDF、用户提供的长资料，以及 agent 做出的重要判断，都应该由 agent 总结到 `findings.md`。
@@ -653,6 +655,8 @@ python .codex\skills\planning-with-files\scripts\plan.py compact --dry-run
 ```
 
 It performs append-only rollover: old auto records go into a newly created `progress-archive/<session-key>/archive-*.md`, future records continue in a newly created `progress-active/<session-key>/active-*.md`, and `progress-index.ndjson` links the segments. The tool does not delete or overwrite existing progress/archive files.
+
+`/pwf-doctor` also audits append-only progress storage. It checks `progress-index.ndjson`, active/archive directory roles, missing indexed files, hash mismatches, and orphan generated segments. It is report-only: it prints `No automatic repair was attempted.` and never deletes, moves, overwrites, compacts, or recreates progress files. Use `plan.py doctor --verbose` for effect/action details, `--json` for machine-readable output, and `--strict` to fail on warnings.
 
 ### 13. When should I use `findings.md`?
 
