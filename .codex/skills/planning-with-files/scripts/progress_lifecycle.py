@@ -269,9 +269,11 @@ def _is_hex_sha256(value: object) -> bool:
 def _is_safe_relative_ref(value: str) -> bool:
     if not value or "\\" in value:
         return False
+    normalized = PurePosixPath(value).as_posix()
     parts = PurePosixPath(value).parts
     return (
         bool(parts)
+        and normalized == value
         and all(part not in {"", ".", ".."} for part in parts)
         and not PurePosixPath(value).is_absolute()
     )
@@ -297,6 +299,18 @@ def _issue(severity: str, code: str, path: str, message: str, effect: str, actio
         effect=effect,
         action=action,
     )
+
+
+def _dedupe_issues(issues: Iterable[ProgressDoctorIssue]) -> tuple[ProgressDoctorIssue, ...]:
+    seen: set[tuple[str, str, str]] = set()
+    deduped: list[ProgressDoctorIssue] = []
+    for issue in issues:
+        key = (issue.severity, issue.code, issue.path)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(issue)
+    return tuple(deduped)
 
 
 def _relative_to_progress_root(progress_path: Path, target: Path) -> str:
@@ -474,7 +488,7 @@ def doctor_progress_storage(progress_path: Path) -> ProgressDoctorReport:
                     "Keep it for audit, or remove it manually only if you no longer need it.",
                 )
             )
-        return ProgressDoctorReport(progress_path, active_path, index_path, False, 0, (), (), tuple(issues))
+        return ProgressDoctorReport(progress_path, active_path, index_path, False, 0, (), (), _dedupe_issues(issues))
 
     for line_number, event in rollover_events:
         if event.get("version") != 1:
@@ -564,7 +578,7 @@ def doctor_progress_storage(progress_path: Path) -> ProgressDoctorReport:
                         MISSING_LATEST_ACTIVE,
                         active_ref,
                         "latest indexed active progress segment is missing",
-                        "Hooks may fall back to legacy progress.md instead of the intended active segment.",
+                        "Hooks may fall back to the previous valid active segment or legacy progress.md.",
                         "Inspect storage manually; PWF did not recreate files.",
                     )
                 )
@@ -655,7 +669,7 @@ def doctor_progress_storage(progress_path: Path) -> ProgressDoctorReport:
         rollover_events=len(rollover_events),
         referenced_paths=tuple(sorted(referenced)),
         orphan_paths=tuple(sorted(orphan_paths)),
-        issues=tuple(issues),
+        issues=_dedupe_issues(issues),
     )
 
 

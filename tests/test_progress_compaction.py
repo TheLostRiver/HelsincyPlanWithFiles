@@ -119,6 +119,46 @@ class ProgressCompactionTests(unittest.TestCase):
             self.assertNotIn("../escape.md", report.referenced_paths)
             self.assertNotIn("C:\\escape.md", report.referenced_paths)
 
+    def test_doctor_progress_storage_rejects_non_canonical_index_refs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "progress.md").write_text("# Progress Log\n", encoding="utf-8")
+            archive = root / "progress-archive" / "abc123" / "archive-20260611100300-fixed01.md"
+            active = root / "progress-active" / "abc123" / "active-20260611100300-fixed01.md"
+            archive.parent.mkdir(parents=True)
+            active.parent.mkdir(parents=True)
+            archive.write_text("# Progress Archive\n", encoding="utf-8")
+            active.write_text("# Progress Log\n", encoding="utf-8")
+            (root / "progress-index.ndjson").write_text(
+                json.dumps(
+                    {
+                        "event": "rollover",
+                        "version": 1,
+                        "archive": "progress-archive//abc123/archive-20260611100300-fixed01.md",
+                        "new_active": "progress-active//abc123/active-20260611100300-fixed01.md",
+                    },
+                    ensure_ascii=True,
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            report = MODULE.doctor_progress_storage(root / "progress.md")
+
+            codes = [issue.code for issue in report.issues]
+            self.assertIn("path_escapes_root", codes)
+            self.assertNotIn(
+                "progress-archive//abc123/archive-20260611100300-fixed01.md",
+                report.referenced_paths,
+            )
+            self.assertNotIn(
+                "progress-active//abc123/active-20260611100300-fixed01.md",
+                report.referenced_paths,
+            )
+            self.assertIn("progress-archive/abc123/archive-20260611100300-fixed01.md", report.orphan_paths)
+            self.assertIn("progress-active/abc123/active-20260611100300-fixed01.md", report.orphan_paths)
+
     def test_doctor_progress_storage_uses_previous_valid_active_when_latest_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -145,6 +185,38 @@ class ProgressCompactionTests(unittest.TestCase):
             self.assertFalse(second_active.exists())
             self.assertEqual(report.active_path, first_active)
             self.assertIn("missing_latest_active", [issue.code for issue in report.issues])
+
+    def test_doctor_progress_storage_deduplicates_role_confusion_issues(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            archive = root / "progress-active" / "abc123" / "archive-20260611100300-fixed01.md"
+            archive.parent.mkdir(parents=True)
+            archive.write_text("# Progress Archive\n", encoding="utf-8")
+            (root / "progress.md").write_text("# Progress Log\n", encoding="utf-8")
+            (root / "progress-index.ndjson").write_text(
+                json.dumps(
+                    {
+                        "event": "rollover",
+                        "version": 1,
+                        "archive": "progress-active/abc123/archive-20260611100300-fixed01.md",
+                        "new_active": "progress-active/abc123/active-20260611100300-fixed01.md",
+                    },
+                    ensure_ascii=True,
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            report = MODULE.doctor_progress_storage(root / "progress.md")
+
+            matching = [
+                issue
+                for issue in report.issues
+                if issue.code == "archive_role_mismatch"
+                and issue.path == "progress-active/abc123/archive-20260611100300-fixed01.md"
+            ]
+            self.assertEqual(len(matching), 1)
 
     def test_doctor_progress_storage_reports_active_archive_role_confusion(self):
         with tempfile.TemporaryDirectory() as tmp:
