@@ -1,3 +1,4 @@
+import json
 import tempfile
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
@@ -11,7 +12,145 @@ MODULE = SourceFileLoader(
 ).load_module()
 
 
+def write_indexed_rollover(root: Path, *, session: str = "abc123", nonce: str = "fixed01") -> tuple[Path, Path]:
+    progress = root / "progress.md"
+    archive = root / "progress-archive" / session / f"archive-20260611100300-{nonce}.md"
+    active = root / "progress-active" / session / f"active-20260611100300-{nonce}.md"
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    active.parent.mkdir(parents=True, exist_ok=True)
+    progress.write_text("# Progress Log\n\nlegacy\n", encoding="utf-8")
+    archive_text = "# Progress Archive\n\nsealed\n"
+    active_text = "# Progress Log\n\nactive\n"
+    archive.write_text(archive_text, encoding="utf-8")
+    active.write_text(active_text, encoding="utf-8")
+    event = {
+        "event": "rollover",
+        "version": 1,
+        "created_at": "2026-06-11T10:03:00Z",
+        "session": session,
+        "old_active": "progress.md",
+        "archive": f"progress-archive/{session}/archive-20260611100300-{nonce}.md",
+        "new_active": f"progress-active/{session}/active-20260611100300-{nonce}.md",
+        "source_sha256": MODULE._sha256_text("# Progress Log\n\nlegacy\n"),
+        "archive_sha256": MODULE._sha256_text(archive_text),
+        "new_active_sha256": MODULE._sha256_text(active_text),
+        "archived_auto_records": 2,
+        "kept_recent_auto_records": 1,
+    }
+    (root / "progress-index.ndjson").write_text(
+        json.dumps(event, ensure_ascii=True, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return archive, active
+
+
 class ProgressCompactionTests(unittest.TestCase):
+    def test_doctor_progress_storage_reports_healthy_rollover_chain(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _archive, active = write_indexed_rollover(root)
+
+            report = MODULE.doctor_progress_storage(root / "progress.md")
+
+            self.assertFalse(report.has_errors)
+            self.assertFalse(report.has_warnings)
+            self.assertEqual(report.active_path, active)
+            self.assertEqual(report.rollover_events, 1)
+            self.assertEqual(report.issues, ())
+
+    def test_doctor_progress_storage_accepts_legacy_progress_without_index(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            progress = root / "progress.md"
+            progress.write_text("# Progress Log\n\nlegacy\n", encoding="utf-8")
+
+            report = MODULE.doctor_progress_storage(progress)
+
+            self.assertFalse(report.has_errors)
+            self.assertEqual(report.active_path, progress)
+            self.assertEqual([issue.code for issue in report.issues], ["legacy_progress_only"])
+            self.assertEqual(report.issues[0].severity, "info")
+
+    def test_doctor_progress_storage_reports_invalid_index_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "progress.md").write_text("# Progress Log\n", encoding="utf-8")
+            (root / "progress-index.ndjson").write_text("{not json\n", encoding="utf-8")
+
+            report = MODULE.doctor_progress_storage(root / "progress.md")
+
+            self.assertTrue(report.has_errors)
+            self.assertEqual(report.issues[0].code, "invalid_index_json")
+            self.assertEqual(report.issues[0].severity, "error")
+
+    def test_doctor_progress_storage_reports_missing_latest_active(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _archive, active = write_indexed_rollover(root)
+            active.unlink()
+
+            report = MODULE.doctor_progress_storage(root / "progress.md")
+
+            self.assertTrue(report.has_errors)
+            self.assertIn("missing_latest_active", [issue.code for issue in report.issues])
+
+    def test_doctor_progress_storage_reports_active_archive_role_confusion(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            archive = root / "progress-active" / "abc123" / "archive-20260611100300-fixed01.md"
+            active = root / "progress-archive" / "abc123" / "active-20260611100300-fixed01.md"
+            archive.parent.mkdir(parents=True)
+            active.parent.mkdir(parents=True)
+            archive.write_text("# Progress Archive\n", encoding="utf-8")
+            active.write_text("# Progress Log\n", encoding="utf-8")
+            (root / "progress.md").write_text("# Progress Log\n", encoding="utf-8")
+            (root / "progress-index.ndjson").write_text(
+                json.dumps(
+                    {
+                        "event": "rollover",
+                        "version": 1,
+                        "archive": "progress-active/abc123/archive-20260611100300-fixed01.md",
+                        "new_active": "progress-archive/abc123/active-20260611100300-fixed01.md",
+                    },
+                    ensure_ascii=True,
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            report = MODULE.doctor_progress_storage(root / "progress.md")
+
+            codes = [issue.code for issue in report.issues]
+            self.assertIn("archive_role_mismatch", codes)
+            self.assertIn("active_role_mismatch", codes)
+            self.assertTrue(report.has_errors)
+
+    def test_doctor_progress_storage_reports_hash_mismatch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            archive, _active = write_indexed_rollover(root)
+            archive.write_text("# Progress Archive\n\nchanged\n", encoding="utf-8")
+
+            report = MODULE.doctor_progress_storage(root / "progress.md")
+
+            self.assertTrue(report.has_errors)
+            self.assertIn("hash_mismatch", [issue.code for issue in report.issues])
+
+    def test_doctor_progress_storage_reports_orphan_generated_segments(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_indexed_rollover(root)
+            orphan = root / "progress-archive" / "abc123" / "archive-20260611100400-orphan.md"
+            orphan.write_text("# Progress Archive\n\norphan\n", encoding="utf-8")
+
+            report = MODULE.doctor_progress_storage(root / "progress.md")
+
+            self.assertFalse(report.has_errors)
+            self.assertTrue(report.has_warnings)
+            self.assertIn("orphan_segment", [issue.code for issue in report.issues])
+            self.assertIn("progress-archive/abc123/archive-20260611100400-orphan.md", report.orphan_paths)
+
     def test_extract_recent_progress_context_keeps_recent_records_and_manual_tail(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
