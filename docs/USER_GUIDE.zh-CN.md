@@ -46,13 +46,13 @@ progress.md    # 进度日志：什么时候做了什么，改了哪些文件
 普通用户推荐下载 release 里的这个包：
 
 ```text
-HelsincyPlanWithFiles-v0.2.6-codex.zip
+HelsincyPlanWithFiles-v0.2.7-codex.zip
 ```
 
 安装步骤：
 
 1. 打开 GitHub 的 Latest Release 页面。
-2. 下载 `HelsincyPlanWithFiles-v0.2.6-codex.zip`。
+2. 下载 `HelsincyPlanWithFiles-v0.2.7-codex.zip`。
 3. 解压。
 4. 把解压出来的 `.codex/` 文件夹复制到你的项目根目录。
 5. 重启 Codex。
@@ -129,7 +129,7 @@ your-project/
 ```text
 /pwf-init 修复登录页面问题
 /pwf-init 写一版用户手册
-/pwf-init 准备 0.2.6 发布
+/pwf-init 准备 0.2.7 发布
 ```
 
 ### 看当前任务状态
