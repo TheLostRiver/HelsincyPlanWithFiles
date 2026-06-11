@@ -12,6 +12,7 @@ from typing import Iterable
 SUMMARY_START = "<!-- PWF_COMPACT_SUMMARY_START -->"
 SUMMARY_END = "<!-- PWF_COMPACT_SUMMARY_END -->"
 AUTO_RECORD_PREFIX = "### Auto Record: "
+ARCHIVE_HEADER = "# Progress Archive"
 AUTO_RECORD_FIELDS = (
     "- Tool:",
     "- Session:",
@@ -174,11 +175,22 @@ def _validate_archive_path(progress_path: Path, archive_path: Path) -> None:
     if archive_path.exists() and archive_path.is_dir():
         raise ValueError("archive path must be a file, not a directory")
     try:
-        if progress_path.resolve() == archive_path.resolve():
-            raise ValueError("archive path must be different from progress.md")
+        progress_resolved = progress_path.resolve()
+        archive_resolved = archive_path.resolve()
     except FileNotFoundError:
-        if progress_path.absolute() == archive_path.absolute():
-            raise ValueError("archive path must be different from progress.md")
+        progress_resolved = progress_path.absolute()
+        archive_resolved = archive_path.absolute()
+
+    if progress_resolved == archive_resolved:
+        raise ValueError("archive path must be different from progress.md")
+    if archive_resolved.parent != progress_resolved.parent:
+        raise ValueError("archive path must stay in the same directory as progress.md")
+    if archive_resolved.suffix.lower() != ".md":
+        raise ValueError("archive path must be a Markdown file")
+    if archive_path.is_file():
+        existing = archive_path.read_text(encoding="utf-8", errors="replace").lstrip()
+        if existing and not existing.startswith(ARCHIVE_HEADER):
+            raise ValueError("archive path must be empty or an existing progress archive")
 
 
 def _find_line(lines: list[str], needle: str) -> int | None:

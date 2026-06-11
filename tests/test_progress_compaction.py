@@ -483,6 +483,69 @@ class ProgressCompactionTests(unittest.TestCase):
 
             self.assertEqual(progress.read_text(encoding="utf-8"), original)
 
+    def test_compact_rejects_archive_path_outside_progress_directory_without_modifying_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_dir = root / ".planning" / "2026-06-11-risk"
+            source_dir = root / "src"
+            plan_dir.mkdir(parents=True)
+            source_dir.mkdir()
+            progress = plan_dir / "progress.md"
+            archive = plan_dir / ".." / ".." / "src" / "main.py"
+            source = source_dir / "main.py"
+            original_source = "print('keep me')\n"
+            original_progress = "\n".join(
+                [
+                    "# Progress Log",
+                    "",
+                    "### Auto Record: 2026-06-11 10:00:00",
+                    "- Tool: apply_patch",
+                    "- Files:",
+                    "  - `src/file_0.py` (update)",
+                    "",
+                    "### Auto Record: 2026-06-11 10:01:00",
+                    "- Tool: apply_patch",
+                    "- Files:",
+                    "  - `src/file_1.py` (update)",
+                    "",
+                ]
+            )
+            progress.write_text(original_progress, encoding="utf-8")
+            source.write_text(original_source, encoding="utf-8")
+
+            with self.assertRaises(ValueError):
+                MODULE.compact_progress(progress, archive, keep_records=1)
+
+            self.assertEqual(source.read_text(encoding="utf-8"), original_source)
+            self.assertEqual(progress.read_text(encoding="utf-8"), original_progress)
+
+    def test_compact_rejects_existing_non_archive_markdown_without_modifying_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            progress = root / "progress.md"
+            archive = root / "README.md"
+            original_archive = "# Project README\n"
+            original_progress = "\n".join(
+                [
+                    "# Progress Log",
+                    "",
+                    "### Auto Record: 2026-06-11 10:00:00",
+                    "- Tool: apply_patch",
+                    "",
+                    "### Auto Record: 2026-06-11 10:01:00",
+                    "- Tool: apply_patch",
+                    "",
+                ]
+            )
+            progress.write_text(original_progress, encoding="utf-8")
+            archive.write_text(original_archive, encoding="utf-8")
+
+            with self.assertRaises(ValueError):
+                MODULE.compact_progress(progress, archive, keep_records=1)
+
+            self.assertEqual(archive.read_text(encoding="utf-8"), original_archive)
+            self.assertEqual(progress.read_text(encoding="utf-8"), original_progress)
+
     def test_compact_keeps_manual_bullet_after_archived_record(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

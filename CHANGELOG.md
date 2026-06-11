@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- 中文：强化 `plan.py compact --archive`，archive 目标必须留在 `progress.md` 同目录，且不能复用已有的非 archive 文件，避免意外写入项目源码文件。
+- English: Hardened `plan.py compact --archive` so archive targets must stay beside `progress.md` and cannot reuse existing non-archive files, preventing accidental writes into project source files.
+
 ## 0.2.7 - 2026-06-11
 
 - 中文：强化多会话 task ownership 安全边界；`PLAN_ID` 现在只是 routing override，不再作为 permission override 绕过其他 session 的独占任务。

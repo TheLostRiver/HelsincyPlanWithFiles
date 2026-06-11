@@ -1552,6 +1552,25 @@ class PlanCliTests(unittest.TestCase):
             self.assertEqual((plan_dir / "progress.md").read_text(encoding="utf-8"), original)
             self.assertFalse((plan_dir / "progress.archive.md").exists())
 
+    def test_compact_rejects_archive_path_outside_plan_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_dir = write_active_plan(root)
+            source_dir = root / "src"
+            source_dir.mkdir()
+            source = source_dir / "main.py"
+            original_source = "print('keep me')\n"
+            source.write_text(original_source, encoding="utf-8")
+            original_progress = "# Progress Log\n\n" + auto_records(4)
+            (plan_dir / "progress.md").write_text(original_progress, encoding="utf-8")
+
+            result = run_plan(root, "compact", "--keep-records", "1", "--archive", r"..\..\src\main.py")
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("archive path", result.stdout)
+            self.assertEqual(source.read_text(encoding="utf-8"), original_source)
+            self.assertEqual((plan_dir / "progress.md").read_text(encoding="utf-8"), original_progress)
+
 
 if __name__ == "__main__":
     unittest.main()
