@@ -79,8 +79,11 @@ def session_id_from_payload(payload: dict[str, Any]) -> str | None:
     sid = payload.get("session_id")
     if isinstance(sid, str) and sid:
         return sid
-    env_sid = os.environ.get("PWF_SESSION_ID", "")
-    return env_sid if env_sid else None
+    for name in ("PWF_SESSION_ID", "CODEX_THREAD_ID"):
+        env_sid = os.environ.get(name, "").strip()
+        if env_sid:
+            return env_sid
+    return None
 
 
 def is_session_attached(root: Path, session_id: str | None) -> bool:

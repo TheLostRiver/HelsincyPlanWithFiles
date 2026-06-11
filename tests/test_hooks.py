@@ -7,6 +7,7 @@ import sys
 import tempfile
 from pathlib import Path
 import unittest
+from unittest import mock
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -14,11 +15,19 @@ PLANNING_STATE = SourceFileLoader(
     "planning_state_under_test",
     str(REPO_ROOT / ".codex" / "hooks" / "planning_state.py"),
 ).load_module()
+CODEX_HOOK_ADAPTER = SourceFileLoader(
+    "codex_hook_adapter_under_test",
+    str(REPO_ROOT / ".codex" / "hooks" / "codex_hook_adapter.py"),
+).load_module()
 
 
 def run_hook(script_name, project_root, payload, env=None):
     script = REPO_ROOT / ".codex" / "hooks" / script_name
-    run_env = {key: value for key, value in os.environ.items() if not key.startswith("PWF_")}
+    run_env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("PWF_") and key != "CODEX_THREAD_ID"
+    }
     if env is not None:
         run_env.update(env)
     result = subprocess.run(
@@ -285,6 +294,21 @@ class PlanResolutionTests(unittest.TestCase):
             encoding="utf-8",
         )
         return key
+
+    def test_hook_session_id_falls_back_to_codex_thread_id(self):
+        with mock.patch.dict(os.environ, {"CODEX_THREAD_ID": "thread-session"}, clear=True):
+            self.assertEqual(CODEX_HOOK_ADAPTER.session_id_from_payload({}), "thread-session")
+
+        with mock.patch.dict(
+            os.environ,
+            {"PWF_SESSION_ID": "pwf-session", "CODEX_THREAD_ID": "thread-session"},
+            clear=True,
+        ):
+            self.assertEqual(CODEX_HOOK_ADAPTER.session_id_from_payload({}), "pwf-session")
+            self.assertEqual(
+                CODEX_HOOK_ADAPTER.session_id_from_payload({"session_id": "payload-session"}),
+                "payload-session",
+            )
 
     def test_session_binding_precedes_workspace_active_plan(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -821,6 +845,53 @@ class HookTests(unittest.TestCase):
             )
             self.assertNotIn(
                 "src/session_bound.py",
+                (workspace / "progress.md").read_text(encoding="utf-8"),
+            )
+
+    def test_post_tool_use_uses_codex_thread_id_when_payload_session_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bound = root / ".planning" / "2026-06-11-thread-bound"
+            workspace = root / ".planning" / "2026-06-11-thread-workspace"
+            write_plan(bound)
+            write_plan(workspace)
+            (root / ".planning" / ".active_plan").write_text(
+                "2026-06-11-thread-workspace\n",
+                encoding="utf-8",
+            )
+            key = PLANNING_STATE.session_key("thread-session")
+            bindings = root / ".planning" / "session-bindings"
+            bindings.mkdir(parents=True, exist_ok=True)
+            (bindings / f"{key}.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "session_id": "thread-session",
+                        "plan_id": "2026-06-11-thread-bound",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "post_tool_use.py",
+                root,
+                {
+                    "hook_event_name": "PostToolUse",
+                    "tool_name": "Edit",
+                    "tool_input": {"file_path": "src/thread_bound.py"},
+                    "tool_response": {"success": True},
+                },
+                env={"CODEX_THREAD_ID": "thread-session"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(
+                "src/thread_bound.py",
+                (bound / "progress.md").read_text(encoding="utf-8"),
+            )
+            self.assertNotIn(
+                "src/thread_bound.py",
                 (workspace / "progress.md").read_text(encoding="utf-8"),
             )
 
