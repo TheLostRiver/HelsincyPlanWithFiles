@@ -99,6 +99,7 @@ PATH_ESCAPES_ROOT = "path_escapes_root"
 ACTIVE_ROLE_MISMATCH = "active_role_mismatch"
 ARCHIVE_ROLE_MISMATCH = "archive_role_mismatch"
 MISSING_LATEST_ACTIVE = "missing_latest_active"
+MISSING_SOURCE_ACTIVE = "missing_source_active"
 MISSING_ARCHIVE = "missing_archive"
 HASH_MISMATCH = "hash_mismatch"
 ORPHAN_SEGMENT = "orphan_segment"
@@ -557,6 +558,18 @@ def doctor_progress_storage(progress_path: Path) -> ProgressDoctorReport:
             line_number=line_number,
         )
         issues.extend(old_active_issues)
+        source_sha256_valid = _is_hex_sha256(event.get("source_sha256"))
+        if not source_sha256_valid:
+            issues.append(
+                _issue(
+                    "error",
+                    INVALID_EVENT_SCHEMA,
+                    f"{index_path.name}:{line_number}",
+                    "missing or invalid source_sha256",
+                    "The rollover source file cannot be verified.",
+                    "Inspect progress-index.ndjson manually; PWF did not modify files.",
+                )
+            )
         if old_active_ref:
             if old_active_path is not None:
                 referenced.add(old_active_ref)
@@ -571,18 +584,18 @@ def doctor_progress_storage(progress_path: Path) -> ProgressDoctorReport:
                         "Inspect the index manually; PWF did not move files.",
                     )
                 )
-            elif not _is_hex_sha256(event.get("source_sha256")):
+            elif old_active_path is not None and not old_active_path.is_file():
                 issues.append(
                     _issue(
                         "error",
-                        INVALID_EVENT_SCHEMA,
-                        f"{index_path.name}:{line_number}",
-                        "missing or invalid source_sha256",
-                        "The rollover source file cannot be verified.",
-                        "Inspect progress-index.ndjson manually; PWF did not modify files.",
+                        MISSING_SOURCE_ACTIVE,
+                        old_active_ref,
+                        "indexed old active progress file is missing",
+                        "The rollover source audit chain cannot be verified.",
+                        "Inspect storage manually; PWF did not recreate files.",
                     )
                 )
-            elif old_active_path is not None and old_active_path.is_file():
+            elif source_sha256_valid and old_active_path is not None and old_active_path.is_file():
                 actual = _sha256_file_text(old_active_path)
                 if actual != event["source_sha256"]:
                     issues.append(

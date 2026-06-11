@@ -128,6 +128,22 @@ class ProgressCompactionTests(unittest.TestCase):
             ]
             self.assertEqual(len(matching), 1)
 
+    def test_doctor_progress_storage_reports_missing_old_active(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_indexed_rollover(root)
+            (root / "progress.md").unlink()
+
+            report = MODULE.doctor_progress_storage(root / "progress.md")
+
+            self.assertTrue(report.has_errors)
+            matching = [
+                issue
+                for issue in report.issues
+                if issue.code == "missing_source_active" and issue.path == "progress.md"
+            ]
+            self.assertEqual(len(matching), 1)
+
     def test_doctor_progress_storage_requires_source_sha256(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -148,6 +164,25 @@ class ProgressCompactionTests(unittest.TestCase):
                 if issue.code == "invalid_event_schema" and "source_sha256" in issue.message
             ]
             self.assertEqual(len(matching), 1)
+
+    def test_doctor_progress_storage_reports_invalid_role_and_source_sha256(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_indexed_rollover(root)
+            event = json.loads((root / "progress-index.ndjson").read_text(encoding="utf-8"))
+            event["old_active"] = "progress-archive/abc123/archive-20260611100300-fixed01.md"
+            event["source_sha256"] = "not-a-sha"
+            (root / "progress-index.ndjson").write_text(
+                json.dumps(event, ensure_ascii=True, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+
+            report = MODULE.doctor_progress_storage(root / "progress.md")
+
+            codes = [issue.code for issue in report.issues]
+            self.assertTrue(report.has_errors)
+            self.assertIn("active_role_mismatch", codes)
+            self.assertIn("invalid_event_schema", codes)
 
     def test_doctor_progress_storage_excludes_unsafe_refs_from_referenced_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
