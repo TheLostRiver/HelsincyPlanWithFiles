@@ -94,6 +94,58 @@ class ProgressCompactionTests(unittest.TestCase):
             self.assertTrue(report.has_errors)
             self.assertIn("missing_latest_active", [issue.code for issue in report.issues])
 
+    def test_doctor_progress_storage_excludes_unsafe_refs_from_referenced_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "progress.md").write_text("# Progress Log\n", encoding="utf-8")
+            (root / "progress-index.ndjson").write_text(
+                json.dumps(
+                    {
+                        "event": "rollover",
+                        "version": 1,
+                        "archive": "../escape.md",
+                        "new_active": "C:\\escape.md",
+                    },
+                    ensure_ascii=True,
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            report = MODULE.doctor_progress_storage(root / "progress.md")
+
+            self.assertIn("path_escapes_root", [issue.code for issue in report.issues])
+            self.assertNotIn("../escape.md", report.referenced_paths)
+            self.assertNotIn("C:\\escape.md", report.referenced_paths)
+
+    def test_doctor_progress_storage_uses_previous_valid_active_when_latest_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first_archive, first_active = write_indexed_rollover(root, nonce="first01")
+            second_archive = root / "progress-archive" / "abc123" / "archive-20260611100400-second01.md"
+            second_active = root / "progress-active" / "abc123" / "active-20260611100400-second01.md"
+            second_archive.write_text("# Progress Archive\n\nsecond\n", encoding="utf-8")
+            event = {
+                "event": "rollover",
+                "version": 1,
+                "created_at": "2026-06-11T10:04:00Z",
+                "session": "abc123",
+                "old_active": "progress-active/abc123/active-20260611100300-first01.md",
+                "archive": "progress-archive/abc123/archive-20260611100400-second01.md",
+                "new_active": "progress-active/abc123/active-20260611100400-second01.md",
+                "archive_sha256": MODULE._sha256_text("# Progress Archive\n\nsecond\n"),
+            }
+            with (root / "progress-index.ndjson").open("a", encoding="utf-8", newline="\n") as handle:
+                handle.write(json.dumps(event, ensure_ascii=True, sort_keys=True) + "\n")
+
+            report = MODULE.doctor_progress_storage(root / "progress.md")
+
+            self.assertTrue(first_archive.is_file())
+            self.assertFalse(second_active.exists())
+            self.assertEqual(report.active_path, first_active)
+            self.assertIn("missing_latest_active", [issue.code for issue in report.issues])
+
     def test_doctor_progress_storage_reports_active_archive_role_confusion(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

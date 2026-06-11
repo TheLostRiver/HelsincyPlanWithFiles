@@ -497,7 +497,8 @@ def doctor_progress_storage(progress_path: Path) -> ProgressDoctorReport:
         )
         issues.extend(archive_issues)
         if archive_ref:
-            referenced.add(archive_ref)
+            if archive_path is not None:
+                referenced.add(archive_ref)
             if not _is_archive_segment_ref(archive_ref):
                 issues.append(
                     _issue(
@@ -542,7 +543,8 @@ def doctor_progress_storage(progress_path: Path) -> ProgressDoctorReport:
         )
         issues.extend(active_issues)
         if active_ref:
-            referenced.add(active_ref)
+            if candidate_active is not None:
+                referenced.add(active_ref)
             is_latest = (line_number, event) == rollover_events[-1]
             if not _is_active_segment_ref(active_ref):
                 issues.append(
@@ -567,8 +569,7 @@ def doctor_progress_storage(progress_path: Path) -> ProgressDoctorReport:
                     )
                 )
             elif candidate_active is not None and candidate_active.is_file():
-                if is_latest:
-                    active_path = candidate_active
+                active_path = candidate_active
                 if _is_hex_sha256(event.get("new_active_sha256")):
                     actual = _sha256_file_text(candidate_active)
                     if actual != event["new_active_sha256"]:
