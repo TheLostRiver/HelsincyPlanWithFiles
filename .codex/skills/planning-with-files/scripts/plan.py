@@ -495,7 +495,7 @@ def _task_lease_line(root: Path, plan_id: str | None, session_id: str | None = N
     lease = planning_state.read_task_lease(root, plan_id)
     if lease is None:
         return "task lease: none"
-    status = planning_state.task_lease_status(lease)
+    status = planning_state.task_lease_status(root, lease)
     shared = str(lease.shared).lower()
     current_key = planning_state.session_key(session_id) if session_id else None
     if current_key and lease.owner_session_key != current_key and not lease.shared and status != "released":
@@ -622,7 +622,7 @@ def _task_summaries(root: Path, include_all: bool = False, session_id: str | Non
     for plan_id in _iter_plan_ids(root):
         plan_dir = root / ".planning" / plan_id
         lease = planning_state.read_task_lease(root, plan_id)
-        status = planning_state.task_lease_status(lease) if lease else "none"
+        status = planning_state.task_lease_status(root, lease) if lease else "none"
         owner = lease.owner_session_key if lease else None
         shared = bool(lease.shared) if lease else False
         session_bound = plan_id == bound_plan
@@ -1264,7 +1264,7 @@ def init(
             print(_message("task_lease_error", message=conflict))
             return 1
         if conflict:
-            status = planning_state.task_lease_status(lease)
+            status = planning_state.task_lease_status(root, lease)
             print(
                 _message(
                     "task_lease_conflict",
@@ -1292,7 +1292,7 @@ def init(
         assert lease is not None
         key = _write_session_binding(root, session_id, plan_id, "plan.py init --bind-session")
         print(_message("session_binding_set", key=key, plan_id=plan_id))
-        status = planning_state.task_lease_status(lease)
+        status = planning_state.task_lease_status(root, lease)
         print(
             _message(
                 "task_lease",
@@ -1378,7 +1378,7 @@ def switch(
             print(_message("task_lease_error", message=conflict))
             return 1
         if conflict:
-            status = planning_state.task_lease_status(lease)
+            status = planning_state.task_lease_status(root, lease)
             print(
                 _message(
                     "task_lease_conflict",
@@ -1390,7 +1390,7 @@ def switch(
             return 1
         key = _write_session_binding(root, session_id, plan_id, "plan.py switch --session")
         print(_message("session_binding_set", key=key, plan_id=plan_id))
-        status = planning_state.task_lease_status(lease)
+        status = planning_state.task_lease_status(root, lease)
         print(
             _message(
                 "task_lease",

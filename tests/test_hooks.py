@@ -385,6 +385,27 @@ class HookTests(unittest.TestCase):
         )
         return owner_key
 
+    def write_session_lease(self, root, session_id, *, heartbeat_at, bound_plan_id=None):
+        key = PLANNING_STATE.session_key(session_id)
+        lease_dir = root / ".planning" / "session-leases"
+        lease_dir.mkdir(parents=True, exist_ok=True)
+        (lease_dir / f"{key}.json").write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "session_key": key,
+                    "session_id": session_id,
+                    "started_at": "2026-06-07T10:00:00Z",
+                    "heartbeat_at": heartbeat_at,
+                    "status": "active",
+                    "bound_plan_id": bound_plan_id,
+                    "source": "test",
+                }
+            ),
+            encoding="utf-8",
+        )
+        return key
+
     def test_hooks_json_does_not_run_post_tool_use_for_bash(self):
         hooks = json.loads((REPO_ROOT / ".codex" / "hooks.json").read_text(encoding="utf-8"))
         post_tool_use = hooks["hooks"]["PostToolUse"][0]
@@ -1072,6 +1093,82 @@ class HookTests(unittest.TestCase):
             self.assertIn("owned by another session", message)
             self.assertIn("stale", message)
             self.assertNotIn("additionalContext", result.stdout)
+
+    def test_task_lease_status_uses_owner_session_heartbeat_when_available(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_id = "2026-06-11-heartbeat-active"
+            write_plan(root / ".planning" / plan_id)
+            self.write_task_lease(root, plan_id, "session-a", heartbeat_at="2000-01-01T00:00:00Z")
+            self.write_session_lease(
+                root,
+                "session-a",
+                heartbeat_at="2999-01-01T00:00:00Z",
+                bound_plan_id=plan_id,
+            )
+
+            lease = PLANNING_STATE.read_task_lease(root, plan_id)
+
+            self.assertEqual(PLANNING_STATE.task_lease_status(root, lease), "active")
+
+    def test_task_lease_status_reports_stale_when_owner_session_heartbeat_expired(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_id = "2026-06-11-heartbeat-stale"
+            write_plan(root / ".planning" / plan_id)
+            self.write_task_lease(root, plan_id, "session-a", heartbeat_at="2999-01-01T00:00:00Z")
+            self.write_session_lease(
+                root,
+                "session-a",
+                heartbeat_at="2000-01-01T00:00:00Z",
+                bound_plan_id=plan_id,
+            )
+
+            lease = PLANNING_STATE.read_task_lease(root, plan_id)
+
+            self.assertEqual(
+                PLANNING_STATE.task_lease_status(
+                    root,
+                    lease,
+                    env={"PWF_SESSION_LEASE_TTL_SECONDS": "600"},
+                ),
+                "stale",
+            )
+
+    def test_stale_owner_from_session_heartbeat_still_blocks_takeover(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_id = "2026-06-11-heartbeat-stale-blocks"
+            plan_dir = root / ".planning" / plan_id
+            write_plan(plan_dir)
+            (root / ".planning" / ".active_plan").write_text(plan_id + "\n", encoding="utf-8")
+            self.write_task_lease(root, plan_id, "session-a", heartbeat_at="2999-01-01T00:00:00Z")
+            self.write_session_lease(
+                root,
+                "session-a",
+                heartbeat_at="2000-01-01T00:00:00Z",
+                bound_plan_id=plan_id,
+            )
+
+            result = run_hook(
+                "post_tool_use.py",
+                root,
+                {
+                    "hook_event_name": "PostToolUse",
+                    "tool_name": "Edit",
+                    "tool_input": {"file_path": "src/stale-heartbeat.py"},
+                    "tool_response": {"success": True},
+                    "session_id": "session-b",
+                },
+                env={"PWF_SESSION_LEASE_TTL_SECONDS": "600"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            message = json.loads(result.stdout)["systemMessage"]
+            self.assertIn("owned by another session", message)
+            self.assertIn("stale", message)
+            progress = (plan_dir / "progress.md").read_text(encoding="utf-8")
+            self.assertNotIn("src/stale-heartbeat.py", progress)
 
     def test_shared_task_lease_allows_second_session(self):
         with tempfile.TemporaryDirectory() as tmp:
