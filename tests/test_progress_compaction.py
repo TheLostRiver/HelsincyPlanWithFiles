@@ -275,6 +275,43 @@ class ProgressCompactionTests(unittest.TestCase):
             self.assertIn("orphan_segment", [issue.code for issue in report.issues])
             self.assertIn("progress-archive/abc123/archive-20260611100400-orphan.md", report.orphan_paths)
 
+    def test_doctor_progress_storage_reports_no_index_orphan_generated_segments(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            progress = root / "progress.md"
+            progress.write_text("# Progress Log\n\nlegacy\n", encoding="utf-8")
+            active = root / "progress-active" / "abc123" / "active-20260611100400-orphan.md"
+            archive = root / "progress-archive" / "abc123" / "archive-20260611100400-orphan.md"
+            active.parent.mkdir(parents=True)
+            archive.parent.mkdir(parents=True)
+            active.write_text("# Progress Log\n\norphan\n", encoding="utf-8")
+            archive.write_text("# Progress Archive\n\norphan\n", encoding="utf-8")
+
+            report = MODULE.doctor_progress_storage(progress)
+
+            self.assertFalse(report.has_errors)
+            self.assertTrue(report.has_warnings)
+            self.assertFalse(report.index_exists)
+            self.assertIn("legacy_progress_only", [issue.code for issue in report.issues])
+            self.assertEqual(
+                {
+                    issue.path
+                    for issue in report.issues
+                    if issue.code == "orphan_segment" and issue.severity == "warn"
+                },
+                {
+                    "progress-active/abc123/active-20260611100400-orphan.md",
+                    "progress-archive/abc123/archive-20260611100400-orphan.md",
+                },
+            )
+            self.assertEqual(
+                report.orphan_paths,
+                (
+                    "progress-active/abc123/active-20260611100400-orphan.md",
+                    "progress-archive/abc123/archive-20260611100400-orphan.md",
+                ),
+            )
+
     def test_extract_recent_progress_context_keeps_recent_records_and_manual_tail(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -457,6 +457,38 @@ def current_active_progress(progress_path: Path) -> Path:
     return progress_path
 
 
+def _generated_segment_inventory(progress_path: Path) -> tuple[str, ...]:
+    inventory: list[str] = []
+    for directory, matcher in (("progress-active", "active-*.md"), ("progress-archive", "archive-*.md")):
+        base = progress_path.parent / directory
+        if base.is_dir():
+            inventory.extend(
+                _relative_to_progress_root(progress_path, path)
+                for path in sorted(base.glob(f"**/{matcher}"))
+            )
+    return tuple(sorted(inventory))
+
+
+def _orphan_segment_issues(progress_path: Path, referenced: set[str]) -> tuple[list[str], list[ProgressDoctorIssue]]:
+    orphan_paths: list[str] = []
+    issues: list[ProgressDoctorIssue] = []
+    for rel in _generated_segment_inventory(progress_path):
+        if rel in referenced:
+            continue
+        orphan_paths.append(rel)
+        issues.append(
+            _issue(
+                "warn",
+                ORPHAN_SEGMENT,
+                rel,
+                "generated progress segment is not referenced by progress-index.ndjson",
+                "A previous rollover may have created files before appending the index.",
+                "Keep it for analysis, or remove manually only if you are sure it is no longer needed.",
+            )
+        )
+    return orphan_paths, issues
+
+
 def doctor_progress_storage(progress_path: Path) -> ProgressDoctorReport:
     index_path = progress_index_path(progress_path)
     events_with_lines, issues = _read_index_events_with_issues(index_path)
@@ -488,7 +520,18 @@ def doctor_progress_storage(progress_path: Path) -> ProgressDoctorReport:
                     "Keep it for audit, or remove it manually only if you no longer need it.",
                 )
             )
-        return ProgressDoctorReport(progress_path, active_path, index_path, False, 0, (), (), _dedupe_issues(issues))
+        orphan_paths, orphan_issues = _orphan_segment_issues(progress_path, referenced)
+        issues.extend(orphan_issues)
+        return ProgressDoctorReport(
+            progress_path,
+            active_path,
+            index_path,
+            False,
+            0,
+            (),
+            tuple(sorted(orphan_paths)),
+            _dedupe_issues(issues),
+        )
 
     for line_number, event in rollover_events:
         if event.get("version") != 1:
@@ -598,29 +641,8 @@ def doctor_progress_storage(progress_path: Path) -> ProgressDoctorReport:
                             )
                         )
 
-    inventory: list[tuple[str, str]] = []
-    for directory, matcher in (("progress-active", "active-*.md"), ("progress-archive", "archive-*.md")):
-        base = progress_path.parent / directory
-        if base.is_dir():
-            inventory.extend(
-                (directory, _relative_to_progress_root(progress_path, path))
-                for path in sorted(base.glob(f"**/{matcher}"))
-            )
-
-    orphan_paths: list[str] = []
-    for directory, rel in inventory:
-        if rel not in referenced:
-            orphan_paths.append(rel)
-            issues.append(
-                _issue(
-                    "warn",
-                    ORPHAN_SEGMENT,
-                    rel,
-                    "generated progress segment is not referenced by progress-index.ndjson",
-                    "A previous rollover may have created files before appending the index.",
-                    "Keep it for analysis, or remove manually only if you are sure it is no longer needed.",
-                )
-            )
+    orphan_paths, orphan_issues = _orphan_segment_issues(progress_path, referenced)
+    issues.extend(orphan_issues)
 
     for path in sorted((progress_path.parent / "progress-active").glob("**/archive-*.md")):
         rel = _relative_to_progress_root(progress_path, path)

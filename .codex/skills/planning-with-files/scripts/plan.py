@@ -758,54 +758,14 @@ def _relative_to_plan_root(paths: planning_state.PlanningPaths, path: Path) -> s
         return str(path)
 
 
-def _progress_storage_status(report: progress_lifecycle.ProgressDoctorReport, strict: bool = False) -> str:
+def _progress_storage_status(report: progress_lifecycle.ProgressDoctorReport) -> str:
     if report.has_errors:
         return "error"
     if report.has_warnings:
-        return "warning" if strict else "warning"
+        return "warning"
     if report.issues:
         return "info"
     return "ok"
-
-
-def _unindexed_progress_segment_issues(paths: planning_state.PlanningPaths) -> tuple[progress_lifecycle.ProgressDoctorIssue, ...]:
-    issues: list[progress_lifecycle.ProgressDoctorIssue] = []
-    for directory, pattern in (("progress-active", "active-*.md"), ("progress-archive", "archive-*.md")):
-        base = paths.root / directory
-        if not base.is_dir():
-            continue
-        for path in sorted(base.glob(f"**/{pattern}")):
-            rel = path.relative_to(paths.root).as_posix()
-            issues.append(
-                progress_lifecycle.ProgressDoctorIssue(
-                    "warn",
-                    progress_lifecycle.ORPHAN_SEGMENT,
-                    rel,
-                    "generated progress segment is not referenced by progress-index.ndjson",
-                    "A previous rollover may have created files before appending the index.",
-                    "Keep it for analysis, or remove manually only if you are sure it is no longer needed.",
-                )
-            )
-    return tuple(issues)
-
-
-def _progress_storage_report(paths: planning_state.PlanningPaths) -> progress_lifecycle.ProgressDoctorReport:
-    report = progress_lifecycle.doctor_progress_storage(paths.progress)
-    if report.index_exists:
-        return report
-    extra_issues = _unindexed_progress_segment_issues(paths)
-    if not extra_issues:
-        return report
-    return progress_lifecycle.ProgressDoctorReport(
-        progress_path=report.progress_path,
-        active_path=report.active_path,
-        index_path=report.index_path,
-        index_exists=report.index_exists,
-        rollover_events=report.rollover_events,
-        referenced_paths=report.referenced_paths,
-        orphan_paths=tuple(sorted({*(report.orphan_paths), *(issue.path for issue in extra_issues)})),
-        issues=(*report.issues, *extra_issues),
-    )
 
 
 def _progress_storage_summary_lines(
@@ -1172,7 +1132,7 @@ def doctor(root: Path, *, verbose: bool = False, as_json: bool = False, strict: 
     ok = ok and attestation_ok
 
     if paths is not None:
-        progress_report = _progress_storage_report(paths)
+        progress_report = progress_lifecycle.doctor_progress_storage(paths.progress)
         if progress_report.has_errors or (strict and progress_report.has_warnings):
             ok = False
         lines.extend(_progress_storage_summary_lines(paths, progress_report, verbose=verbose))
