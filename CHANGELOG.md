@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- 中文：强化多会话 task ownership 安全边界；`PLAN_ID` 现在只是 routing override，不再作为 permission override 绕过其他 session 的独占任务。
+- 中文：task lease 的 `stale` 诊断优先使用 owner session heartbeat；`.task-lease.json` 的 `updated_at` 只作为兼容回退，stale owner 仍必须显式 claim/share/release。
+- 中文：Python hooks 的会话识别与 CLI 对齐，按 payload `session_id` -> `PWF_SESSION_ID` -> `CODEX_THREAD_ID` 回退，避免普通 Codex 会话丢失 session binding。
+- English: Hardened multi-session task ownership; `PLAN_ID` is now a routing override, not a permission override for another session's exclusive task.
+- English: Task lease `stale` diagnostics now prefer the owner session heartbeat, with `.task-lease.json` `updated_at` only as a compatibility fallback; stale owners still require explicit claim/share/release.
+- English: Aligned Python hook session identity with the CLI using payload `session_id` -> `PWF_SESSION_ID` -> `CODEX_THREAD_ID`, preserving session binding in ordinary Codex sessions.
+
 ## 0.2.6 - 2026-06-10
 
 - 中文：新增会话级 context profile 快捷命令，可用 `/pwf-context-expanded`、`/pwf-context-deep`、`/pwf-context-default`、`/pwf-context-lean` 和 `/pwf-context-status` 管理当前会话的上下文注入强度。

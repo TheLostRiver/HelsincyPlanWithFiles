@@ -123,10 +123,19 @@ class ProjectConsistencyTests(unittest.TestCase):
             self.assertIn("Session", text)
             self.assertIn("Plan-Source", text)
             self.assertIn("stale", text)
+            self.assertIn("PLAN_ID", text)
+            self.assertIn("routing override", text)
+            self.assertIn("permission override", text)
+            self.assertIn("owner session heartbeat", text)
+            self.assertIn("payload `session_id` -> `PWF_SESSION_ID` -> `CODEX_THREAD_ID`", text)
 
         self.assertIn("session binding", changelog)
         self.assertIn("task ownership", changelog)
         self.assertIn("progress.md lock", changelog)
+        self.assertIn("routing override", changelog)
+        self.assertIn("permission override", changelog)
+        self.assertIn("owner session heartbeat", changelog)
+        self.assertIn("payload `session_id` -> `PWF_SESSION_ID` -> `CODEX_THREAD_ID`", changelog)
 
     def test_docs_document_session_task_selection_commands(self):
         readme_cn = read_text("README.md")

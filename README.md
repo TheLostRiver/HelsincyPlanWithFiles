@@ -206,9 +206,13 @@ PLAN_ID 环境变量
 项目根目录 task_plan.md
 ```
 
+`PLAN_ID` 是 routing override，不是 permission override。即使显式指定了 `PLAN_ID`，hook 仍会检查 task ownership：如果目标任务由其他 session 独占，当前 session 不会写入该任务，除非 owner 是当前 session、任务已 shared/released，或用户显式 claim/share/release。
+
 ### Session Policy
 
 默认情况下，`/pwf-init` 和 `plan.py init` 是 session-first：如果工具能识别当前 Codex 会话，也就是存在 `PWF_SESSION_ID` 或 `CODEX_THREAD_ID`，新建任务默认会绑定当前会话并写入 task lease。这样同一项目里开多个会话时，每个会话新建的 PWF 任务会自然归属各自会话。
+
+hook 会话识别顺序是 payload `session_id` -> `PWF_SESSION_ID` -> `CODEX_THREAD_ID`；普通 Codex 会话通常不需要手动设置 `PWF_SESSION_ID`。
 
 `.planning/.active_plan` 仍会默认写入，但 workspace active 是兼容层，用来照顾单会话和旧工作流；多会话下优先使用当前 session binding。hook 仍使用 workspace session mode 作为默认 policy，因此 Codex 压缩上下文、resume、以及下一次用户提示后都更稳定。
 
@@ -263,6 +267,8 @@ python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --sess
 python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session --share
 python .codex\skills\planning-with-files\scripts\plan.py switch --release-session
 ```
+
+`stale` 优先由 owner session heartbeat 判断；只有找不到对应 session lease 时才回退到 `.task-lease.json` 的 `updated_at`。stale 只是诊断状态，不是自动接管许可。
 
 如果希望 strict mode 同时要求 session 已 attach 且已有有效 binding，可以设置：
 

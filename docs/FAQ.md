@@ -229,6 +229,8 @@ python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --bind
 $env:PWF_STRICT_REQUIRES_BINDING=1
 ```
 
+`PLAN_ID` 可以显式选择要注入或记录的任务，但它只是 routing override，不是 permission override。hook 会话识别顺序是 payload `session_id` -> `PWF_SESSION_ID` -> `CODEX_THREAD_ID`；如果目标任务由其他 session 独占，仍必须满足 ownership、shared/released，或显式 claim/share/release。
+
 如果 workspace active task 已经由另一个 session 拥有，新的未绑定对话不会自动接管它；owner stale 也仍然需要显式选择。接管或共享仍必须显式表达意图：接管用 `--force-claim` 或 `plan.py use <id> --claim`，有意共享用 `--share`，释放当前 session 的 ownership 用 `--release-session`：
 
 ```powershell
@@ -236,6 +238,8 @@ python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --sess
 python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session --share
 python .codex\skills\planning-with-files\scripts\plan.py switch --release-session
 ```
+
+`stale` 优先由 owner session heartbeat 判断；只有找不到对应 session lease 时才回退到 `.task-lease.json` 的 `updated_at`。stale 只是诊断状态，不是自动接管许可。
 
 ### 11b. 同一个项目里开了多个会话，我忘记当前会话能用哪个任务怎么办？
 
@@ -609,6 +613,8 @@ After binding, context injection and automatic `progress.md` records use the ses
 $env:PWF_STRICT_REQUIRES_BINDING=1
 ```
 
+`PLAN_ID` can explicitly choose the task to inject or record, but it is a routing override, not a permission override. Hook session identity is resolved as payload `session_id` -> `PWF_SESSION_ID` -> `CODEX_THREAD_ID`; if the target task is exclusive to another session, ownership, shared/released state, or an explicit claim/share/release is still required.
+
 If the workspace active task is already owned by another session, an unbound new conversation will not automatically take it over; a stale owner still requires an explicit choice. claim or share still requires explicit intent: use `--force-claim` or `plan.py use <id> --claim` to take ownership, `--share` for intentional sharing, and `--release-session` to release the current session:
 
 ```powershell
@@ -616,6 +622,8 @@ python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --sess
 python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session --share
 python .codex\skills\planning-with-files\scripts\plan.py switch --release-session
 ```
+
+`stale` is computed from the owner session heartbeat when that session lease exists; `.task-lease.json` `updated_at` is only a compatibility fallback. Stale is a diagnostic state, not permission to take ownership automatically.
 
 ### 11b. What if I forget which task this conversation can use?
 

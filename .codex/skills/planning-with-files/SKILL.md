@@ -108,6 +108,8 @@ Agent-written notes are interpretive: rationale, conclusions, risks, and next st
 
 `/pwf-init` and `plan.py init` are session-first by default. When `PWF_SESSION_ID` or `CODEX_THREAD_ID` is available, a new named task is automatically bound to the current session and protected by a task lease.
 
+Hooks resolve session identity as payload `session_id` -> `PWF_SESSION_ID` -> `CODEX_THREAD_ID`; ordinary Codex sessions usually do not need a manually configured `PWF_SESSION_ID`.
+
 When several Codex conversations work in the same project, create a task in each conversation normally:
 
 ```powershell
@@ -137,13 +139,15 @@ python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --bind
 
 `--legacy` is only for root-level single-task compatibility mode and does not support session binding; `plan.py init "Task Name" --legacy --bind-session` is rejected. For multi-session isolation, use named `.planning/<plan-id>` tasks with the default session-first behavior.
 
-Task ownership is separate from routing. If another session owns a task, a new session must not automatically take it over, even if the owner is stale. Use explicit commands:
+Task ownership is separate from routing. `PLAN_ID` is a routing override, not a permission override; selecting a task through `PLAN_ID` still requires ownership, sharing, or release before hooks write to it. If another session owns a task, a new session must not automatically take it over, even if the owner is stale. Use explicit commands:
 
 ```powershell
 python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session --force-claim
 python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session --share
 python .codex\skills\planning-with-files\scripts\plan.py switch --release-session
 ```
+
+`stale` is computed from the owner session heartbeat when that session lease exists; `.task-lease.json` `updated_at` is only a compatibility fallback. Stale is diagnostic, not automatic takeover permission.
 
 To make strict mode require both an attached session and a valid binding:
 
