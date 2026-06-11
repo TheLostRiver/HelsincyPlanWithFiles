@@ -438,6 +438,10 @@ def _is_active_segment_ref(value: str) -> bool:
     )
 
 
+def _is_source_active_ref(value: str, progress_path: Path) -> bool:
+    return value == progress_path.name or _is_active_segment_ref(value)
+
+
 def current_active_progress(progress_path: Path) -> Path:
     for event in reversed(_read_index_events(progress_index_path(progress_path))):
         if event.get("event") != "rollover":
@@ -546,6 +550,52 @@ def doctor_progress_storage(progress_path: Path) -> ProgressDoctorReport:
                 )
             )
 
+        old_active_ref, old_active_path, old_active_issues = _resolve_index_ref(
+            progress_path,
+            event.get("old_active"),
+            role="old_active",
+            line_number=line_number,
+        )
+        issues.extend(old_active_issues)
+        if old_active_ref:
+            if old_active_path is not None:
+                referenced.add(old_active_ref)
+            if not _is_source_active_ref(old_active_ref, progress_path):
+                issues.append(
+                    _issue(
+                        "error",
+                        ACTIVE_ROLE_MISMATCH,
+                        old_active_ref,
+                        "old active path is not progress.md or under progress-active/",
+                        "Rollover source files must be active progress files.",
+                        "Inspect the index manually; PWF did not move files.",
+                    )
+                )
+            elif not _is_hex_sha256(event.get("source_sha256")):
+                issues.append(
+                    _issue(
+                        "error",
+                        INVALID_EVENT_SCHEMA,
+                        f"{index_path.name}:{line_number}",
+                        "missing or invalid source_sha256",
+                        "The rollover source file cannot be verified.",
+                        "Inspect progress-index.ndjson manually; PWF did not modify files.",
+                    )
+                )
+            elif old_active_path is not None and old_active_path.is_file():
+                actual = _sha256_file_text(old_active_path)
+                if actual != event["source_sha256"]:
+                    issues.append(
+                        _issue(
+                            "error",
+                            HASH_MISMATCH,
+                            old_active_ref,
+                            "old active SHA-256 does not match progress-index.ndjson",
+                            "The rollover source audit chain is not trustworthy.",
+                            "Inspect the file and index manually; PWF did not modify either file.",
+                        )
+                    )
+
         archive_ref, archive_path, archive_issues = _resolve_index_ref(
             progress_path,
             event.get("archive"),
@@ -627,19 +677,6 @@ def doctor_progress_storage(progress_path: Path) -> ProgressDoctorReport:
                 )
             elif candidate_active is not None and candidate_active.is_file():
                 active_path = candidate_active
-                if _is_hex_sha256(event.get("new_active_sha256")):
-                    actual = _sha256_file_text(candidate_active)
-                    if actual != event["new_active_sha256"]:
-                        issues.append(
-                            _issue(
-                                "error",
-                                HASH_MISMATCH,
-                                active_ref,
-                                "active segment SHA-256 does not match progress-index.ndjson",
-                                "The active progress audit chain is not trustworthy.",
-                                "Inspect the file and index manually; PWF did not modify either file.",
-                            )
-                        )
 
     orphan_paths, orphan_issues = _orphan_segment_issues(progress_path, referenced)
     issues.extend(orphan_issues)

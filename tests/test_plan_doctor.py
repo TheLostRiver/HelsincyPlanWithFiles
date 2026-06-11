@@ -294,7 +294,8 @@ class PlanDoctorTests(unittest.TestCase):
             root = Path(tmp)
             write_hooks(root)
             plan_dir = write_active_plan(root)
-            (plan_dir / "progress.md").write_text("# Progress Log\n\nlegacy\n", encoding="utf-8")
+            progress_text = "# Progress Log\n\nlegacy\n"
+            (plan_dir / "progress.md").write_text(progress_text, encoding="utf-8")
             active = plan_dir / "progress-active" / "abc123" / "active-20260611100300-fixed01.md"
             archive = plan_dir / "progress-archive" / "abc123" / "archive-20260611100300-fixed01.md"
             active.parent.mkdir(parents=True)
@@ -307,8 +308,10 @@ class PlanDoctorTests(unittest.TestCase):
                     {
                         "event": "rollover",
                         "version": 1,
+                        "old_active": "progress.md",
                         "archive": "progress-archive/abc123/archive-20260611100300-fixed01.md",
                         "new_active": "progress-active/abc123/active-20260611100300-fixed01.md",
+                        "source_sha256": hashlib.sha256(progress_text.encode("utf-8")).hexdigest(),
                         "archive_sha256": hashlib.sha256(archive_text.encode("utf-8")).hexdigest(),
                         "new_active_sha256": hashlib.sha256(
                             active.read_text(encoding="utf-8").encode("utf-8")
@@ -332,6 +335,8 @@ class PlanDoctorTests(unittest.TestCase):
             root = Path(tmp)
             write_hooks(root)
             plan_dir = write_active_plan(root)
+            progress_text = "# Progress Log\n\nlegacy\n"
+            (plan_dir / "progress.md").write_text(progress_text, encoding="utf-8")
             active = plan_dir / "progress-active" / "abc123" / "active-20260611100300-fixed01.md"
             archive = plan_dir / "progress-archive" / "abc123" / "archive-20260611100300-fixed01.md"
             active.parent.mkdir(parents=True)
@@ -345,8 +350,10 @@ class PlanDoctorTests(unittest.TestCase):
                     {
                         "event": "rollover",
                         "version": 1,
+                        "old_active": "progress.md",
                         "archive": "progress-archive/abc123/archive-20260611100300-fixed01.md",
                         "new_active": "progress-active/abc123/active-20260611100300-fixed01.md",
+                        "source_sha256": hashlib.sha256(progress_text.encode("utf-8")).hexdigest(),
                         "archive_sha256": hashlib.sha256(archive_text.encode("utf-8")).hexdigest(),
                         "new_active_sha256": hashlib.sha256(active_text.encode("utf-8")).hexdigest(),
                     },

@@ -94,6 +94,61 @@ class ProgressCompactionTests(unittest.TestCase):
             self.assertTrue(report.has_errors)
             self.assertIn("missing_latest_active", [issue.code for issue in report.issues])
 
+    def test_doctor_progress_storage_allows_appended_current_active(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _archive, active = write_indexed_rollover(root)
+            with active.open("a", encoding="utf-8", newline="\n") as handle:
+                handle.write("\n### Auto Record: 2026-06-11 10:04:00\n- Tool: test\n")
+
+            report = MODULE.doctor_progress_storage(root / "progress.md")
+
+            self.assertFalse(report.has_errors)
+            active_hash_mismatches = [
+                issue
+                for issue in report.issues
+                if issue.code == "hash_mismatch"
+                and issue.path == "progress-active/abc123/active-20260611100300-fixed01.md"
+            ]
+            self.assertEqual(active_hash_mismatches, [])
+
+    def test_doctor_progress_storage_reports_old_active_hash_mismatch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_indexed_rollover(root)
+            (root / "progress.md").write_text("# Progress Log\n\nmodified\n", encoding="utf-8")
+
+            report = MODULE.doctor_progress_storage(root / "progress.md")
+
+            self.assertTrue(report.has_errors)
+            matching = [
+                issue
+                for issue in report.issues
+                if issue.code == "hash_mismatch" and issue.path == "progress.md"
+            ]
+            self.assertEqual(len(matching), 1)
+
+    def test_doctor_progress_storage_requires_source_sha256(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_indexed_rollover(root)
+            event = json.loads((root / "progress-index.ndjson").read_text(encoding="utf-8"))
+            del event["source_sha256"]
+            (root / "progress-index.ndjson").write_text(
+                json.dumps(event, ensure_ascii=True, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+
+            report = MODULE.doctor_progress_storage(root / "progress.md")
+
+            self.assertTrue(report.has_errors)
+            matching = [
+                issue
+                for issue in report.issues
+                if issue.code == "invalid_event_schema" and "source_sha256" in issue.message
+            ]
+            self.assertEqual(len(matching), 1)
+
     def test_doctor_progress_storage_excludes_unsafe_refs_from_referenced_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
