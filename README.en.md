@@ -206,9 +206,13 @@ newest .planning/<plan-id>/task_plan.md
 root-level task_plan.md
 ```
 
+`PLAN_ID` is a routing override, not a permission override. Even when `PLAN_ID` selects a task, hooks still enforce task ownership: the current session cannot write to another session's exclusive task unless it is the owner, the task is shared/released, or the user explicitly claims, shares, or releases ownership.
+
 ### Session Policy
 
 By default, `/pwf-init` and `plan.py init` are session-first by default. When the tool can identify the current Codex conversation through `PWF_SESSION_ID` or `CODEX_THREAD_ID`, a new task is bound to that session automatically and protected by a task lease. This makes concurrent conversations in the same project use their own new PWF tasks by default.
+
+Hook session identity is resolved as payload `session_id` -> `PWF_SESSION_ID` -> `CODEX_THREAD_ID`; ordinary Codex sessions usually do not need a manually configured `PWF_SESSION_ID`.
 
 `.planning/.active_plan` is still written by default, but workspace active remains a compatibility fallback for single-session and older workflows. In multi-session work, the current session binding takes precedence. Hooks still use workspace session mode as the default policy, which keeps context recovery reliable after Codex compaction, resume, and the next user prompt.
 
@@ -263,6 +267,8 @@ python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --sess
 python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session --share
 python .codex\skills\planning-with-files\scripts\plan.py switch --release-session
 ```
+
+`stale` is computed from the owner session heartbeat when that session lease exists; `.task-lease.json` `updated_at` is only a compatibility fallback. Stale is a diagnostic state, not permission to take ownership automatically.
 
 To make strict mode require a task binding as well as an attached session, set:
 

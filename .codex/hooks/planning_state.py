@@ -360,6 +360,10 @@ def session_lease_path(root: Path, session_id: str) -> Path:
     return _session_leases_dir(root) / f"{session_key(session_id)}.json"
 
 
+def session_lease_path_for_key(root: Path, owner_session_key: str) -> Path:
+    return _session_leases_dir(root) / f"{owner_session_key}.json"
+
+
 def task_lease_path(root: Path, plan_id: str) -> Path:
     return root / ".planning" / plan_id / ".task-lease.json"
 
@@ -436,6 +440,26 @@ def refresh_session_lease(
     return key
 
 
+def read_session_lease_for_key(root: Path, owner_session_key: str) -> dict[str, Any] | None:
+    if not re.fullmatch(r"[0-9a-f]{12}", owner_session_key):
+        return None
+    path = session_lease_path_for_key(root, owner_session_key)
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict) or payload.get("version") != 1:
+        return None
+    if payload.get("session_key") != owner_session_key:
+        return None
+    heartbeat_at = payload.get("heartbeat_at")
+    if not isinstance(heartbeat_at, str):
+        return None
+    return payload
+
+
 def read_task_lease(root: Path, plan_id: str) -> TaskLease | None:
     if not valid_plan_id(plan_id):
         return None
@@ -474,15 +498,19 @@ def _parse_iso_z(value: str) -> datetime | None:
         return None
 
 
-def task_lease_status(lease: TaskLease, env: Mapping[str, str] | None = None) -> str:
+def task_lease_status(root: Path, lease: TaskLease, env: Mapping[str, str] | None = None) -> str:
     if lease.shared:
         return "shared"
     if lease.owner_status == "released":
         return "released"
-    updated = _parse_iso_z(lease.updated_at)
-    if updated is None:
+    session_lease = read_session_lease_for_key(root, lease.owner_session_key)
+    heartbeat_at = session_lease.get("heartbeat_at") if session_lease is not None else lease.updated_at
+    if not isinstance(heartbeat_at, str):
         return "stale"
-    age = (datetime.now(timezone.utc).replace(tzinfo=None) - updated).total_seconds()
+    heartbeat = _parse_iso_z(heartbeat_at)
+    if heartbeat is None:
+        return "stale"
+    age = (datetime.now(timezone.utc).replace(tzinfo=None) - heartbeat).total_seconds()
     return "stale" if age > session_lease_ttl_seconds(env) else "active"
 
 
@@ -814,19 +842,17 @@ def ownership_denial_for_resolution(
     session_id: str | None,
     env: Mapping[str, str] | None = None,
 ) -> str | None:
-    if resolution.source == "env":
-        return None
     lease = read_task_lease(root, resolution.plan_id)
     if lease is None:
         return None
-    status = task_lease_status(lease, env)
+    status = task_lease_status(root, lease, env)
     if lease.shared or status == "released":
         return None
     current_key = session_key(session_id) if session_id else None
     if current_key and current_key == lease.owner_session_key:
         return None
     return (
-        "[planning-with-files] workspace active plan is owned by another session; "
+        f"[planning-with-files] {resolution.source} plan is owned by another session; "
         f"owner={lease.owner_session_key} status={status} shared=false. "
         "Bind this session with plan.py switch <plan-id> --session, create a new task "
         "with plan.py init \"Task Name\" --bind-session, or use --force-claim only "
@@ -940,7 +966,7 @@ def claim_task_lease(
         ):
             existing = read_task_lease(root, plan_id)
             if existing:
-                status = task_lease_status(existing)
+                status = task_lease_status(root, existing)
                 conflict = existing.owner_session_key != current_key and not existing.shared and status != "released"
                 if conflict and not force:
                     return existing, (
@@ -973,7 +999,7 @@ def claim_task_lease_for_rewrite(
         ):
             existing = read_task_lease(root, plan_id)
             if existing:
-                status = task_lease_status(existing)
+                status = task_lease_status(root, existing)
                 conflict = existing.owner_session_key != current_key and status != "released"
                 if conflict:
                     return existing, (
