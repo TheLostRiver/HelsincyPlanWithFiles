@@ -814,8 +814,6 @@ def ownership_denial_for_resolution(
     session_id: str | None,
     env: Mapping[str, str] | None = None,
 ) -> str | None:
-    if resolution.source == "env":
-        return None
     lease = read_task_lease(root, resolution.plan_id)
     if lease is None:
         return None
@@ -826,7 +824,7 @@ def ownership_denial_for_resolution(
     if current_key and current_key == lease.owner_session_key:
         return None
     return (
-        "[planning-with-files] workspace active plan is owned by another session; "
+        f"[planning-with-files] {resolution.source} plan is owned by another session; "
         f"owner={lease.owner_session_key} status={status} shared=false. "
         "Bind this session with plan.py switch <plan-id> --session, create a new task "
         "with plan.py init \"Task Name\" --bind-session, or use --force-claim only "

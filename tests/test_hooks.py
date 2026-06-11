@@ -857,6 +857,138 @@ class HookTests(unittest.TestCase):
             self.assertIn("owned by another session", json.loads(post.stdout)["systemMessage"])
             self.assertNotIn("src/conflict.py", (plan_dir / "progress.md").read_text(encoding="utf-8"))
 
+    def test_plan_id_env_does_not_bypass_other_session_task_ownership(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_id = "2026-06-11-env-owned"
+            plan_dir = root / ".planning" / plan_id
+            write_plan(plan_dir)
+            owner_key = self.write_task_lease(root, plan_id, "session-a")
+
+            prompt = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue", "session_id": "session-b"},
+                env={"PLAN_ID": plan_id},
+            )
+            post = run_hook(
+                "post_tool_use.py",
+                root,
+                {
+                    "hook_event_name": "PostToolUse",
+                    "tool_name": "Edit",
+                    "tool_input": {"file_path": "src/env-conflict.py"},
+                    "tool_response": {"success": True},
+                    "session_id": "session-b",
+                },
+                env={"PLAN_ID": plan_id},
+            )
+
+            self.assertEqual(prompt.returncode, 0, prompt.stderr)
+            self.assertEqual(post.returncode, 0, post.stderr)
+            prompt_payload = json.loads(prompt.stdout)
+            self.assertIn("systemMessage", prompt_payload)
+            self.assertIn("owned by another session", prompt_payload["systemMessage"])
+            self.assertIn(owner_key, prompt.stdout)
+            self.assertNotIn("additionalContext", prompt.stdout)
+            post_payload = json.loads(post.stdout)
+            self.assertIn("systemMessage", post_payload)
+            self.assertIn("owned by another session", post_payload["systemMessage"])
+            progress = (plan_dir / "progress.md").read_text(encoding="utf-8")
+            self.assertNotIn("src/env-conflict.py", progress)
+
+    def test_plan_id_env_allows_current_owner_session(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_id = "2026-06-11-env-owner"
+            plan_dir = root / ".planning" / plan_id
+            write_plan(plan_dir)
+            key = self.write_task_lease(root, plan_id, "session-a")
+
+            result = run_hook(
+                "post_tool_use.py",
+                root,
+                {
+                    "hook_event_name": "PostToolUse",
+                    "tool_name": "Edit",
+                    "tool_input": {"file_path": "src/env-owner.py"},
+                    "tool_response": {"success": True},
+                    "session_id": "session-a",
+                },
+                env={"PLAN_ID": plan_id},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            progress = (plan_dir / "progress.md").read_text(encoding="utf-8")
+            self.assertIn("src/env-owner.py", progress)
+            self.assertIn(f"- Session: {key}", progress)
+            self.assertIn("- Plan-Source: env", progress)
+
+    def test_plan_id_env_allows_shared_task_for_other_session(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_id = "2026-06-11-env-shared"
+            plan_dir = root / ".planning" / plan_id
+            write_plan(plan_dir)
+            self.write_task_lease(root, plan_id, "session-a", shared=True)
+
+            result = run_hook(
+                "post_tool_use.py",
+                root,
+                {
+                    "hook_event_name": "PostToolUse",
+                    "tool_name": "Edit",
+                    "tool_input": {"file_path": "src/env-shared.py"},
+                    "tool_response": {"success": True},
+                    "session_id": "session-b",
+                },
+                env={"PLAN_ID": plan_id},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            progress = (plan_dir / "progress.md").read_text(encoding="utf-8")
+            self.assertIn("src/env-shared.py", progress)
+
+    def test_plan_id_env_allows_released_task_for_other_session(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_id = "2026-06-11-env-released"
+            plan_dir = root / ".planning" / plan_id
+            write_plan(plan_dir)
+            owner_key = PLANNING_STATE.session_key("session-a")
+            (plan_dir / ".task-lease.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "plan_id": plan_id,
+                        "owner_session_key": owner_key,
+                        "owner_status": "released",
+                        "shared": False,
+                        "claimed_at": "2026-06-07T10:00:00Z",
+                        "updated_at": "2026-06-07T10:00:00Z",
+                        "source": "test",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "post_tool_use.py",
+                root,
+                {
+                    "hook_event_name": "PostToolUse",
+                    "tool_name": "Edit",
+                    "tool_input": {"file_path": "src/env-released.py"},
+                    "tool_response": {"success": True},
+                    "session_id": "session-b",
+                },
+                env={"PLAN_ID": plan_id},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            progress = (plan_dir / "progress.md").read_text(encoding="utf-8")
+            self.assertIn("src/env-released.py", progress)
+
     def test_session_start_blocks_catchup_when_workspace_task_owned_by_other_session(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
