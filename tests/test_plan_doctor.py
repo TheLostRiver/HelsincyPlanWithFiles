@@ -296,10 +296,28 @@ class PlanDoctorTests(unittest.TestCase):
             plan_dir = write_active_plan(root)
             (plan_dir / "progress.md").write_text("# Progress Log\n\nlegacy\n", encoding="utf-8")
             active = plan_dir / "progress-active" / "abc123" / "active-20260611100300-fixed01.md"
+            archive = plan_dir / "progress-archive" / "abc123" / "archive-20260611100300-fixed01.md"
             active.parent.mkdir(parents=True)
+            archive.parent.mkdir(parents=True)
             write_auto_records(active, 101)
+            archive_text = "# Progress Archive\n\nsealed\n"
+            archive.write_text(archive_text, encoding="utf-8")
             (plan_dir / "progress-index.ndjson").write_text(
-                '{"event":"rollover","version":1,"new_active":"progress-active/abc123/active-20260611100300-fixed01.md"}\n',
+                json.dumps(
+                    {
+                        "event": "rollover",
+                        "version": 1,
+                        "archive": "progress-archive/abc123/archive-20260611100300-fixed01.md",
+                        "new_active": "progress-active/abc123/active-20260611100300-fixed01.md",
+                        "archive_sha256": hashlib.sha256(archive_text.encode("utf-8")).hexdigest(),
+                        "new_active_sha256": hashlib.sha256(
+                            active.read_text(encoding="utf-8").encode("utf-8")
+                        ).hexdigest(),
+                    },
+                    ensure_ascii=True,
+                    sort_keys=True,
+                )
+                + "\n",
                 encoding="utf-8",
             )
 
@@ -359,6 +377,39 @@ class PlanDoctorTests(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
             self.assertIn("progress storage: error", result.stdout)
             self.assertIn("[error] invalid_index_json", result.stdout)
+
+    def test_doctor_progress_storage_invalid_event_schema_returns_nonzero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_hooks(root)
+            plan_dir = write_active_plan(root)
+            (plan_dir / "progress-index.ndjson").write_text(
+                '{"event":"rollover","version":1}\n',
+                encoding="utf-8",
+            )
+
+            result = run_plan(root, "doctor")
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("progress storage: error", result.stdout)
+            self.assertIn("[error] invalid_event_schema", result.stdout)
+
+    def test_doctor_json_invalid_event_schema_returns_nonzero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_hooks(root)
+            plan_dir = write_active_plan(root)
+            (plan_dir / "progress-index.ndjson").write_text(
+                '{"event":"rollover","version":1}\n',
+                encoding="utf-8",
+            )
+
+            result = run_plan(root, "doctor", "--json")
+
+            self.assertEqual(result.returncode, 1)
+            payload = json.loads(result.stdout)
+            self.assertIs(payload["ok"], False)
+            self.assertEqual(payload["progress_storage"]["status"], "error")
 
     def test_doctor_strict_returns_nonzero_for_progress_storage_warning(self):
         with tempfile.TemporaryDirectory() as tmp:

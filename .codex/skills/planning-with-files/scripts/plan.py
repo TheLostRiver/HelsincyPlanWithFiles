@@ -768,13 +768,6 @@ def _progress_storage_status(report: progress_lifecycle.ProgressDoctorReport, st
     return "ok"
 
 
-def _progress_storage_has_blocking_errors(report: progress_lifecycle.ProgressDoctorReport) -> bool:
-    return any(
-        issue.severity == "error" and issue.code != progress_lifecycle.INVALID_EVENT_SCHEMA
-        for issue in report.issues
-    )
-
-
 def _unindexed_progress_segment_issues(paths: planning_state.PlanningPaths) -> tuple[progress_lifecycle.ProgressDoctorIssue, ...]:
     issues: list[progress_lifecycle.ProgressDoctorIssue] = []
     for directory, pattern in (("progress-active", "active-*.md"), ("progress-archive", "archive-*.md")):
@@ -1180,7 +1173,7 @@ def doctor(root: Path, *, verbose: bool = False, as_json: bool = False, strict: 
 
     if paths is not None:
         progress_report = _progress_storage_report(paths)
-        if _progress_storage_has_blocking_errors(progress_report) or (strict and progress_report.has_warnings):
+        if progress_report.has_errors or (strict and progress_report.has_warnings):
             ok = False
         lines.extend(_progress_storage_summary_lines(paths, progress_report, verbose=verbose))
 
