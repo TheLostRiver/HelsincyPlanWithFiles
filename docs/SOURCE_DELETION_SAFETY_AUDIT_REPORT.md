@@ -8,7 +8,7 @@ The user report is substantively valid, but the mechanism is more precise than "
 
 No code path was found that directly runs `rm`, `del`, `Remove-Item`, `rmtree`, or `os.remove` against user source files. The confirmed historical risk is that `plan.py compact --archive <PATH>` could write progress archive content to a user-controlled path outside the planning directory. If that path pointed at a project source file, the source file would be modified and corrupted.
 
-The current working tree already contains a hardening fix and regression tests for this issue.
+The current working tree replaces the exposed compact behavior with append-only rollover and adds regression tests for this issue.
 
 ## Scope
 
@@ -65,37 +65,43 @@ This confirms that the historical code could modify a source file outside the pl
 
 ## Current Fix
 
-The current working tree hardens `_validate_archive_path()` in `progress_lifecycle.py`:
+The current working tree removes the dangerous exposed behavior rather than relying only on path validation:
 
-- The resolved archive target must be different from `progress.md`.
-- The resolved archive target must stay in the same directory as `progress.md`.
-- The archive target must use the `.md` suffix.
-- If the archive target already exists, it must be empty or start with `# Progress Archive`.
+- `plan.py compact` no longer accepts user-provided archive paths; `--archive` is kept only as a rejected compatibility argument.
+- Rollover archive files are generated only under `progress-archive/<session-key>/archive-*.md`.
+- New active progress segments are generated only under `progress-active/<session-key>/active-*.md`.
+- `progress-index.ndjson` is append-only and links the old active file, new archive file, and new active file.
+- Generated segment files are created with exclusive-create semantics and refuse to reuse an existing path.
+- Existing `progress.md`, active segments, and archive files are not deleted or overwritten.
+- Hooks, prompt context, `status`, and `doctor` resolve the latest active segment through `progress-index.ndjson`, with legacy `progress.md` as fallback.
 
-This blocks both path traversal into project source directories and accidental reuse of existing project Markdown files such as `README.md`.
+The legacy `compact_progress()` helper still contains path validation for compatibility tests, but the CLI no longer exposes custom archive targets or rewrite-based compaction.
 
 ## Verification
 
-Controlled verification against the current working tree:
+Controlled verification against the current working tree now covers the append-only behavior:
 
 ```text
-rejected= archive path must stay in the same directory as progress.md
-source_still_original= True
-progress_still_original= True
+custom --archive rejected
+source_still_original=True
+progress_still_original=True
+progress-index.ndjson created only for valid rollover
+progress-active/<session-key>/active-*.md created with kept records
+progress-archive/<session-key>/archive-*.md created with archived records
 ```
 
 Focused regression tests:
 
 ```text
-python -m pytest tests/test_progress_compaction.py tests/test_plan_cli.py -k compact -q
-25 passed, 64 deselected, 1 warning
+python -m pytest tests/test_progress_compaction.py tests/test_plan_cli.py tests/test_hooks.py tests/test_plan_doctor.py -k "compact or rollover or current_active_progress or active_progress" -q
+38 passed, 174 deselected, 3 warnings
 ```
 
 Full test suite:
 
 ```text
 python -m pytest -q
-230 passed, 3 warnings
+240 passed, 3 warnings
 ```
 
 ## Audited Destructive Paths
@@ -108,7 +114,7 @@ Observed write/delete operations are limited as follows:
 - Session context writes and clears target hashed files under `.planning/session-context`.
 - Lease writes target `.planning/session-leases` and `.planning/<plan-id>/.task-lease.json`.
 - Lock cleanup unlinks `.task-lease.lock` and `.progress.lock` metadata files.
-- `append_progress()` appends only to the resolved active plan's `progress.md`.
+- `append_progress()` appends only to the resolved active progress segment for the effective plan.
 - `attest --clear` unlinks only the plan attestation file.
 - `init --legacy --force` can overwrite root-level `task_plan.md`, `progress.md`, and `findings.md`; this is explicit force behavior, not an arbitrary source path write.
 
@@ -125,7 +131,7 @@ Reason:
 - The operation is not an intentional source edit from the user's perspective.
 - The failure mode can be described by users as "the tool deleted my source", even though the confirmed mechanism is archive-content overwrite/append.
 
-Likelihood depends on whether users or agents passed a custom `--archive` path. Default `plan.py compact` uses `progress.archive.md` beside `progress.md` and is not the dangerous case.
+Historical likelihood depended on whether users or agents passed a custom `--archive` path. In the current working tree, custom archive paths are rejected and default compact uses generated append-only segment paths.
 
 ## Residual Risk
 
@@ -135,9 +141,11 @@ Likelihood depends on whether users or agents passed a custom `--archive` path. 
 
 ## Recommended Actions
 
-1. Ship the current hardening quickly.
+1. Merge the append-only rollover fix after CI/review.
 2. Call out the fix in release notes as a data-loss prevention fix.
 3. Keep the regression tests for:
-   - archive path traversal into `src/main.py`
-   - existing non-archive Markdown files such as `README.md`
-4. Consider adding a short user-facing warning that custom `--archive` should normally be left at the default value.
+   - custom `--archive` rejection
+   - generated active/archive segment separation
+   - refusal to overwrite existing generated segment files
+   - hooks/context/status/doctor resolving the latest active segment
+4. Consider a future doctor check for orphaned generated segment files if index append fails after file creation.

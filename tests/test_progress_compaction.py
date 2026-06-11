@@ -299,6 +299,185 @@ class ProgressCompactionTests(unittest.TestCase):
             self.assertIn("---BEGIN ARCHIVED AUTO RECORDS---", archived)
             self.assertIn("---END ARCHIVED AUTO RECORDS---", archived)
 
+    def test_rollover_creates_separate_active_and_archive_segments_without_modifying_progress(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            progress = root / "progress.md"
+            original = "# Progress Log\n\n" + "\n".join(
+                [
+                    "### Auto Record: 2026-06-11 10:00:00",
+                    "- Tool: apply_patch",
+                    "- Session: abc123",
+                    "- Files:",
+                    "  - `src/file_0.py` (update)",
+                    "",
+                    "### Auto Record: 2026-06-11 10:01:00",
+                    "- Tool: apply_patch",
+                    "- Session: abc123",
+                    "- Files:",
+                    "  - `src/file_1.py` (update)",
+                    "",
+                    "### Auto Record: 2026-06-11 10:02:00",
+                    "- Tool: apply_patch",
+                    "- Session: abc123",
+                    "- Files:",
+                    "  - `src/file_2.py` (update)",
+                    "",
+                ]
+            )
+            progress.write_text(original, encoding="utf-8")
+
+            result = MODULE.rollover_progress(
+                progress,
+                plan_id="2026-06-11-demo",
+                session_key="abc123",
+                keep_records=1,
+                now="2026-06-11T10:03:00Z",
+                nonce="fixed01",
+            )
+
+            self.assertTrue(result.changed)
+            self.assertEqual(progress.read_text(encoding="utf-8"), original)
+            self.assertIn("progress-active/abc123/active-20260611100300-fixed01.md", result.active_path.as_posix())
+            self.assertIn("progress-archive/abc123/archive-20260611100300-fixed01.md", result.archive_path.as_posix())
+            self.assertTrue(result.active_path.is_file())
+            self.assertTrue(result.archive_path.is_file())
+            self.assertTrue((root / "progress-index.ndjson").is_file())
+            archived = result.archive_path.read_text(encoding="utf-8")
+            active = result.active_path.read_text(encoding="utf-8")
+            self.assertIn("src/file_0.py", archived)
+            self.assertIn("src/file_1.py", archived)
+            self.assertNotIn("src/file_2.py", archived)
+            self.assertIn("src/file_2.py", active)
+
+    def test_rollover_refuses_to_overwrite_existing_generated_segment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            progress = root / "progress.md"
+            progress.write_text(
+                "# Progress Log\n\n"
+                "### Auto Record: 2026-06-11 10:00:00\n"
+                "- Tool: apply_patch\n\n"
+                "### Auto Record: 2026-06-11 10:01:00\n"
+                "- Tool: apply_patch\n\n",
+                encoding="utf-8",
+            )
+            active = root / "progress-active" / "abc123" / "active-20260611100200-fixed01.md"
+            archive = root / "progress-archive" / "abc123" / "archive-20260611100200-fixed01.md"
+            active.parent.mkdir(parents=True)
+            archive.parent.mkdir(parents=True)
+            active.write_text("existing active\n", encoding="utf-8")
+            archive.write_text("existing archive\n", encoding="utf-8")
+
+            with self.assertRaises(FileExistsError):
+                MODULE.rollover_progress(
+                    progress,
+                    plan_id="2026-06-11-demo",
+                    session_key="abc123",
+                    keep_records=1,
+                    now="2026-06-11T10:02:00Z",
+                    nonce="fixed01",
+                )
+
+            self.assertEqual(active.read_text(encoding="utf-8"), "existing active\n")
+            self.assertEqual(archive.read_text(encoding="utf-8"), "existing archive\n")
+            self.assertFalse((root / "progress-index.ndjson").exists())
+
+    def test_current_active_progress_prefers_latest_rollover_event(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            active = root / "progress-active" / "abc123" / "active-20260611100300-fixed01.md"
+            active.parent.mkdir(parents=True)
+            active.write_text("# Progress Log\n\nactive\n", encoding="utf-8")
+            (root / "progress.md").write_text("# Progress Log\n\nlegacy\n", encoding="utf-8")
+            (root / "progress-index.ndjson").write_text(
+                '{"event":"rollover","version":1,"new_active":"progress-active/abc123/active-20260611100300-fixed01.md"}\n',
+                encoding="utf-8",
+            )
+
+            self.assertEqual(MODULE.current_active_progress(root / "progress.md"), active)
+
+    def test_current_active_progress_ignores_archive_directory_as_active_segment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            archive = root / "progress-archive" / "abc123" / "archive-20260611100300-fixed01.md"
+            archive.parent.mkdir(parents=True)
+            archive.write_text("# Progress Archive\n\nsealed\n", encoding="utf-8")
+            progress = root / "progress.md"
+            progress.write_text("# Progress Log\n\nlegacy\n", encoding="utf-8")
+            (root / "progress-index.ndjson").write_text(
+                '{"event":"rollover","version":1,"new_active":"progress-archive/abc123/archive-20260611100300-fixed01.md"}\n',
+                encoding="utf-8",
+            )
+
+            self.assertEqual(MODULE.current_active_progress(progress), progress)
+
+    def test_rollover_uses_current_active_segment_after_previous_rollover(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            progress = root / "progress.md"
+            original = "# Progress Log\n\n" + "\n".join(
+                [
+                    "### Auto Record: 2026-06-11 10:00:00",
+                    "- Tool: apply_patch",
+                    "- Files:",
+                    "  - `src/file_0.py` (update)",
+                    "",
+                    "### Auto Record: 2026-06-11 10:01:00",
+                    "- Tool: apply_patch",
+                    "- Files:",
+                    "  - `src/file_1.py` (update)",
+                    "",
+                    "### Auto Record: 2026-06-11 10:02:00",
+                    "- Tool: apply_patch",
+                    "- Files:",
+                    "  - `src/file_2.py` (update)",
+                    "",
+                    "### Auto Record: 2026-06-11 10:03:00",
+                    "- Tool: apply_patch",
+                    "- Files:",
+                    "  - `src/file_3.py` (update)",
+                    "",
+                ]
+            )
+            progress.write_text(original, encoding="utf-8")
+
+            first = MODULE.rollover_progress(
+                progress,
+                plan_id="2026-06-11-demo",
+                session_key="abc123",
+                keep_records=2,
+                now="2026-06-11T10:04:00Z",
+                nonce="first",
+            )
+            with first.active_path.open("a", encoding="utf-8", newline="\n") as handle:
+                handle.write(
+                    "\n### Auto Record: 2026-06-11 10:05:00\n"
+                    "- Tool: apply_patch\n"
+                    "- Files:\n"
+                    "  - `src/file_4.py` (update)\n"
+                )
+
+            second = MODULE.rollover_progress(
+                progress,
+                plan_id="2026-06-11-demo",
+                session_key="abc123",
+                keep_records=1,
+                now="2026-06-11T10:06:00Z",
+                nonce="second",
+            )
+
+            self.assertEqual(progress.read_text(encoding="utf-8"), original)
+            second_archive = second.archive_path.read_text(encoding="utf-8")
+            second_active = second.active_path.read_text(encoding="utf-8")
+            self.assertIn("src/file_2.py", second_archive)
+            self.assertIn("src/file_3.py", second_archive)
+            self.assertNotIn("src/file_4.py", second_archive)
+            self.assertIn("src/file_4.py", second_active)
+            index = (root / "progress-index.ndjson").read_text(encoding="utf-8")
+            self.assertIn("progress-active/abc123/active-20260611100400-first.md", index)
+            self.assertIn("progress-active/abc123/active-20260611100600-second.md", index)
+
     def test_compact_dry_run_does_not_modify_files(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

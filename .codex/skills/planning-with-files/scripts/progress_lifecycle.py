@@ -4,8 +4,11 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+import hashlib
+import json
 import re
+import secrets
 from typing import Iterable
 
 
@@ -42,6 +45,19 @@ class CompactResult:
     kept_count: int
     total_auto_records: int
     archive_path: Path
+    changed: bool
+    dry_run: bool
+    summary: str
+
+
+@dataclass(frozen=True)
+class RolloverResult:
+    archived_count: int
+    kept_count: int
+    total_auto_records: int
+    archive_path: Path
+    active_path: Path
+    index_path: Path
     changed: bool
     dry_run: bool
     summary: str
@@ -169,6 +185,255 @@ def _read_lines(path: Path) -> list[str]:
 def _write_lines(path: Path, lines: Iterable[str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8", newline="\n")
+
+
+def progress_index_path(progress_path: Path) -> Path:
+    return progress_path.parent / "progress-index.ndjson"
+
+
+def _safe_timestamp(value: str) -> str:
+    return re.sub(r"[^0-9]", "", value)[:14] or datetime.now().strftime("%Y%m%d%H%M%S")
+
+
+def generated_segment_paths(progress_path: Path, session_key: str, now: str, nonce: str) -> tuple[Path, Path]:
+    if not re.fullmatch(r"[0-9a-f]{12}|unavailable|[A-Za-z0-9_-]{1,64}", session_key):
+        raise ValueError("invalid session key for progress rollover")
+    stamp = _safe_timestamp(now)
+    safe_nonce = re.sub(r"[^A-Za-z0-9_-]", "", nonce)[:16] or "segment"
+    active = progress_path.parent / "progress-active" / session_key / f"active-{stamp}-{safe_nonce}.md"
+    archive = progress_path.parent / "progress-archive" / session_key / f"archive-{stamp}-{safe_nonce}.md"
+    return active, archive
+
+
+def _create_text_exclusive(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("x", encoding="utf-8", newline="\n") as handle:
+        handle.write(content)
+
+
+def _sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _relative_to_progress_root(progress_path: Path, target: Path) -> str:
+    try:
+        return target.relative_to(progress_path.parent).as_posix()
+    except ValueError:
+        raise ValueError("progress rollover path escaped progress directory") from None
+
+
+def _read_index_events(index_path: Path) -> list[dict[str, object]]:
+    if not index_path.is_file():
+        return []
+    events: list[dict[str, object]] = []
+    for line in index_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line.strip():
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            events.append(payload)
+    return events
+
+
+def latest_rollover_event(progress_path: Path) -> dict[str, object] | None:
+    for event in reversed(_read_index_events(progress_index_path(progress_path))):
+        if event.get("event") == "rollover":
+            return event
+    return None
+
+
+def _is_active_segment_ref(value: str) -> bool:
+    parts = PurePosixPath(value).parts
+    return (
+        len(parts) >= 3
+        and parts[0] == "progress-active"
+        and all(part not in {"", ".", ".."} for part in parts)
+        and parts[-1].startswith("active-")
+        and parts[-1].endswith(".md")
+    )
+
+
+def current_active_progress(progress_path: Path) -> Path:
+    for event in reversed(_read_index_events(progress_index_path(progress_path))):
+        if event.get("event") != "rollover":
+            continue
+        new_active = event.get("new_active")
+        if not isinstance(new_active, str) or not new_active:
+            continue
+        if not _is_active_segment_ref(new_active):
+            continue
+        candidate = progress_path.parent / new_active
+        try:
+            candidate.resolve().relative_to(progress_path.parent.resolve())
+        except (OSError, ValueError):
+            continue
+        if candidate.is_file():
+            return candidate
+    return progress_path
+
+
+def _render_rollover_archive(
+    *,
+    plan_id: str,
+    session_key: str,
+    source_name: str,
+    source_sha256: str,
+    created_at: str,
+    archived_records: list[AutoRecord],
+    kept_count: int,
+) -> str:
+    body_lines: list[str] = []
+    for record in archived_records:
+        body_lines.extend(record.lines)
+        if body_lines and body_lines[-1].strip():
+            body_lines.append("")
+    return "\n".join(
+        [
+            "# Progress Archive",
+            "",
+            "- Version: 1",
+            f"- Plan-ID: {plan_id}",
+            f"- Session: {session_key}",
+            f"- Source-Progress: {source_name}",
+            f"- Source-SHA256: {source_sha256}",
+            f"- Created-At: {created_at}",
+            f"- Archived Auto Records: {len(archived_records)}",
+            f"- Kept Recent Auto Records: {kept_count}",
+            "",
+            "---BEGIN ARCHIVED AUTO RECORDS---",
+            "\n".join(body_lines).rstrip(),
+            "---END ARCHIVED AUTO RECORDS---",
+            "",
+        ]
+    )
+
+
+def _render_rollover_active(
+    *,
+    plan_id: str,
+    session_key: str,
+    continued_from: str,
+    continued_from_sha256: str,
+    archive_relpath: str,
+    created_at: str,
+    kept_lines: list[str],
+) -> str:
+    return "\n".join(
+        [
+            "# Progress Log",
+            "",
+            "- Version: 1",
+            f"- Plan-ID: {plan_id}",
+            f"- Session: {session_key}",
+            f"- Continued-From: {continued_from}",
+            f"- Continued-From-SHA256: {continued_from_sha256}",
+            f"- Archive: {archive_relpath}",
+            f"- Created-At: {created_at}",
+            "",
+            "## Recent Progress",
+            "",
+            "\n".join(kept_lines).strip(),
+            "",
+        ]
+    )
+
+
+def rollover_progress(
+    progress_path: Path,
+    *,
+    plan_id: str,
+    session_key: str,
+    keep_records: int = 30,
+    dry_run: bool = False,
+    now: str | None = None,
+    nonce: str | None = None,
+) -> RolloverResult:
+    if keep_records < 1:
+        raise ValueError("keep_records must be at least 1")
+
+    created_at = now or datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+    nonce_value = nonce or secrets.token_hex(6)
+    active_path, archive_path = generated_segment_paths(progress_path, session_key, created_at, nonce_value)
+    index_path = progress_index_path(progress_path)
+    source_path = current_active_progress(progress_path)
+
+    if not source_path.is_file():
+        return RolloverResult(0, 0, 0, archive_path, active_path, index_path, False, dry_run, "")
+
+    source_text = source_path.read_text(encoding="utf-8", errors="replace")
+    lines = _remove_managed_summary(source_text.splitlines())
+    nodes, records = _parse_nodes(lines)
+    total_records = len(records)
+    archived_records = records[:-keep_records]
+    kept_count = min(total_records, keep_records)
+    archived_count = len(archived_records)
+
+    if archived_count == 0:
+        return RolloverResult(0, kept_count, total_records, archive_path, active_path, index_path, False, dry_run, "")
+
+    source_sha = _sha256_text(source_text)
+    archived_indexes = {record.index for record in archived_records}
+    kept_lines = _render_nodes(nodes, archived_indexes)
+    archive_rel = _relative_to_progress_root(progress_path, archive_path)
+    active_rel = _relative_to_progress_root(progress_path, active_path)
+    source_rel = _relative_to_progress_root(progress_path, source_path)
+    archive_text = _render_rollover_archive(
+        plan_id=plan_id,
+        session_key=session_key,
+        source_name=source_rel,
+        source_sha256=source_sha,
+        created_at=created_at,
+        archived_records=archived_records,
+        kept_count=kept_count,
+    )
+    active_text = _render_rollover_active(
+        plan_id=plan_id,
+        session_key=session_key,
+        continued_from=source_rel,
+        continued_from_sha256=source_sha,
+        archive_relpath=archive_rel,
+        created_at=created_at,
+        kept_lines=kept_lines,
+    )
+    summary = _render_summary(created_at, archive_path, archived_records, kept_count)
+
+    if not dry_run:
+        if archive_path.exists() or active_path.exists():
+            raise FileExistsError("progress rollover segment already exists")
+        _create_text_exclusive(archive_path, archive_text)
+        _create_text_exclusive(active_path, active_text)
+        event = {
+            "event": "rollover",
+            "version": 1,
+            "created_at": created_at,
+            "session": session_key,
+            "old_active": source_rel,
+            "archive": archive_rel,
+            "new_active": active_rel,
+            "source_sha256": source_sha,
+            "archive_sha256": _sha256_text(archive_text),
+            "new_active_sha256": _sha256_text(active_text),
+            "archived_auto_records": archived_count,
+            "kept_recent_auto_records": kept_count,
+        }
+        index_path.parent.mkdir(parents=True, exist_ok=True)
+        with index_path.open("a", encoding="utf-8", newline="\n") as handle:
+            handle.write(json.dumps(event, ensure_ascii=True, sort_keys=True) + "\n")
+
+    return RolloverResult(
+        archived_count,
+        kept_count,
+        total_records,
+        archive_path,
+        active_path,
+        index_path,
+        not dry_run,
+        dry_run,
+        summary,
+    )
 
 
 def _validate_archive_path(progress_path: Path, archive_path: Path) -> None:

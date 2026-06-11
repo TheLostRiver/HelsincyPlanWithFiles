@@ -2,8 +2,8 @@
 
 ## Unreleased
 
-- 中文：强化 `plan.py compact --archive`，archive 目标必须留在 `progress.md` 同目录，且不能复用已有的非 archive 文件，避免意外写入项目源码文件。
-- English: Hardened `plan.py compact --archive` so archive targets must stay beside `progress.md` and cannot reuse existing non-archive files, preventing accidental writes into project source files.
+- 中文：将 `plan.py compact` 改为 append-only rollover，旧 auto records 写入新建的 `progress-archive/<session-key>/archive-*.md`，后续记录写入新建的 `progress-active/<session-key>/active-*.md`，并拒绝自定义 `--archive` 路径，避免删除或覆盖任何已有 progress/archive 文件。
+- English: Changed `plan.py compact` to append-only rollover using generated `progress-archive/<session-key>/archive-*.md` and `progress-active/<session-key>/active-*.md` files, while rejecting custom `--archive` paths so existing progress/archive files are not deleted or overwritten.
 
 ## 0.2.7 - 2026-06-11
 

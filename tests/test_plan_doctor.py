@@ -289,6 +289,26 @@ class PlanDoctorTests(unittest.TestCase):
             self.assertIn("[warn] progress.md has 101 auto records", result.stdout)
             self.assertIn("run /pwf-compact or plan.py compact", result.stdout)
 
+    def test_doctor_counts_current_active_progress_segment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_hooks(root)
+            plan_dir = write_active_plan(root)
+            (plan_dir / "progress.md").write_text("# Progress Log\n\nlegacy\n", encoding="utf-8")
+            active = plan_dir / "progress-active" / "abc123" / "active-20260611100300-fixed01.md"
+            active.parent.mkdir(parents=True)
+            write_auto_records(active, 101)
+            (plan_dir / "progress-index.ndjson").write_text(
+                '{"event":"rollover","version":1,"new_active":"progress-active/abc123/active-20260611100300-fixed01.md"}\n',
+                encoding="utf-8",
+            )
+
+            result = run_plan(root, "doctor")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("[warn] progress.md has 101 auto records", result.stdout)
+            self.assertIn("run /pwf-compact or plan.py compact", result.stdout)
+
     def test_doctor_warns_about_unsupported_language(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

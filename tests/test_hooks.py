@@ -460,6 +460,36 @@ class HookTests(unittest.TestCase):
             self.assertIn("src/example.py", progress)
             self.assertNotIn("- Command:", progress)
 
+    def test_post_tool_use_appends_to_current_active_progress_segment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            original_progress = (root / "progress.md").read_text(encoding="utf-8")
+            active = root / "progress-active" / "abc123" / "active-20260611100300-fixed01.md"
+            active.parent.mkdir(parents=True)
+            active.write_text("# Progress Log\n\n### Auto Record: 2026-06-11 10:02:00\n- Tool: Edit\n\n", encoding="utf-8")
+            (root / "progress-index.ndjson").write_text(
+                '{"event":"rollover","version":1,"new_active":"progress-active/abc123/active-20260611100300-fixed01.md"}\n',
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "post_tool_use.py",
+                root,
+                {
+                    "hook_event_name": "PostToolUse",
+                    "tool_name": "Edit",
+                    "tool_input": {"file_path": "src/current.md"},
+                    "tool_response": {"success": True},
+                },
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual((root / "progress.md").read_text(encoding="utf-8"), original_progress)
+            active_progress = active.read_text(encoding="utf-8")
+            self.assertIn("src/current.md", active_progress)
+            self.assertIn("### Auto Record:", active_progress)
+
     def test_post_tool_use_records_command_only_when_debug_enabled(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -520,6 +550,47 @@ class HookTests(unittest.TestCase):
             self.assertIn("Recorded PostToolUse context", message)
             self.assertIn("progress.md has 100 auto records", message)
             self.assertIn("Consider running /pwf-compact", message)
+
+    def test_post_tool_use_compaction_notice_counts_current_active_segment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            (root / "progress.md").write_text("# Progress Log\n\nlegacy\n", encoding="utf-8")
+            active = root / "progress-active" / "abc123" / "active-20260611100300-fixed01.md"
+            active.parent.mkdir(parents=True)
+            existing = []
+            for index in range(99):
+                existing.append(
+                    "\n".join(
+                        [
+                            f"### Auto Record: 2026-05-12 10:{index:02d}:00",
+                            "- Tool: Write",
+                            "- Files:",
+                            f"  - `src/{index}.md` (write)",
+                            "",
+                        ]
+                    )
+                )
+            active.write_text("# Progress Log\n\n" + "\n".join(existing), encoding="utf-8")
+            (root / "progress-index.ndjson").write_text(
+                '{"event":"rollover","version":1,"new_active":"progress-active/abc123/active-20260611100300-fixed01.md"}\n',
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "post_tool_use.py",
+                root,
+                {
+                    "hook_event_name": "PostToolUse",
+                    "tool_name": "Edit",
+                    "tool_input": {"file_path": "src/current.md"},
+                    "tool_response": {"success": True},
+                },
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            message = json.loads(result.stdout)["systemMessage"]
+            self.assertIn("progress.md has 100 auto records", message)
 
     def test_post_tool_use_uses_chinese_message_when_enabled(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1540,6 +1611,30 @@ class HookTests(unittest.TestCase):
             self.assertLess(context.index("# Task Plan: Test"), context.index("---END PLAN DATA---"))
             self.assertLess(context.index("---BEGIN PROGRESS DATA---"), context.index("- did work"))
             self.assertLess(context.index("- did work"), context.index("---END PROGRESS DATA---"))
+
+    def test_user_prompt_submit_reads_current_active_progress_segment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            (root / "progress.md").write_text("# Progress Log\n\n- legacy progress\n", encoding="utf-8")
+            active = root / "progress-active" / "abc123" / "active-20260611100300-fixed01.md"
+            active.parent.mkdir(parents=True)
+            active.write_text("# Progress Log\n\n- active progress\n", encoding="utf-8")
+            (root / "progress-index.ndjson").write_text(
+                '{"event":"rollover","version":1,"new_active":"progress-active/abc123/active-20260611100300-fixed01.md"}\n',
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("- active progress", context)
+            self.assertNotIn("- legacy progress", context)
 
     def test_user_prompt_submit_expanded_profile_includes_plan_head_and_tail(self):
         with tempfile.TemporaryDirectory() as tmp:

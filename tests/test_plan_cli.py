@@ -267,6 +267,24 @@ class PlanCliTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("progress: 101 auto records, compact recommended", result.stdout)
 
+    def test_status_counts_current_active_progress_segment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_dir = write_active_plan(root)
+            (plan_dir / "progress.md").write_text("# Progress Log\n\nlegacy\n", encoding="utf-8")
+            active = plan_dir / "progress-active" / "abc123" / "active-20260611100300-fixed01.md"
+            active.parent.mkdir(parents=True)
+            active.write_text("# Progress Log\n\n" + auto_records(101), encoding="utf-8")
+            (plan_dir / "progress-index.ndjson").write_text(
+                '{"event":"rollover","version":1,"new_active":"progress-active/abc123/active-20260611100300-fixed01.md"}\n',
+                encoding="utf-8",
+            )
+
+            result = run_plan(root, "status")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("progress: 101 auto records, compact recommended", result.stdout)
+
     def test_init_creates_active_planning_directory(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1468,18 +1486,24 @@ class PlanCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             plan_dir = write_active_plan(root)
-            (plan_dir / "progress.md").write_text("# Progress Log\n\n" + auto_records(4), encoding="utf-8")
+            original = "# Progress Log\n\n" + auto_records(4)
+            (plan_dir / "progress.md").write_text(original, encoding="utf-8")
 
             result = run_plan(root, "compact", "--keep-records", "2")
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("compacted progress.md", result.stdout)
+            self.assertIn("rolled over progress records", result.stdout)
             self.assertIn("archived auto records: 2", result.stdout)
             self.assertIn("kept recent auto records: 2", result.stdout)
-            self.assertTrue((plan_dir / "progress.archive.md").is_file())
-            progress = (plan_dir / "progress.md").read_text(encoding="utf-8")
-            self.assertNotIn("src/file_0.py", progress)
-            self.assertIn("src/file_2.py", progress)
+            self.assertFalse((plan_dir / "progress.archive.md").exists())
+            self.assertEqual((plan_dir / "progress.md").read_text(encoding="utf-8"), original)
+            active_files = list((plan_dir / "progress-active" / "unavailable").glob("active-*.md"))
+            archive_files = list((plan_dir / "progress-archive" / "unavailable").glob("archive-*.md"))
+            self.assertEqual(len(active_files), 1)
+            self.assertEqual(len(archive_files), 1)
+            self.assertTrue((plan_dir / "progress-index.ndjson").is_file())
+            self.assertIn("src/file_0.py", archive_files[0].read_text(encoding="utf-8"))
+            self.assertIn("src/file_2.py", active_files[0].read_text(encoding="utf-8"))
 
     def test_compact_uses_session_bound_plan(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1502,12 +1526,17 @@ class PlanCliTests(unittest.TestCase):
             result = run_plan(root, "compact", "--keep-records", "2", env={"PWF_SESSION_ID": "session-a"})
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertTrue((session_dir / "progress.archive.md").is_file())
-            self.assertFalse((workspace_dir / "progress.archive.md").exists())
+            self.assertTrue((session_dir / "progress-index.ndjson").is_file())
+            self.assertFalse((workspace_dir / "progress-index.ndjson").exists())
+            active_files = list((session_dir / "progress-active" / key).glob("active-*.md"))
+            archive_files = list((session_dir / "progress-archive" / key).glob("archive-*.md"))
+            self.assertEqual(len(active_files), 1)
+            self.assertEqual(len(archive_files), 1)
             session_progress = (session_dir / "progress.md").read_text(encoding="utf-8")
             workspace_progress = (workspace_dir / "progress.md").read_text(encoding="utf-8")
-            self.assertNotIn("src/file_0.py", session_progress)
+            self.assertIn("src/file_0.py", session_progress)
             self.assertIn("src/file_0.py", workspace_progress)
+            self.assertIn("src/file_2.py", active_files[0].read_text(encoding="utf-8"))
 
     def test_compact_reports_chinese_output_when_enabled(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1518,7 +1547,7 @@ class PlanCliTests(unittest.TestCase):
             result = run_plan(root, "compact", "--keep-records", "2", env={"PWF_LANG": "zh-CN"})
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("已压缩 progress.md", result.stdout)
+            self.assertIn("progress records", result.stdout)
             self.assertIn("已归档 auto records: 2", result.stdout)
             self.assertIn("保留最近 auto records: 2", result.stdout)
 
@@ -1551,8 +1580,11 @@ class PlanCliTests(unittest.TestCase):
             self.assertIn("would archive auto records: 1", result.stdout)
             self.assertEqual((plan_dir / "progress.md").read_text(encoding="utf-8"), original)
             self.assertFalse((plan_dir / "progress.archive.md").exists())
+            self.assertFalse((plan_dir / "progress-index.ndjson").exists())
+            self.assertFalse((plan_dir / "progress-active").exists())
+            self.assertFalse((plan_dir / "progress-archive").exists())
 
-    def test_compact_rejects_archive_path_outside_plan_dir(self):
+    def test_compact_rejects_custom_archive_path_without_touching_files(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             plan_dir = write_active_plan(root)
@@ -1567,9 +1599,10 @@ class PlanCliTests(unittest.TestCase):
             result = run_plan(root, "compact", "--keep-records", "1", "--archive", r"..\..\src\main.py")
 
             self.assertNotEqual(result.returncode, 0)
-            self.assertIn("archive path", result.stdout)
+            self.assertIn("archive paths are generated automatically", result.stdout)
             self.assertEqual(source.read_text(encoding="utf-8"), original_source)
             self.assertEqual((plan_dir / "progress.md").read_text(encoding="utf-8"), original_progress)
+            self.assertFalse((plan_dir / "progress-index.ndjson").exists())
 
 
 if __name__ == "__main__":

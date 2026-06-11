@@ -1054,6 +1054,10 @@ def planning_paths(root: Path, session_id: str | None = None) -> PlanningPaths |
     return access.resolution.paths if access.allowed and access.resolution is not None else None
 
 
+def current_progress_path(paths: PlanningPaths) -> Path:
+    return progress_lifecycle.current_active_progress(paths.progress)
+
+
 def read_head(path: Path, limit: int) -> str:
     if not path.is_file() or limit < 1:
         return ""
@@ -1280,7 +1284,7 @@ def progress_compaction_notice(root: Path, session_id: str | None = None) -> str
     paths = planning_paths(root, session_id=session_id)
     if paths is None:
         return ""
-    count = progress_lifecycle.count_auto_records(paths.progress)
+    count = progress_lifecycle.count_auto_records(current_progress_path(paths))
     threshold = compact_threshold()
     if count < threshold or count % threshold != 0:
         return ""
@@ -1432,7 +1436,8 @@ def render_prompt_context(root: Path, session_id: str | None = None, event: str 
         return plan_context
 
     parts = [plan_context]
-    progress_summary = progress_summary_block(paths.progress, limits.progress_summary_lines)
+    progress_path = current_progress_path(paths)
+    progress_summary = progress_summary_block(progress_path, limits.progress_summary_lines)
     if progress_summary:
         parts.extend(
             [
@@ -1445,7 +1450,7 @@ def render_prompt_context(root: Path, session_id: str | None = None, event: str 
         [
             "",
             message("recent_progress_heading"),
-            _data_block("PROGRESS", progress_context_block(paths.progress, limits)),
+            _data_block("PROGRESS", progress_context_block(progress_path, limits)),
         ]
     )
     if findings_injection_enabled():
@@ -1639,11 +1644,12 @@ def append_progress(
     if command and log_command_enabled():
         lines.append(f"- Command: `{_command_summary(command)}`")
 
-    paths.progress.parent.mkdir(parents=True, exist_ok=True)
+    progress_path = current_progress_path(paths)
+    progress_path.parent.mkdir(parents=True, exist_ok=True)
     lock_path = paths.progress.parent / ".progress.lock"
     try:
         with ProgressFileLock(lock_path, progress_lock_timeout_seconds()):
-            with paths.progress.open("a", encoding="utf-8", newline="\n") as handle:
+            with progress_path.open("a", encoding="utf-8", newline="\n") as handle:
                 handle.write("\n".join(lines).rstrip() + "\n")
     except TimeoutError:
         return ProgressAppendResult(False, "[planning-with-files] progress.md lock timed out; auto record was skipped.")
