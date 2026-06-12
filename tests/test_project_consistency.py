@@ -77,6 +77,26 @@ class ProjectConsistencyTests(unittest.TestCase):
             self.assertIn("deep", text)
             self.assertIn("PWF_INCLUDE_FINDINGS", text)
 
+    def test_docs_document_doctor_progress_storage_audit(self):
+        readme_cn = read_text("README.md")
+        readme_en = read_text("README.en.md")
+        faq = read_text("docs/FAQ.md")
+        changelog = read_text("CHANGELOG.md")
+        skill = read_text(".codex/skills/pwf-doctor/SKILL.md")
+        design = read_text("docs/APPEND_ONLY_PROGRESS_ROLLOVER_DESIGN.md")
+        combined = "\n".join([readme_cn, readme_en, faq, changelog, skill, design])
+
+        for phrase in (
+            "progress storage",
+            "progress-index.ndjson",
+            "progress-active",
+            "progress-archive",
+            "No automatic repair was attempted.",
+            "--strict",
+            "--json",
+        ):
+            self.assertIn(phrase, combined)
+
     def test_docs_document_session_context_profile_commands(self):
         readme_cn = read_text("README.md")
         readme_en = read_text("README.en.md")

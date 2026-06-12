@@ -4,6 +4,8 @@
 
 - 中文：将 `plan.py compact` 改为 append-only rollover，旧 auto records 写入新建的 `progress-archive/<session-key>/archive-*.md`，后续记录写入新建的 `progress-active/<session-key>/active-*.md`，并拒绝自定义 `--archive` 路径，避免删除或覆盖任何已有 progress/archive 文件。
 - English: Changed `plan.py compact` to append-only rollover using generated `progress-archive/<session-key>/archive-*.md` and `progress-active/<session-key>/active-*.md` files, while rejecting custom `--archive` paths so existing progress/archive files are not deleted or overwritten.
+- 中文：补充 `/pwf-doctor` 的 append-only progress storage 审计文档，说明 `progress-index.ndjson`、`progress-active/`、`progress-archive/`、hash mismatch、orphan generated segment、`No automatic repair was attempted.`、`--json` 和 `--strict` 行为。
+- English: Documented the `/pwf-doctor` append-only progress storage audit, including `progress-index.ndjson`, `progress-active/`, `progress-archive/`, hash mismatches, orphan generated segments, `No automatic repair was attempted.`, `--json`, and `--strict`.
 
 ## 0.2.7 - 2026-06-11
 

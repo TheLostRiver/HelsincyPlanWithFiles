@@ -366,7 +366,7 @@ By default, the hook records only objective facts: time, tool, result, and file 
 
 ## Progress Lifecycle
 
-`progress.md` is the hot log, not the permanent audit file. In long-running tasks, run `/pwf-compact` to archive old objective auto records to `progress.archive.md` while keeping a compact summary and recent records in `progress.md`.
+`progress.md` is the initial hot log, not the only permanent audit file. In long-running tasks, run `/pwf-compact` for append-only rollover: old objective auto records are written to a newly created `progress-archive/<session-key>/archive-*.md`, future records continue in a newly created `progress-active/<session-key>/active-*.md`, and `progress-index.ndjson` appends the link between them.
 
 ```text
 /pwf-compact
@@ -380,7 +380,9 @@ python .codex\skills\planning-with-files\scripts\plan.py compact --keep-records 
 python .codex\skills\planning-with-files\scripts\plan.py compact --dry-run
 ```
 
-The compact summary only reports objective facts, such as archived count, time range, tool counts, and file count. Agent-written summaries remain interpretive and should be checked against hook records, tests, and actual code when accuracy matters.
+Rollover does not delete or overwrite existing `progress.md`, active segments, or archive files. `/pwf-doctor` also audits append-only progress storage. It checks `progress-index.ndjson`, active/archive directory roles, missing indexed files, hash mismatches, and orphan generated segments. It is report-only: it prints `No automatic repair was attempted.` and never deletes, moves, overwrites, compacts, or recreates progress files. Use `plan.py doctor --verbose` for effect/action details, `--json` for machine-readable output, and `--strict` to fail on warnings.
+
+Agent-written summaries remain interpretive and should be checked against hook records, tests, and actual code when accuracy matters.
 
 ## Security Boundary
 

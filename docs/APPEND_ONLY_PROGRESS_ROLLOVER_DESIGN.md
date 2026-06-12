@@ -191,6 +191,8 @@ Future doctor diagnostics can report:
 
 Doctor should only report. It must not repair by deleting, moving, or overwriting.
 
+Current `/pwf-doctor` also audits append-only progress storage. It checks `progress-index.ndjson`, active/archive directory roles, missing indexed files, hash mismatches, and orphan generated segments. It is report-only: it prints `No automatic repair was attempted.` and never deletes, moves, overwrites, compacts, or recreates progress files. Use `plan.py doctor --verbose` for effect/action details, `--json` for machine-readable output, and `--strict` to fail on warnings.
+
 ## Compatibility
 
 Existing tasks without `progress-index.ndjson` continue to use `progress.md`.

@@ -382,6 +382,8 @@ python .codex\skills\planning-with-files\scripts\plan.py compact --dry-run
 
 rollover 不会删除或覆盖已有的 `progress.md`、active segment 或 archive 文件；如果用户认为归档文件占空间，可以自行删除。agent 写入的解释性总结仍然只是参考，需要在关键场景结合 hook 记录、测试和实际代码核对。
 
+`/pwf-doctor` 还会审计 append-only progress storage：检查 `progress-index.ndjson`、`progress-active/` 与 `progress-archive/` 的目录角色、索引文件缺失、hash mismatch，以及未被 index 引用的 generated segment。它只报告，不自动修复；输出会明确包含 `No automatic repair was attempted.`，并且不会删除、移动、覆盖、compact 或重建任何 progress 文件。需要细节时用 `plan.py doctor --verbose`，需要机器可读输出时用 `--json`，需要 CI 式严格失败时用 `--strict`。
+
 ## 安全边界
 
 hook 注入 planning 文件时会使用 delimiter framing，把文件内容明确标记为数据：
