@@ -954,7 +954,6 @@ def claim_task_lease(
     session_id: str,
     *,
     force: bool = False,
-    share: bool = False,
     source: str = "plan.py switch --session",
 ) -> tuple[TaskLease | None, str | None]:
     current_key = session_key(session_id)
@@ -967,16 +966,20 @@ def claim_task_lease(
             existing = read_task_lease(root, plan_id)
             if existing:
                 status = task_lease_status(root, existing)
-                conflict = existing.owner_session_key != current_key and not existing.shared and status != "released"
+                # Backward-compat: pre-removal shared leases were readable without
+                # claiming. No command writes shared=True anymore, but old lease
+                # files may still carry the field; treat them as non-conflicting
+                # so historical sessions don't get spuriously denied.
+                if existing.shared:
+                    refresh_session_lease(root, session_id, bound_plan_id=plan_id, source=source)
+                    return existing, None
+                conflict = existing.owner_session_key != current_key and status != "released"
                 if conflict and not force:
                     return existing, (
                         f"task is owned by another session: owner={existing.owner_session_key} "
                         f"status={status} shared=false; rerun with --force-claim if you mean to take ownership."
                     )
-                if existing.shared and not force:
-                    refresh_session_lease(root, session_id, bound_plan_id=plan_id, source=source)
-                    return existing, None
-            lease = write_task_lease(root, plan_id, current_key, shared=share, source=source)
+            lease = write_task_lease(root, plan_id, current_key, shared=False, source=source)
             refresh_session_lease(root, session_id, bound_plan_id=plan_id, source=source)
             return lease, None
     except TimeoutError:

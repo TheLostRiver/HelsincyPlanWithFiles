@@ -17,4 +17,4 @@ python .codex\skills\planning-with-files\scripts\plan.py use <task selector and 
 
 中文模式：如果用户希望中文输出，先设置 `PWF_LANG=zh-CN`，再运行相同命令。
 
-The selector may be a plan id or short id from `/pwf-tasks`. By default it only resolves tasks visible to the current session. Use explicit `--claim` or `--share` only when the user intentionally wants to cross an ownership boundary.
+The selector may be a plan id or short id from `/pwf-tasks`. By default it only resolves tasks visible to the current session. Use explicit `--claim` only when the user intentionally wants to take over a task whose owner has gone stale. Cross-session task sharing was removed (see docs/REMOVED_CROSS_SESSION_SHARE.md).
