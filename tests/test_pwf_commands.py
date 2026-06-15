@@ -28,6 +28,8 @@ COMMANDS = {
     "pwf-context-notice-on": "context notice on",
     "pwf-context-notice-off": "context notice off",
     "pwf-context-notice-auto": "context notice auto",
+    "pwf-pause": "context pause",
+    "pwf-resume": "context resume",
 }
 
 

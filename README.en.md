@@ -167,6 +167,8 @@ The first batch uses the `/pwf-XXX` naming pattern. `pwf` means planning with fi
 | `/pwf-context-notice-auto` | Automatically show useful context injection notices | `plan.py context notice auto` |
 | `/pwf-context-notice-on` | Show a notice whenever PWF injects context | `plan.py context notice on` |
 | `/pwf-context-notice-off` | Hide context injection notices | `plan.py context notice off` |
+| `/pwf-pause` | Pause context injection for the current session (PostToolUse progress recording continues) | `plan.py context pause` |
+| `/pwf-resume` | Resume context injection for the current session | `plan.py context resume` |
 
 ## Compared With Upstream
 
@@ -206,7 +208,7 @@ newest .planning/<plan-id>/task_plan.md
 root-level task_plan.md
 ```
 
-`PLAN_ID` is a routing override, not a permission override. Even when `PLAN_ID` selects a task, hooks still enforce task ownership: the current session cannot write to another session's exclusive task unless it is the owner, the task is shared/released, or the user explicitly claims, shares, or releases ownership.
+`PLAN_ID` is a routing override, not a permission override. Even when `PLAN_ID` selects a task, hooks still enforce task ownership: the current session cannot write to another session's exclusive task unless it is the owner, the task is released (or carries a legacy `shared` state), or the user explicitly claims or releases ownership. Cross-session task sharing was removed (see `docs/REMOVED_CROSS_SESSION_SHARE.md`), but historical `.task-lease.json` files that still carry `shared=true` remain readable and do not trigger ownership denial.
 
 ### Session Policy
 
@@ -256,17 +258,18 @@ python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --bind
 
 `--session` writes only `.planning/session-bindings/<session-key>.json`; it does not change `.planning/.active_plan`. The old `plan.py switch <plan-id>` behavior still switches the workspace active plan.
 
-For a lower-friction workflow, run `/pwf-tasks` first. It lists only tasks visible to the current session by default. Copy a short ID and run `/pwf-use <short-id>` to bind this conversation. Use `plan.py tasks --all` only for read-only diagnostics; claim or share still requires explicit intent through `plan.py use <id> --claim` or `plan.py use <id> --share`.
+For a lower-friction workflow, run `/pwf-tasks` first. It lists only tasks visible to the current session by default. Copy a short ID and run `/pwf-use <short-id>` to bind this conversation. Use `plan.py tasks --all` only for read-only diagnostics; claiming still requires explicit intent through `plan.py use <id> --claim`.
 
 `--legacy` is only for root-level single-task compatibility mode and does not support session binding; `plan.py init "Task Name" --legacy --bind-session` is rejected. For multi-session isolation, use named `.planning/<plan-id>` tasks with the default session-first behavior.
 
-If the workspace active task is already owned by another session, a new session will not automatically take it over, even when the owner is stale. Explicit claim, sharing, and release use:
+If the workspace active task is already owned by another session, a new session will not automatically take it over, even when the owner is stale. Explicit claim and release use:
 
 ```powershell
 python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session --force-claim
-python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session --share
 python .codex\skills\planning-with-files\scripts\plan.py switch --release-session
 ```
+
+Cross-session task sharing (the old `--share`) was removed: merging multiple sessions' records into one shared context scrambles each agent's task memory, and a dozen concurrent sessions sharing one task cause progress write contention. See `docs/REMOVED_CROSS_SESSION_SHARE.md`.
 
 `stale` is computed from the owner session heartbeat when that session lease exists; `.task-lease.json` `updated_at` is only a compatibility fallback. Stale is a diagnostic state, not permission to take ownership automatically.
 
