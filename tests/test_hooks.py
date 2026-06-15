@@ -2651,6 +2651,24 @@ class HookTests(unittest.TestCase):
 
             self.assertFalse(PLANNING_STATE.is_session_paused(root, "session-a"))
 
+    def test_is_session_paused_rejects_non_boolean_paused_field(self):
+        # Defense against malformed payloads: a string "false" must NOT be
+        # coerced to True (bool("false") is True). Only JSON boolean true pauses.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            key = PLANNING_STATE.session_key("session-a")
+            context_dir = root / ".planning" / "session-context"
+            context_dir.mkdir(parents=True)
+            for malformed in ['"false"', '"true"', "1", '"yes"', "null"]:
+                with self.subTest(value=malformed):
+                    (context_dir / f"{key}.json").write_text(
+                        '{"paused": ' + malformed + "}", encoding="utf-8"
+                    )
+                    self.assertFalse(PLANNING_STATE.is_session_paused(root, "session-a"))
+            # Only an actual JSON boolean true pauses.
+            (context_dir / f"{key}.json").write_text('{"paused": true}', encoding="utf-8")
+            self.assertTrue(PLANNING_STATE.is_session_paused(root, "session-a"))
+
 
 if __name__ == "__main__":
     unittest.main()

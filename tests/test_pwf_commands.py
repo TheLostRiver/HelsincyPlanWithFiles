@@ -71,7 +71,10 @@ class PwfCommandTests(unittest.TestCase):
 
     def test_context_skill_wrappers_use_bash_path_syntax(self):
         for command_name in COMMANDS:
-            if not command_name.startswith("pwf-context-"):
+            if not (
+                command_name.startswith("pwf-context-")
+                or command_name in {"pwf-pause", "pwf-resume"}
+            ):
                 continue
             with self.subTest(command=command_name):
                 text = read_repo_text(f".codex/skills/{command_name}/SKILL.md")

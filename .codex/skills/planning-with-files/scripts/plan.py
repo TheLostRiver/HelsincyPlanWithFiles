@@ -942,12 +942,14 @@ def _context_source_lines(root: Path, session_id: str | None) -> list[str]:
 def _context_doctor_lines(root: Path, session_id: str | None) -> list[str]:
     limits = planning_state.context_limits(root=root, session_id=session_id)
     source = planning_state.context_settings_source(root=root, session_id=session_id)
+    paused = planning_state.is_session_paused(root, session_id)
     findings_enabled, findings_warning = _findings_context_enabled()
     lines = [
         f"context profile: {limits.profile}",
         f"context profile source: {source.profile_source}",
         f"context notice: {source.notice}",
         f"context notice source: {source.notice_source}",
+        _message("context_paused_status", paused=str(paused).lower()),
         (
             f"context findings: on tail {limits.findings_tail_lines}"
             if findings_enabled

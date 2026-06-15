@@ -608,7 +608,10 @@ def is_session_paused(root: Path | None, session_id: str | None) -> bool:
         return False
     if not isinstance(payload, dict):
         return False
-    return bool(payload.get("paused"))
+    # Strict bool check: a malformed payload with paused="false" (string) must
+    # NOT be coerced to True. Only an actual JSON boolean true pauses injection.
+    paused = payload.get("paused")
+    return paused is True
 
 
 def context_settings_source(
