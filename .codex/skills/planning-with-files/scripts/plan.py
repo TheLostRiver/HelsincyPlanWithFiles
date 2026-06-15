@@ -79,6 +79,7 @@ CLI_MESSAGES = {
         "compact_archived": "archived auto records: {count}",
         "compact_dry_run": "progress compaction dry run",
         "compact_keep": "keep records: {count}",
+        "compact_keep_source": "keep records: {count} (source: {source}, profile={profile})",
         "compact_kept": "kept recent auto records: {count}",
         "compact_no_plan": "No active plan found. Create or switch to a plan before compacting progress.",
         "compact_not_needed": "progress compaction not needed",
@@ -184,6 +185,7 @@ CLI_MESSAGES = {
         "compact_archived": "已归档 auto records: {count}",
         "compact_dry_run": "progress 压缩预演",
         "compact_keep": "保留记录数: {count}",
+        "compact_keep_source": "保留记录数: {count}（来源: {source}, profile={profile}）",
         "compact_kept": "保留最近 auto records: {count}",
         "compact_no_plan": "未找到当前计划。请先创建或切换计划，再压缩 progress。",
         "compact_not_needed": "progress 暂不需要压缩",
@@ -748,6 +750,32 @@ def _compact_threshold() -> int:
     except ValueError:
         return DEFAULT_COMPACT_THRESHOLD
     return value if value >= 1 else DEFAULT_COMPACT_THRESHOLD
+
+
+# Default keep-records per context profile. The active segment after rollover
+# should roughly match what the profile will actually inject, so expanded/deep
+# profiles keep more recent records available without re-reading the archive.
+PROFILE_DEFAULT_KEEP_RECORDS = {
+    "lean": 10,
+    "default": 30,
+    "expanded": 60,
+    "deep": 100,
+}
+
+
+def _default_keep_records_for_profile(profile: str) -> int:
+    return PROFILE_DEFAULT_KEEP_RECORDS.get(profile, PROFILE_DEFAULT_KEEP_RECORDS["default"])
+
+
+def _env_keep_records() -> int | None:
+    raw = os.environ.get("PWF_COMPACT_KEEP_RECORDS", "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if value >= 1 else None
 
 
 def _progress_record_count(paths: planning_state.PlanningPaths | None) -> int:
@@ -1606,7 +1634,12 @@ def capture(root: Path, kind: str, source: str, summary: str, trust: str = "untr
     return 0
 
 
-def compact(root: Path, keep_records: int = 30, dry_run: bool = False, archive: str | None = None) -> int:
+def compact(
+    root: Path,
+    keep_records: int | None = None,
+    dry_run: bool = False,
+    archive: str | None = None,
+) -> int:
     session_id = _current_session_id()
     paths = planning_state.planning_paths(root, session_id=session_id)
     if paths is None:
@@ -1616,12 +1649,30 @@ def compact(root: Path, keep_records: int = 30, dry_run: bool = False, archive: 
         print(_message("compact_archive_custom_unsupported"))
         return 1
 
+    # keep_records resolution priority: env override > explicit --keep-records
+    # flag > profile-derived default. This keeps the active segment size aligned
+    # with the current context profile so injected progress stays available
+    # without re-reading the archive.
+    profile = planning_state.current_context_profile(root=root, session_id=session_id)
+    profile_default = _default_keep_records_for_profile(profile)
+    env_keep = _env_keep_records()
+    if env_keep is not None:
+        effective_keep = env_keep
+        keep_source = f"env PWF_COMPACT_KEEP_RECORDS"
+    elif keep_records is not None:
+        effective_keep = keep_records
+        keep_source = "--keep-records"
+    else:
+        effective_keep = profile_default
+        keep_source = f"profile={profile}"
+    print(_message("compact_keep_source", profile=profile, source=keep_source, count=effective_keep))
+
     try:
         result = progress_lifecycle.rollover_progress(
             paths.progress,
             plan_id=paths.root.name,
             session_key=planning_state.session_key(session_id) if session_id else "unavailable",
-            keep_records=keep_records,
+            keep_records=effective_keep,
             dry_run=dry_run,
         )
     except (FileExistsError, ValueError) as exc:
@@ -1631,7 +1682,7 @@ def compact(root: Path, keep_records: int = 30, dry_run: bool = False, archive: 
     if result.archived_count == 0:
         print(_message("compact_not_needed"))
         print(_message("compact_total", count=result.total_auto_records))
-        print(_message("compact_keep", count=keep_records))
+        print(_message("compact_keep", count=effective_keep))
         return 0
 
     if dry_run:
@@ -1717,7 +1768,12 @@ def main(argv: Iterable[str] | None = None) -> int:
     capture_parser.add_argument("--trust", default="untrusted")
 
     compact_parser = subparsers.add_parser("compact", help=_help("compact"))
-    compact_parser.add_argument("--keep-records", type=int, default=30)
+    compact_parser.add_argument(
+        "--keep-records",
+        type=int,
+        default=None,
+        help="Override the profile-derived default keep count (env PWF_COMPACT_KEEP_RECORDS also works)",
+    )
     compact_parser.add_argument("--dry-run", action="store_true")
     compact_parser.add_argument("--archive", default=None, help=argparse.SUPPRESS)
 

@@ -1702,6 +1702,82 @@ class PlanCliTests(unittest.TestCase):
             self.assertEqual((plan_dir / "progress.md").read_text(encoding="utf-8"), original_progress)
             self.assertFalse((plan_dir / "progress-index.ndjson").exists())
 
+    def test_compact_keep_records_uses_profile_default_when_flag_absent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_dir = write_active_plan(root)
+            (plan_dir / "progress.md").write_text("# Progress Log\n\n" + auto_records(40), encoding="utf-8")
+
+            # No --keep-records, no env, no session profile -> default profile -> keep 30.
+            result = run_plan(root, "compact")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("keep records: 30 (source: profile=default, profile=default)", result.stdout)
+
+    def test_compact_keep_records_honors_expanded_session_profile(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_dir = write_active_plan(root)
+            (plan_dir / "progress.md").write_text("# Progress Log\n\n" + auto_records(80), encoding="utf-8")
+            run_plan(root, "context", "set", "expanded", env={"PWF_SESSION_ID": "session-a"})
+
+            result = run_plan(root, "compact", env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("keep records: 60 (source: profile=expanded, profile=expanded)", result.stdout)
+            self.assertIn("archived auto records: 20", result.stdout)
+
+    def test_compact_keep_records_honors_deep_session_profile(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_dir = write_active_plan(root)
+            (plan_dir / "progress.md").write_text("# Progress Log\n\n" + auto_records(120), encoding="utf-8")
+            run_plan(root, "context", "set", "deep", env={"PWF_SESSION_ID": "session-a"})
+
+            result = run_plan(root, "compact", env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("keep records: 100 (source: profile=deep, profile=deep)", result.stdout)
+
+    def test_compact_keep_records_env_overrides_profile(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_dir = write_active_plan(root)
+            (plan_dir / "progress.md").write_text("# Progress Log\n\n" + auto_records(40), encoding="utf-8")
+
+            result = run_plan(
+                root,
+                "compact",
+                env={"PWF_SESSION_ID": "session-a", "PWF_COMPACT_KEEP_RECORDS": "5"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(
+                "keep records: 5 (source: env PWF_COMPACT_KEEP_RECORDS, profile=default)",
+                result.stdout,
+            )
+
+    def test_compact_keep_records_explicit_flag_overrides_profile(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_dir = write_active_plan(root)
+            (plan_dir / "progress.md").write_text("# Progress Log\n\n" + auto_records(40), encoding="utf-8")
+            run_plan(root, "context", "set", "deep", env={"PWF_SESSION_ID": "session-a"})
+
+            result = run_plan(
+                root,
+                "compact",
+                "--keep-records",
+                "15",
+                env={"PWF_SESSION_ID": "session-a"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(
+                "keep records: 15 (source: --keep-records, profile=deep)",
+                result.stdout,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
