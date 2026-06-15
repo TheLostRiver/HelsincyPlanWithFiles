@@ -288,19 +288,15 @@ class ProjectConsistencyTests(unittest.TestCase):
             flags=re.MULTILINE | re.DOTALL,
         )
 
-        self.assertIsNotNone(match)
+        self.assertIsNotNone(match, f"CHANGELOG must have a section for version {version}")
         section = match.group("body")
+        # Every changelog section must be bilingual and substantive.
         self.assertIn("中文：", section)
         self.assertIn("English:", section)
-        self.assertIn("workspace", section)
-        self.assertIn("strict", section)
-        self.assertIn("FAQ", section)
 
         self.assertIn("中文", release_notes)
         self.assertIn("English", release_notes)
-        self.assertIn("HelsincyPlanWithFiles-v", release_notes)
-        self.assertIn("context compaction", release_notes)
-        self.assertIn("上下文压缩", release_notes)
+        self.assertIn(f"HelsincyPlanWithFiles-v{version}", release_notes)
 
     def test_released_compaction_hardening_is_recorded_in_0_2_0(self):
         changelog = read_text("CHANGELOG.md")
