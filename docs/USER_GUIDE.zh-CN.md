@@ -186,6 +186,21 @@ your-project/
 
 长期任务中，`progress.md` 会越来越长。这个命令会做 append-only rollover：旧记录写入新建的 `progress-archive/<session-key>/archive-*.md`，后续记录写入新建的 `progress-active/<session-key>/active-*.md`，并用 `progress-index.ndjson` 关联。工具不会删除或覆盖已有 progress/archive 文件。
 
+默认保留多少条最近记录由当前 context profile 决定：`lean=10`、`default=30`、`expanded=60`、`deep=100`，这样归档后活跃 progress 与档位的注入预算匹配，不会出现"想注入 40 条但归档只剩 30 条"。优先级是：环境变量 `PWF_COMPACT_KEEP_RECORDS` > 显式 `--keep-records` flag > profile 默认。compact 输出会告诉你最终用了哪个值和来源。
+
+### 暂停和恢复上下文注入
+
+```text
+/pwf-pause
+/pwf-resume
+```
+
+`/pwf-pause` 让当前会话安静下来：SessionStart、UserPromptSubmit、PreToolUse 不再把计划/进度/findings 注入 agent 上下文。适合你想开个"侧边对话"问个不相干的小问题，又不想每次提示都被一大段任务上下文挤占。
+
+注意：暂停只影响**注入**，不影响**记录**。你改了文件，`PostToolUse` 仍然会把客观变更追加到 `progress.md`——这是为了避免暂停结束后 `progress.md` 和真实文件状态对不上。
+
+`/pwf-resume` 恢复注入。如果你根本没暂停就用 resume，命令会提示"未暂停，无需恢复"，不会静默 no-op。已经暂停时再次 pause 也会提示"已暂停"，让你清楚命令到底有没有生效。这两个命令只影响当前会话，不动其他会话或 workspace active plan。
+
 ## 一个完整例子
 
 假设你想让 Codex 帮你整理一个项目文档。

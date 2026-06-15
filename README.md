@@ -167,6 +167,8 @@ Copy-Item -Recurse -Force .\HelsincyPlanWithFiles\.codex .\your-project\
 | `/pwf-context-notice-auto` | 自动提示上下文注入情况 | `plan.py context notice auto` |
 | `/pwf-context-notice-on` | 每次注入上下文都提示 | `plan.py context notice on` |
 | `/pwf-context-notice-off` | 关闭上下文注入提示 | `plan.py context notice off` |
+| `/pwf-pause` | 暂停当前会话的上下文注入（PostToolUse progress 记录仍继续） | `plan.py context pause` |
+| `/pwf-resume` | 恢复当前会话的上下文注入 | `plan.py context resume` |
 
 ## 与原版对比
 
@@ -206,7 +208,7 @@ PLAN_ID 环境变量
 项目根目录 task_plan.md
 ```
 
-`PLAN_ID` 是 routing override，不是 permission override。即使显式指定了 `PLAN_ID`，hook 仍会检查 task ownership：如果目标任务由其他 session 独占，当前 session 不会写入该任务，除非 owner 是当前 session、任务已 shared/released，或用户显式 claim/share/release。
+`PLAN_ID` 是 routing override，不是 permission override。即使显式指定了 `PLAN_ID`，hook 仍会检查 task ownership：如果目标任务由其他 session 独占，当前 session 不会写入该任务，除非 owner 是当前 session、任务已 released（或历史遗留的 shared 状态），或用户显式 claim/release。多会话共享 PWF 任务的功能已移除（原因见 `docs/REMOVED_CROSS_SESSION_SHARE.md`），但旧的 `.task-lease.json` 里若仍带 `shared=true` 仍可被读取，不会触发 ownership denial。
 
 ### Session Policy
 
@@ -256,17 +258,18 @@ python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --bind
 
 `--session` 只写 `.planning/session-bindings/<session-key>.json`，不会修改 `.planning/.active_plan`。旧的 `plan.py switch <plan-id>` 仍然切换 workspace active plan。
 
-更省心的方式是先运行 `/pwf-tasks`。它默认只显示当前会话可见任务，不会列出其他会话独占任务。复制列表中的短 ID 后运行 `/pwf-use <short-id>` 即可绑定当前会话。需要诊断所有任务时才使用 `plan.py tasks --all`；即使在 `--all` 中看到了其他会话任务，接管或共享仍必须显式使用 `plan.py use <id> --claim` 或 `plan.py use <id> --share` 才能跨 ownership 边界。
+更省心的方式是先运行 `/pwf-tasks`。它默认只显示当前会话可见任务，不会列出其他会话独占任务。复制列表中的短 ID 后运行 `/pwf-use <short-id>` 即可绑定当前会话。需要诊断所有任务时才使用 `plan.py tasks --all`；即使在 `--all` 中看到了其他会话任务，接管仍必须显式使用 `plan.py use <id> --claim`。
 
 `--legacy` 只用于根目录单任务兼容模式，不支持 session binding；`plan.py init "Task Name" --legacy --bind-session` 会被拒绝。需要多会话隔离时，请使用 `.planning/<plan-id>` 命名任务和默认 session-first 行为。
 
-如果 workspace active task 已经由另一个 session 拥有，新的 session 不会自动接管；即使 owner 已经 stale，也必须显式选择。接管、共享和释放当前会话分别使用：
+如果 workspace active task 已经由另一个 session 拥有，新的 session 不会自动接管；即使 owner 已经 stale，也必须显式选择。接管和释放当前会话分别使用：
 
 ```powershell
 python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session --force-claim
-python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session --share
 python .codex\skills\planning-with-files\scripts\plan.py switch --release-session
 ```
+
+多会话共享 PWF 任务（旧版的 `--share`）已移除：把多个会话的记录塞进同一上下文会打乱各自的任务记忆，且十几个会话并发共享会导致 progress 写入竞态。详见 `docs/REMOVED_CROSS_SESSION_SHARE.md`。
 
 `stale` 优先由 owner session heartbeat 判断；只有找不到对应 session lease 时才回退到 `.task-lease.json` 的 `updated_at`。stale 只是诊断状态，不是自动接管许可。
 

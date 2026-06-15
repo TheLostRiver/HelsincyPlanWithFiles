@@ -386,6 +386,28 @@ $env:PWF_INCLUDE_FINDINGS = "1"
 
 变大的主要原因是 expanded/deep 会注入计划尾部，并把 progress 从原来的行尾窗口升级为 record-aware 最近记录窗口。这样更利于 resume 和上下文压缩后恢复，但会消耗更多上下文。运行 `/pwf-status` 或 `/pwf-doctor` 可以查看当前 profile、progress mode、findings 是否开启和 max chars。
 
+### 20. 为什么移除了多会话共享 PWF 任务（`--share`）？
+
+把多个会话的 PWF 任务记录塞进同一上下文会打乱每个 agent 的任务记忆：两个会话的发现、决策、进度被合并到同一组文件里，每个 agent 在每次提示时重新注入这些混合内容，谁都没有一个连贯的单任务图景。十几个会话并发共享同一任务时，`PostToolUse` 钩子会争抢同一 `progress.md`，产生锁超时和交错的 auto records。
+
+替代方案：每个会话用 `/pwf-init` 创建自己的任务（默认行为）；如果确实需要两个会话操作同一逻辑任务，用 `plan.py switch <plan-id> --session --force-claim` 显式接管——单一 owner，没有共享写入。旧的 `.task-lease.json` 里若仍带 `shared=true` 仍可被读取，不会触发 ownership denial；详见 `docs/REMOVED_CROSS_SESSION_SHARE.md`。
+
+### 21. `/pwf-pause` 暂停后，为什么文件变更记录还在写？
+
+暂停只影响**上下文注入**（SessionStart、UserPromptSubmit、PreToolUse 把计划/进度/findings 注入 agent 上下文）。`PostToolUse` 的 progress 记录是**客观事实日志**——记录"哪个工具在什么时间改了哪些文件"——不属于"注入给 agent 看的上下文"，因此不受暂停影响，始终继续工作。
+
+这样设计的原因：如果你暂停后改了一堆文件又恢复，客观变更记录不能丢失，否则 `progress.md` 就和真实文件状态对不上了。如果你想连客观记录也停，唯一的方式是禁用 hook（这超出 PWF 的范围）。
+
+### 22. `/pwf-context-notice` 现在每次都提示，怎么静音？
+
+自动模式（`/pwf-context-notice-auto`）现在在所有档位都显示一行精简提示，告诉你注入占了多少 chars/tokens 以及升降档建议。如果想完全静音，运行：
+
+```text
+/pwf-context-notice-off
+```
+
+这只影响当前会话，不改其他会话或 workspace active plan。需要恢复时用 `/pwf-context-notice-on`。
+
 ## English
 
 If this is your first time using the tool and you read Chinese, start with the [plain-language user guide](USER_GUIDE.zh-CN.md). It explains what the tool is for, how to start, and how to avoid mixed progress across multiple sessions with fewer technical terms.
@@ -771,3 +793,26 @@ $env:PWF_INCLUDE_FINDINGS = "1"
 Hook payloads grow noticeably only when `PWF_CONTEXT_PROFILE=expanded`, `deep`, or custom limit variables are enabled. The `default` profile stays compatible; `lean` reduces the injected windows.
 
 The larger payload comes from injecting the plan tail and switching progress from a raw line tail to a record-aware recent-record window. This helps after resume and context compaction, but uses more context. Run `/pwf-status` or `/pwf-doctor` to see the active profile, progress mode, findings state, and max chars.
+
+### 20. Why was cross-session task sharing (`--share`) removed?
+
+Sharing one PWF task across multiple sessions scrambles each agent's task memory: the two sessions' findings, decisions, and progress notes get merged into the same files, and each agent re-injects that mixed content on every prompt, so neither has a coherent single-task picture. When a dozen sessions share one task, the `PostToolUse` hooks contend for the same `progress.md`, producing lock timeouts and interleaved auto records.
+
+The replacement: each session creates its own task with `/pwf-init` (the default behavior). If two sessions genuinely need to work on the same logical task, use `plan.py switch <plan-id> --session --force-claim` to take explicit ownership — single owner, no shared writes. Historical `.task-lease.json` files that still carry `shared=true` remain readable and do not trigger ownership denial; see `docs/REMOVED_CROSS_SESSION_SHARE.md`.
+
+### 21. After `/pwf-pause`, why are file change records still being written?
+
+Pause only affects **context injection** (SessionStart, UserPromptSubmit, and PreToolUse injecting the plan/progress/findings into the agent context). `PostToolUse` progress recording is an **objective fact log** — it records "which tool changed which files when" — and is not part of "context shown to the agent", so it is unaffected by pause and keeps working.
+
+Rationale: if you pause, change a bunch of files, then resume, the objective change log cannot be lost, or `progress.md` would diverge from the actual file state. If you want to stop objective recording too, the only way is to disable the hook entirely, which is outside PWF's scope.
+
+### 22. `/pwf-context-notice` now shows on every prompt — how do I mute it?
+
+Auto mode (`/pwf-context-notice-auto`) now shows a single concise line on all profiles, telling you how many chars/tokens the injection used plus an upgrade/downgrade hint. To mute it completely, run:
+
+```text
+/pwf-context-notice-off
+```
+
+This affects only the current session; it does not change other sessions or the workspace active plan. Use `/pwf-context-notice-on` to bring it back.
+
