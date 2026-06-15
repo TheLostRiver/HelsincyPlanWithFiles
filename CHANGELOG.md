@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.0 - 2026-06-15
+
 - 中文：移除多会话共享 PWF 任务的路径（`switch --share`、`use --share`）；多会话记录塞进同一上下文会打乱各自任务记忆，且十几个会话并发共享会导致 progress 写入竞态。旧的 `.task-lease.json` 里若仍带 `shared=true` 仍可被读取，不会触发 ownership denial；详见 `docs/REMOVED_CROSS_SESSION_SHARE.md`。
 - English: Removed cross-session task sharing paths (`switch --share`, `use --share`); merging multiple sessions' records into one shared context scrambles each agent's task memory and a dozen concurrent sessions sharing one task cause progress write contention. Historical `.task-lease.json` files carrying `shared=true` remain readable and do not trigger ownership denial; see `docs/REMOVED_CROSS_SESSION_SHARE.md`.
 - 中文：新增 `/pwf-pause`、`/pwf-resume`（等价 `plan.py context pause|resume`），暂停当前会话的 SessionStart/UserPromptSubmit/PreToolUse 上下文注入；PostToolUse 的 progress 记录仍继续工作（客观事实不停）。未暂停时使用 resume 会给提示，已暂停时再次 pause 也给提示。暂停状态存 `.planning/session-context/<key>.json` 的 `paused` 字段，只影响当前会话。
