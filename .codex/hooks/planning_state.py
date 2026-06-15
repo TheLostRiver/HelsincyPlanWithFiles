@@ -223,8 +223,8 @@ MESSAGES = {
             "Consider running /pwf-compact to archive old objective records."
         ),
         "context_injection_notice": (
-            "[planning-with-files] Injected current-session planning context: "
-            "profile={profile}, progress={progress}, approx {chars} chars (~{tokens} tokens)."
+            "[planning-with-files] context: profile={profile}, progress={progress}, "
+            "~{chars} chars (~{tokens} tokens). {hint}. Mute: /pwf-context-notice-off."
         ),
         "post_tool_recorded": (
             "[planning-with-files] Recorded PostToolUse context in progress.md. "
@@ -260,8 +260,8 @@ MESSAGES = {
             "建议运行 /pwf-compact 归档旧的客观记录。"
         ),
         "context_injection_notice": (
-            "[planning-with-files] 已自动注入当前会话的任务上下文："
-            "profile={profile}，progress={progress}，约 {chars} chars（估算 {tokens} tokens）。"
+            "[planning-with-files] 上下文：profile={profile}，progress={progress}，"
+            "约 {chars} chars（~{tokens} tokens）。{hint}。静音：/pwf-context-notice-off。"
         ),
         "post_tool_recorded": (
             "[planning-with-files] 已将 PostToolUse 上下文记录到 progress.md。"
@@ -587,6 +587,28 @@ def read_session_context(root: Path, session_id: str | None) -> SessionContextSe
         notice if isinstance(notice, str) else None,
         tuple(warnings),
     )
+
+
+def is_session_paused(root: Path | None, session_id: str | None) -> bool:
+    """Return True if the current session has paused PWF context injection.
+
+    Pause suppresses SessionStart/UserPromptSubmit/PreToolUse context injection
+    for the current session only. PostToolUse progress recording (objective file
+    change logging) is NOT affected and keeps working. Tolerant of missing
+    session, missing file, or invalid JSON: returns False in all those cases.
+    """
+    if not session_id or root is None:
+        return False
+    path = session_context_path(root, session_id)
+    if not path.is_file():
+        return False
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    return bool(payload.get("paused"))
 
 
 def context_settings_source(
@@ -1366,6 +1388,8 @@ def _render_plan_data(
 
 
 def render_pre_tool_context(root: Path, session_id: str | None = None) -> str:
+    if is_session_paused(root, session_id):
+        return ""
     paths = planning_paths(root, session_id=session_id)
     if paths is None:
         return ""
@@ -1392,9 +1416,34 @@ def _progress_notice_text(limits: ContextLimits) -> str:
 def _should_show_context_notice(settings: ContextSettingsSource, limits: ContextLimits, *, event: str) -> bool:
     if settings.notice == "off":
         return False
-    if settings.notice == "on":
-        return True
-    return limits.profile in {"expanded", "deep"} or event == "SessionStart"
+    # Both "on" and "auto" now always show the single-line notice so that users
+    # on the default and lean profiles can also see context injection cost and
+    # the upgrade hint. Previously auto was silent on default/lean, which left
+    # users with no visibility into how much context the planning hooks used.
+    return True
+
+
+def _context_profile_hint(profile: str) -> str:
+    """Single-line hint recommending the next sensible profile change."""
+    if profile in {"lean", "default"}:
+        return "Upgrade: /pwf-context-expanded, /pwf-context-deep"
+    if profile == "expanded":
+        return "Deeper recovery: /pwf-context-deep. Reduce: /pwf-context-lean"
+    # deep or custom — already at the deepest documented profile.
+    return "You are on the deepest profile; reduce with /pwf-context-lean"
+
+
+_CONTEXT_PROFILE_HINT_ZH = {
+    "lean": "升级：/pwf-context-expanded、/pwf-context-deep",
+    "default": "升级：/pwf-context-expanded、/pwf-context-deep",
+    "expanded": "更深恢复：/pwf-context-deep；降档：/pwf-context-lean",
+    "deep": "已是最深档位；降档用 /pwf-context-lean",
+    "custom": "已是最深档位；降档用 /pwf-context-lean",
+}
+
+
+def _context_profile_hint_zh(profile: str) -> str:
+    return _CONTEXT_PROFILE_HINT_ZH.get(profile, _CONTEXT_PROFILE_HINT_ZH["deep"])
 
 
 def _append_context_notice(
@@ -1410,17 +1459,25 @@ def _append_context_notice(
         return rendered
     chars = len(rendered)
     tokens = _estimated_tokens(chars)
+    hint = (
+        _context_profile_hint_zh(limits.profile)
+        if current_lang() == "zh-CN"
+        else _context_profile_hint(limits.profile)
+    )
     notice = message(
         "context_injection_notice",
         profile=limits.profile,
         progress=_progress_notice_text(limits),
         chars=_format_approx_count(chars),
         tokens=_format_approx_count(tokens),
+        hint=hint,
     )
     return f"{notice}\n{rendered}"
 
 
 def render_prompt_context(root: Path, session_id: str | None = None, event: str = "UserPromptSubmit") -> str:
+    if is_session_paused(root, session_id):
+        return ""
     paths = planning_paths(root, session_id=session_id)
     if paths is None:
         return ""

@@ -94,6 +94,11 @@ CLI_MESSAGES = {
         "context_missing_session": "session id: unavailable; context commands only affect the current session",
         "context_notice_set": "context notice set: {notice}",
         "context_profile_set": "context profile set: {profile}",
+        "context_paused": "context injection paused for this session; PostToolUse progress recording still works",
+        "context_pause_already_paused": "context injection already paused for this session; nothing to do",
+        "context_resumed": "context injection resumed for this session",
+        "context_resume_not_paused": "context injection was not paused for this session; nothing to resume",
+        "context_paused_status": "context paused: {paused}",
         "created": "created {label}: {plan_id}",
         "current_phase": "current phase: {phase}",
         "effective_plan": "effective plan: {plan_id}",
@@ -194,6 +199,11 @@ CLI_MESSAGES = {
         "context_missing_session": "session id: 不可用；context 命令只影响当前会话",
         "context_notice_set": "context notice set: {notice}",
         "context_profile_set": "context profile set: {profile}",
+        "context_paused": "已暂停当前会话的上下文注入；PostToolUse 的 progress 记录仍然继续",
+        "context_pause_already_paused": "当前会话的上下文注入已暂停，无需重复暂停",
+        "context_resumed": "已恢复当前会话的上下文注入",
+        "context_resume_not_paused": "当前会话的上下文注入未暂停，无需恢复",
+        "context_paused_status": "context paused: {paused}",
         "created": "已创建{label}: {plan_id}",
         "current_phase": "当前阶段: {phase}",
         "effective_plan": "effective plan: {plan_id}",
@@ -353,6 +363,11 @@ def _read_session_context_payload(root: Path, session_id: str) -> dict[str, obje
     return payload if isinstance(payload, dict) else {}
 
 
+def _read_existing_paused(payload: dict[str, object]) -> bool:
+    value = payload.get("paused")
+    return value if isinstance(value, bool) else False
+
+
 def _valid_context_profiles_text() -> str:
     return ", ".join(sorted(planning_state.SESSION_CONTEXT_PROFILES))
 
@@ -377,6 +392,7 @@ def _write_session_context(
     *,
     profile: str | None = None,
     notice: str | None = None,
+    paused: bool | None = None,
 ) -> str:
     key = planning_state.session_key(session_id)
     context_dir = root / ".planning" / "session-context"
@@ -395,11 +411,13 @@ def _write_session_context(
         planning_state.CONTEXT_NOTICE_MODES,
         "auto",
     )
+    existing_paused = _read_existing_paused(existing)
     payload = {
         "version": 1,
         "session_id": session_id,
         "profile": profile if profile is not None else existing_profile,
         "notice": notice if notice is not None else existing_notice,
+        "paused": paused if paused is not None else existing_paused,
         "created_at": existing.get("created_at", now),
         "updated_at": now,
         "source": "plan.py context",
@@ -839,6 +857,7 @@ def _context_findings_text(limits: planning_state.ContextLimits) -> str:
 def _context_status_lines(root: Path, session_id: str | None) -> list[str]:
     limits = planning_state.context_limits(root=root, session_id=session_id)
     source = planning_state.context_settings_source(root=root, session_id=session_id)
+    paused = planning_state.is_session_paused(root, session_id)
     lines = [
         (
             f"context: profile={limits.profile}, "
@@ -849,6 +868,7 @@ def _context_status_lines(root: Path, session_id: str | None) -> list[str]:
         ),
         f"context source: {source.profile_source}",
         f"context notice: {source.notice}",
+        _message("context_paused_status", paused=str(paused).lower()),
     ]
     if source.session_profile_overridden and source.session_profile:
         lines.append(f"context session profile: {source.session_profile} overridden")
@@ -859,6 +879,7 @@ def _context_status_lines(root: Path, session_id: str | None) -> list[str]:
 def _context_source_lines(root: Path, session_id: str | None) -> list[str]:
     limits = planning_state.context_limits(root=root, session_id=session_id)
     source = planning_state.context_settings_source(root=root, session_id=session_id)
+    paused = planning_state.is_session_paused(root, session_id)
     progress_mode = (
         f"record-aware {limits.progress_recent_records} records"
         if limits.progress_recent_records > 0
@@ -879,6 +900,7 @@ def _context_source_lines(root: Path, session_id: str | None) -> list[str]:
         [
             f"  notice: {source.notice}",
             f"  notice source: {source.notice_source}",
+            f"  paused: {str(paused).lower()}",
             f"  progress mode: {progress_mode}",
             f"  plan: head {limits.plan_head_lines} tail {limits.plan_tail_lines}",
             f"  findings: {_context_findings_text(limits)}",
@@ -1258,6 +1280,24 @@ def context(root: Path, action: str, value: str | None = None) -> int:
         print(_message("context_cleared", key=key))
         return 0
 
+    if action == "pause":
+        if planning_state.is_session_paused(root, session_id):
+            print(_message("context_pause_already_paused"))
+            return 0
+        _write_session_context(root, session_id, paused=True)
+        print(_message("context_paused"))
+        print("\n".join(_context_source_lines(root, session_id)))
+        return 0
+
+    if action == "resume":
+        if not planning_state.is_session_paused(root, session_id):
+            print(_message("context_resume_not_paused"))
+            return 0
+        _write_session_context(root, session_id, paused=False)
+        print(_message("context_resumed"))
+        print("\n".join(_context_source_lines(root, session_id)))
+        return 0
+
     raise ValueError(f"unsupported context action: {action}")
 
 
@@ -1625,6 +1665,8 @@ def main(argv: Iterable[str] | None = None) -> int:
     context_notice = context_subparsers.add_parser("notice")
     context_notice.add_argument("mode")
     context_subparsers.add_parser("clear")
+    context_subparsers.add_parser("pause")
+    context_subparsers.add_parser("resume")
 
     init_parser = subparsers.add_parser("init", help=_help("init"))
     init_parser.add_argument("name")
@@ -1695,6 +1737,10 @@ def main(argv: Iterable[str] | None = None) -> int:
             return context(root, "notice", args.mode)
         if args.context_command == "clear":
             return context(root, "clear")
+        if args.context_command == "pause":
+            return context(root, "pause")
+        if args.context_command == "resume":
+            return context(root, "resume")
     if args.command == "init":
         return init(
             root,

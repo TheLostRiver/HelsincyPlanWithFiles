@@ -242,6 +242,74 @@ class PlanCliTests(unittest.TestCase):
             key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
             self.assertFalse((root / ".planning" / "session-context" / f"{key}.json").exists())
 
+    def test_context_pause_writes_paused_flag_for_current_session(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pause_result = run_plan(root, "context", "pause", env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertEqual(pause_result.returncode, 0, pause_result.stderr)
+            self.assertIn("context injection paused", pause_result.stdout)
+            self.assertIn("PostToolUse", pause_result.stdout)
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            payload = json.loads((root / ".planning" / "session-context" / f"{key}.json").read_text(encoding="utf-8"))
+            self.assertTrue(payload["paused"])
+
+    def test_context_pause_when_already_paused_is_a_noop_with_hint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first = run_plan(root, "context", "pause", env={"PWF_SESSION_ID": "session-a"})
+            second = run_plan(root, "context", "pause", env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertEqual(first.returncode, 0, first.stderr)
+            self.assertEqual(second.returncode, 0, second.stderr)
+            self.assertIn("already paused", second.stdout)
+
+    def test_context_resume_when_not_paused_shows_hint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            result = run_plan(root, "context", "resume", env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("not paused", result.stdout)
+            self.assertIn("nothing to resume", result.stdout)
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            self.assertFalse((root / ".planning" / "session-context" / f"{key}.json").exists())
+
+    def test_context_pause_then_resume_round_trips_paused_flag(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pause_result = run_plan(root, "context", "pause", env={"PWF_SESSION_ID": "session-a"})
+            resume_result = run_plan(root, "context", "resume", env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertEqual(pause_result.returncode, 0, pause_result.stderr)
+            self.assertEqual(resume_result.returncode, 0, resume_result.stderr)
+            self.assertIn("resumed", resume_result.stdout)
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            payload = json.loads((root / ".planning" / "session-context" / f"{key}.json").read_text(encoding="utf-8"))
+            self.assertFalse(payload["paused"])
+
+    def test_context_pause_does_not_affect_other_sessions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run_plan(root, "context", "pause", env={"PWF_SESSION_ID": "session-a"})
+
+            key_a = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            key_b = hashlib.sha256("session-b".encode("utf-8")).hexdigest()[:12]
+            self.assertTrue(json.loads((root / ".planning" / "session-context" / f"{key_a}.json").read_text(encoding="utf-8"))["paused"])
+            self.assertFalse((root / ".planning" / "session-context" / f"{key_b}.json").exists())
+
+    def test_context_status_reports_paused_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            before = run_plan(root, "context", "status", env={"PWF_SESSION_ID": "session-a"})
+            run_plan(root, "context", "pause", env={"PWF_SESSION_ID": "session-a"})
+            after = run_plan(root, "context", "status", env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertEqual(before.returncode, 0, before.stderr)
+            self.assertEqual(after.returncode, 0, after.stderr)
+            self.assertIn("paused: false", before.stdout)
+            self.assertIn("paused: true", after.stdout)
+
     def test_status_reports_chinese_output_when_enabled(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
