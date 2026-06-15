@@ -10,6 +10,13 @@ Helsincy Plan With Files 是给 Codex 准备的“任务记忆本”。
 
 第一次使用建议先看这篇通俗说明：[普通用户使用指南](docs/USER_GUIDE.zh-CN.md)。
 
+> [!IMPORTANT]
+> **源码安全声明**
+>
+> 当前项目代码不包含任何会删除或覆盖用户源码的操作逻辑。Helsincy Plan With Files 只维护自己的任务计划、发现笔记、进度日志、会话绑定和相关元数据；这些数据默认位于 `.planning/` 和 `.codex/` 相关路径下。
+>
+> 如果项目源码发生变化，应来自用户明确要求 agent 执行的代码修改、用户自己运行的命令，或其他项目工具链行为，而不是 Helsincy Plan With Files 的自动记录机制。相关安全审计见 [Source Deletion Safety Audit Report](docs/SOURCE_DELETION_SAFETY_AUDIT_REPORT.md)。
+
 ## 这是什么？
 
 这是一个安装在项目里的 Codex 辅助工具。安装后，你的项目会多出一组 `/pwf-*` 命令，以及一个 `.planning/` 文件夹。Codex 会把当前任务的“要做什么、发现了什么、已经做了什么”写进去：

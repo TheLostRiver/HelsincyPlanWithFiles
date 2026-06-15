@@ -10,6 +10,13 @@ For a short one-off question, you probably do not need it. For multi-step work, 
 
 A plain-language user guide is currently available in Chinese: [普通用户使用指南](docs/USER_GUIDE.zh-CN.md).
 
+> [!IMPORTANT]
+> **Source Safety Statement**
+>
+> The current project code does not contain any operation logic that deletes or overwrites user source files. Helsincy Plan With Files only maintains its own task plans, findings notes, progress logs, session bindings, and related metadata; these records are kept under `.planning/` and `.codex/`-related paths by default.
+>
+> If project source files change, that should come from explicit code edits requested from the agent, commands the user runs directly, or other project tooling behavior—not from the automatic recording mechanism in Helsincy Plan With Files. See [Source Deletion Safety Audit Report](docs/SOURCE_DELETION_SAFETY_AUDIT_REPORT.md) for the related safety audit.
+
 ## What Is This?
 
 This is a Codex helper installed inside a project. After installation, the project gets `/pwf-*` commands and a `.planning/` folder. Codex stores what the task is, what it has learned, and what it has already done:
