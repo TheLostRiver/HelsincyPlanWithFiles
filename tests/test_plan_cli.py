@@ -310,6 +310,19 @@ class PlanCliTests(unittest.TestCase):
             self.assertIn("paused: false", before.stdout)
             self.assertIn("paused: true", after.stdout)
 
+    def test_doctor_reports_paused_state(self):
+        # doctor output must surface paused state for parity with context status.
+        # doctor may return non-zero when it detects unrelated issues (e.g.
+        # missing hooks in the temp project); we only assert the paused line.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_active_plan(root)
+            run_plan(root, "context", "pause", env={"PWF_SESSION_ID": "session-a"})
+
+            result = run_plan(root, "doctor", env={"PWF_SESSION_ID": "session-a"})
+
+            self.assertIn("context paused: true", result.stdout)
+
     def test_status_reports_chinese_output_when_enabled(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -804,7 +817,8 @@ class PlanCliTests(unittest.TestCase):
                 env={"PWF_SESSION_ID": "session-a"},
             )
 
-            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("unrecognized arguments: --share", result.stderr + result.stdout)
             self.assertFalse((root / ".planning" / plan_id / ".task-lease.json").exists())
 
     def test_use_rejects_share_flag(self):
@@ -821,7 +835,10 @@ class PlanCliTests(unittest.TestCase):
                 env={"PWF_SESSION_ID": "session-a"},
             )
 
-            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("unrecognized arguments: --share", result.stderr + result.stdout)
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            self.assertFalse((root / ".planning" / "session-bindings" / f"{key}.json").exists())
 
     def test_legacy_shared_lease_file_still_readable_for_backward_compat(self):
         # No command writes shared=true anymore, but historical .task-lease.json
@@ -1775,6 +1792,29 @@ class PlanCliTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn(
                 "keep records: 15 (source: --keep-records, profile=deep)",
+                result.stdout,
+            )
+
+    def test_compact_keep_records_env_overrides_explicit_flag(self):
+        # Precedence is env > flag > profile. When both env and --keep-records
+        # are set, the env value wins. This locks in the full chain.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_dir = write_active_plan(root)
+            (plan_dir / "progress.md").write_text("# Progress Log\n\n" + auto_records(40), encoding="utf-8")
+            run_plan(root, "context", "set", "deep", env={"PWF_SESSION_ID": "session-a"})
+
+            result = run_plan(
+                root,
+                "compact",
+                "--keep-records",
+                "15",
+                env={"PWF_SESSION_ID": "session-a", "PWF_COMPACT_KEEP_RECORDS": "5"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(
+                "keep records: 5 (source: env PWF_COMPACT_KEEP_RECORDS, profile=deep)",
                 result.stdout,
             )
 
