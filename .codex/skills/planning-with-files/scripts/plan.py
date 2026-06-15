@@ -714,7 +714,7 @@ def _resolve_task_selector(
         if hidden:
             return (
                 None,
-                "task is not visible to current session; run /pwf-tasks or use --claim/--share explicitly.",
+                "task is not visible to current session; run /pwf-tasks or use --claim explicitly.",
             )
         return None, "task selector not found; run /pwf-tasks to list visible tasks."
     candidates = ", ".join(f"{summary.short_id}={summary.plan_id}" for summary in matches)
@@ -1285,7 +1285,7 @@ def tasks(root: Path, include_all: bool = False, as_json: bool = False) -> int:
     return 0
 
 
-def use(root: Path, selector: str, *, claim: bool = False, share: bool = False) -> int:
+def use(root: Path, selector: str, *, claim: bool = False) -> int:
     session_id = _current_session_id()
     if not session_id:
         print(_message("missing_session_id"))
@@ -1293,13 +1293,13 @@ def use(root: Path, selector: str, *, claim: bool = False, share: bool = False) 
     summary, error = _resolve_task_selector(
         root,
         selector,
-        include_all=claim or share,
+        include_all=claim,
         session_id=session_id,
     )
     if summary is None:
         print(error or "task selector not found")
         return 1
-    return switch(root, summary.plan_id, session=True, force_claim=claim, share=share)
+    return switch(root, summary.plan_id, session=True, force_claim=claim)
 
 
 def init(
@@ -1404,7 +1404,6 @@ def switch(
     clear_session: bool = False,
     release_session: bool = False,
     force_claim: bool = False,
-    share: bool = False,
 ) -> int:
     plan_root = root / ".planning"
     active_file = plan_root / ".active_plan"
@@ -1461,7 +1460,6 @@ def switch(
             plan_id,
             session_id,
             force=force_claim,
-            share=share,
             source="plan.py switch --session",
         )
         if lease is None:
@@ -1656,7 +1654,6 @@ def main(argv: Iterable[str] | None = None) -> int:
     switch_group.add_argument("--clear-session", action="store_true")
     switch_group.add_argument("--release-session", action="store_true")
     switch_parser.add_argument("--force-claim", action="store_true")
-    switch_parser.add_argument("--share", action="store_true")
 
     tasks_parser = subparsers.add_parser("tasks", help="List PWF tasks visible to the current session")
     tasks_parser.add_argument("--all", action="store_true")
@@ -1665,7 +1662,6 @@ def main(argv: Iterable[str] | None = None) -> int:
     use_parser = subparsers.add_parser("use", help="Bind current session to a visible PWF task")
     use_parser.add_argument("selector")
     use_parser.add_argument("--claim", action="store_true")
-    use_parser.add_argument("--share", action="store_true")
 
     attest_parser = subparsers.add_parser("attest", help=_help("attest"))
     attest_group = attest_parser.add_mutually_exclusive_group()
@@ -1717,12 +1713,11 @@ def main(argv: Iterable[str] | None = None) -> int:
             clear_session=args.clear_session,
             release_session=args.release_session,
             force_claim=args.force_claim,
-            share=args.share,
         )
     if args.command == "tasks":
         return tasks(root, include_all=args.all, as_json=args.json)
     if args.command == "use":
-        return use(root, args.selector, claim=args.claim, share=args.share)
+        return use(root, args.selector, claim=args.claim)
     if args.command == "attest":
         return attest(root, show=args.show, clear=args.clear)
     if args.command == "capture":

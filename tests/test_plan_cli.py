@@ -720,27 +720,14 @@ class PlanCliTests(unittest.TestCase):
             self.assertEqual(lease["owner_session_key"], new_key)
             self.assertIn(f"task lease: owner={new_key} status=active shared=false", result.stdout)
 
-    def test_switch_session_share_marks_task_shared(self):
+    def test_switch_session_rejects_share_flag(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            plan_id = "2026-06-07-share"
+            plan_id = "2026-06-07-share-removed"
             write_plan(root / ".planning" / plan_id)
 
-            result = run_plan(root, "switch", plan_id, "--session", "--share", env={"PWF_SESSION_ID": "session-a"})
-
-            self.assertEqual(result.returncode, 0, result.stderr)
-            lease = json.loads((root / ".planning" / plan_id / ".task-lease.json").read_text(encoding="utf-8"))
-            self.assertTrue(lease["shared"])
-            self.assertIn("shared=true", result.stdout)
-
-    def test_switch_session_keeps_shared_task_shared_for_second_session(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            plan_id = "2026-06-07-share"
-            write_plan(root / ".planning" / plan_id)
-            owner_key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
-
-            share_result = run_plan(
+            # --share is no longer a registered flag; argparse exits 2 with usage error.
+            result = run_plan(
                 root,
                 "switch",
                 plan_id,
@@ -748,14 +735,57 @@ class PlanCliTests(unittest.TestCase):
                 "--share",
                 env={"PWF_SESSION_ID": "session-a"},
             )
-            join_result = run_plan(root, "switch", plan_id, "--session", env={"PWF_SESSION_ID": "session-b"})
 
-            self.assertEqual(share_result.returncode, 0, share_result.stderr)
-            self.assertEqual(join_result.returncode, 0, join_result.stderr)
-            lease = json.loads((root / ".planning" / plan_id / ".task-lease.json").read_text(encoding="utf-8"))
-            self.assertEqual(lease["owner_session_key"], owner_key)
-            self.assertTrue(lease["shared"])
-            self.assertIn("shared=true", join_result.stdout)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse((root / ".planning" / plan_id / ".task-lease.json").exists())
+
+    def test_use_rejects_share_flag(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_id = "2026-06-07-use-share-removed"
+            write_plan(root / ".planning" / plan_id)
+
+            result = run_plan(
+                root,
+                "use",
+                plan_id,
+                "--share",
+                env={"PWF_SESSION_ID": "session-a"},
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+
+    def test_legacy_shared_lease_file_still_readable_for_backward_compat(self):
+        # No command writes shared=true anymore, but historical .task-lease.json
+        # files from before the share removal must still be readable and must not
+        # spuriously deny access (ownership_denial_for_resolution treats shared
+        # leases as non-conflicting).
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_id = "2026-06-07-legacy-shared"
+            write_plan(root / ".planning" / plan_id)
+            owner_key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            lease_path = root / ".planning" / plan_id / ".task-lease.json"
+            lease_path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "plan_id": plan_id,
+                        "owner_session_key": owner_key,
+                        "owner_status": "active",
+                        "shared": True,
+                        "claimed_at": "2026-06-01T00:00:00Z",
+                        "updated_at": "2026-06-01T00:00:00Z",
+                        "source": "legacy",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            status = run_plan(root, "status", env={"PWF_SESSION_ID": "session-b"})
+            self.assertEqual(status.returncode, 0, status.stderr)
+            # The shared lease is read back; task_lease_status reports "shared".
+            self.assertIn("shared=true", status.stdout)
 
     def test_switch_session_concurrent_claim_allows_single_owner(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -139,13 +139,14 @@ python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --bind
 
 `--legacy` is only for root-level single-task compatibility mode and does not support session binding; `plan.py init "Task Name" --legacy --bind-session` is rejected. For multi-session isolation, use named `.planning/<plan-id>` tasks with the default session-first behavior.
 
-Task ownership is separate from routing. `PLAN_ID` is a routing override, not a permission override; selecting a task through `PLAN_ID` still requires ownership, sharing, or release before hooks write to it. If another session owns a task, a new session must not automatically take it over, even if the owner is stale. Use explicit commands:
+Task ownership is separate from routing. `PLAN_ID` is a routing override, not a permission override; selecting a task through `PLAN_ID` still requires ownership or release before hooks write to it. If another session owns a task, a new session must not automatically take it over, even if the owner is stale. Use explicit commands:
 
 ```powershell
 python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session --force-claim
-python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session --share
 python .codex\skills\planning-with-files\scripts\plan.py switch --release-session
 ```
+
+Cross-session task sharing (`--share`) was removed because shared planning records mixed into multiple agent contexts cause confusion and concurrent write contention. Historical `.task-lease.json` files that still carry `shared=true` remain readable for backward compatibility but no command writes that field anymore. See `docs/REMOVED_CROSS_SESSION_SHARE.md`.
 
 `stale` is computed from the owner session heartbeat when that session lease exists; `.task-lease.json` `updated_at` is only a compatibility fallback. Stale is diagnostic, not automatic takeover permission.
 
