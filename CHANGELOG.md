@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## 0.3.1 - 2026-06-16
+
+- 中文：新增源码安全声明和正式免责声明，明确 Helsincy Plan With Files 不会删除或覆盖用户源码，只维护 `.planning/`、`.codex/` 相关任务计划、发现笔记、进度日志、会话绑定和元数据；README 现在直接链接免责声明和源码删除安全审计报告。
+- English: Added a source safety statement and formal disclaimer clarifying that Helsincy Plan With Files does not delete or overwrite user source files and only maintains `.planning/` / `.codex` task plans, findings, progress logs, session bindings, and metadata; the README now links directly to the disclaimer and source deletion safety audit report.
+- 中文：修复 `session-catchup.py` 的参数解析，`--planning-dir <dir> <project>` 现在能正确识别项目路径；规划文件探测也只接受真实文件，不再把同名目录当作有效的 planning 文件。
+- English: Fixed `session-catchup.py` argument parsing so `--planning-dir <dir> <project>` keeps the project path intact; planning file detection now requires real files instead of accepting same-named directories.
+- 中文：补全 task lease 状态输出的中文本地化，`PWF_LANG=zh-CN` 下状态行不再混入英文 `task lease` 标签，同时保留冲突提示的原有语义。
+- English: Completed Chinese localization for task lease status output so `PWF_LANG=zh-CN` no longer leaks the English `task lease` label while preserving the existing conflict semantics.
+- 中文：加固 PowerShell planning 目录解析器的 Python 命令查找，优先安全选择 `python3` / `python`，避免硬编码 `python` 调用在不同 Windows 环境中失效。
+- English: Hardened the PowerShell planning-directory resolver by safely selecting `python3` / `python` instead of hardcoding a brittle `python` invocation.
+- 中文：提高默认 task lease 文件锁等待时间，降低多会话或并发测试下的偶发锁超时；补充对应回归测试和项目一致性检查。
+- English: Increased the default task lease file-lock wait to reduce occasional lock timeouts under multi-session or concurrent test runs; added regression tests and consistency checks.
+
 ## 0.3.0 - 2026-06-15
 
 - 中文：移除多会话共享 PWF 任务的路径（`switch --share`、`use --share`）；多会话记录塞进同一上下文会打乱各自任务记忆，且十几个会话并发共享会导致 progress 写入竞态。旧的 `.task-lease.json` 里若仍带 `shared=true` 仍可被读取，不会触发 ownership denial；详见 `docs/REMOVED_CROSS_SESSION_SHARE.md`。

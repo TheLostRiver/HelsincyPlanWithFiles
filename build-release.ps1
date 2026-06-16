@@ -23,7 +23,7 @@
 .EXAMPLE
   ./build-release.ps1
   ./build-release.ps1 -Variant codex
-  ./build-release.ps1 -Version 0.3.0
+  ./build-release.ps1 -Version 0.3.1
 #>
 [CmdletBinding()]
 param(
