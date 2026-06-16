@@ -194,8 +194,11 @@ class ProjectConsistencyTests(unittest.TestCase):
 
         self.assertIn("plan.py", powershell_resolver)
         self.assertIn("status", powershell_resolver)
+        self.assertIn("Get-Command python3, python", powershell_resolver)
+        self.assertIn("if ($null -eq $pythonCommand)", powershell_resolver)
         self.assertIn('$env:PWF_LANG = ""', powershell_resolver)
         self.assertIn("path: *", powershell_resolver)
+        self.assertNotIn("& python", powershell_resolver)
         self.assertNotIn("$activeFile", powershell_resolver)
 
     def test_hooks_json_references_existing_hook_files(self):

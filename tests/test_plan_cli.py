@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 from datetime import datetime
+from importlib.machinery import SourceFileLoader
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import unittest
@@ -12,6 +13,11 @@ import unittest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PLAN_SCRIPT = REPO_ROOT / ".codex" / "skills" / "planning-with-files" / "scripts" / "plan.py"
+SESSION_CATCHUP_SCRIPT = REPO_ROOT / ".codex" / "skills" / "planning-with-files" / "scripts" / "session-catchup.py"
+SESSION_CATCHUP = SourceFileLoader(
+    "session_catchup_under_test",
+    str(SESSION_CATCHUP_SCRIPT),
+).load_module()
 
 
 def run_plan(project_root, *args, env=None):
@@ -81,6 +87,33 @@ def auto_records(count):
 
 
 class PlanCliTests(unittest.TestCase):
+    def test_session_catchup_parse_args_accepts_planning_dir_before_project(self):
+        project_path, planning_dir = SESSION_CATCHUP.parse_args(
+            ["session-catchup.py", "--planning-dir", "D:/plans/demo", "D:/work/project"]
+        )
+
+        self.assertEqual(project_path, "D:/work/project")
+        self.assertEqual(planning_dir, "D:/plans/demo")
+
+    def test_session_catchup_planning_files_must_be_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "task_plan.md").mkdir()
+            self.assertFalse(SESSION_CATCHUP.planning_files_exist(str(root), None))
+
+            (root / "progress.md").write_text("# Progress\n", encoding="utf-8")
+            self.assertTrue(SESSION_CATCHUP.planning_files_exist(str(root), None))
+
+    def test_status_localizes_task_lease_line_when_chinese_enabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            result = run_plan(root, "init", "Session First", env={"PWF_SESSION_ID": "session-a", "PWF_LANG": "zh-CN"})
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            key = hashlib.sha256("session-a".encode("utf-8")).hexdigest()[:12]
+            self.assertIn(f"任务占用: owner={key} status=active shared=false", result.stdout)
+            self.assertNotIn("task lease:", result.stdout)
+
     def test_help_reports_chinese_output_when_enabled(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
