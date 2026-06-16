@@ -15,7 +15,7 @@ Helsincy Plan With Files 是给 Codex 准备的“任务记忆本”。
 >
 > 当前项目代码不包含任何会删除或覆盖用户源码的操作逻辑。Helsincy Plan With Files 只维护自己的任务计划、发现笔记、进度日志、会话绑定和相关元数据；这些数据默认位于 `.planning/` 和 `.codex/` 相关路径下。
 >
-> 如果项目源码发生变化，应来自用户明确要求 agent 执行的代码修改、用户自己运行的命令，或其他项目工具链行为，而不是 Helsincy Plan With Files 的自动记录机制。相关安全审计见 [Source Deletion Safety Audit Report](docs/SOURCE_DELETION_SAFETY_AUDIT_REPORT.md)。
+> 如果项目源码发生变化，应来自用户明确要求 agent 执行的代码修改、用户自己运行的命令，或其他项目工具链行为，而不是 Helsincy Plan With Files 的自动记录机制。更正式的边界说明见 [源码安全免责声明](docs/SOURCE_SAFETY_DISCLAIMER.md)，相关安全审计见 [Source Deletion Safety Audit Report](docs/SOURCE_DELETION_SAFETY_AUDIT_REPORT.md)。
 
 ## 这是什么？
 
