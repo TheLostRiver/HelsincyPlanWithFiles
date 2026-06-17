@@ -2435,21 +2435,34 @@ class HookTests(unittest.TestCase):
             output = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
             self.assertIn(f"planning-dir: {plan_dir}", output)
 
-    def test_stop_outputs_incomplete_json_decision(self):
+    def test_stop_outputs_incomplete_advisory_system_message(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_plan(root, complete=False)
 
-            result = run_hook(
+            first = run_hook(
                 "stop.py",
                 root,
                 {"hook_event_name": "Stop", "stop_hook_active": False},
             )
+            second = run_hook(
+                "stop.py",
+                root,
+                {"hook_event_name": "Stop", "stop_hook_active": True},
+            )
 
-            self.assertEqual(result.returncode, 0, result.stderr)
-            payload = json.loads(result.stdout)
-            self.assertEqual(payload["decision"], "block")
-            self.assertIn("Task incomplete", payload["reason"])
+            self.assertEqual(first.returncode, 0, first.stderr)
+            self.assertEqual(second.returncode, 0, second.stderr)
+            first_payload = json.loads(first.stdout)
+            second_payload = json.loads(second.stdout)
+            for payload in (first_payload, second_payload):
+                self.assertNotIn("decision", payload)
+                self.assertNotIn("reason", payload)
+                self.assertIn("systemMessage", payload)
+                self.assertIn("Task in progress", payload["systemMessage"])
+                self.assertIn("progress.md is up to date", payload["systemMessage"])
+                self.assertNotIn("continue working", payload["systemMessage"])
+                self.assertNotIn("remaining phases", payload["systemMessage"])
 
     def test_stop_uses_chinese_reason_when_enabled(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2465,9 +2478,12 @@ class HookTests(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr)
             payload = json.loads(result.stdout)
-            self.assertEqual(payload["decision"], "block")
-            self.assertIn("任务未完成", payload["reason"])
-            self.assertIn("更新 progress.md", payload["reason"])
+            self.assertNotIn("decision", payload)
+            self.assertNotIn("reason", payload)
+            self.assertIn("任务进行中", payload["systemMessage"])
+            self.assertIn("progress.md", payload["systemMessage"])
+            self.assertIn("最新", payload["systemMessage"])
+            self.assertNotIn("继续", payload["systemMessage"])
 
     def test_stop_is_silent_when_all_phases_complete(self):
         with tempfile.TemporaryDirectory() as tmp:

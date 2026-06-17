@@ -192,7 +192,7 @@ The first batch uses the `/pwf-XXX` naming pattern. `pwf` means planning with fi
 - Injects the active plan into Codex context on session start and user prompt submit.
 - Reminds the agent to check the current plan before tool use.
 - Appends a compact change summary to `progress.md` after file writes or edits.
-- Checks task completion before stop and asks the agent to continue when phases are incomplete.
+- Reports task progress before stop and reminds the agent to keep `progress.md` up to date when phases are incomplete.
 - Uses a Windows-first Python hook runtime while keeping shell and PowerShell helper scripts for compatibility.
 
 ## How It Works
@@ -469,7 +469,7 @@ The tests cover:
 - `UserPromptSubmit` / `SessionStart` JSON output
 - planning data delimiter framing
 - optional hash attestation match and tamper blocking
-- `Stop` blocking incomplete tasks
+- `Stop` advisory output for incomplete tasks
 
 ## Design Principles
 
