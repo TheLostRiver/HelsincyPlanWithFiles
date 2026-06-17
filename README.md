@@ -192,7 +192,7 @@ Copy-Item -Recurse -Force .\HelsincyPlanWithFiles\.codex .\your-project\
 - 在会话开始和用户提交提示时，把当前计划注入为 Codex 上下文。
 - 在工具调用前提醒 agent 查看当前计划。
 - 在文件写入或修改后，把变更摘要追加到 `progress.md`。
-- 在停止前检查任务阶段是否完成，未完成时提醒继续收尾。
+- 在停止前报告任务阶段进度，未完成时提醒保持 `progress.md` 最新。
 - 支持 Windows 优先的 Python hook runtime，同时保留 shell/PowerShell helper 脚本。
 
 ## 工作方式
@@ -469,7 +469,7 @@ python -m unittest discover -v
 - `UserPromptSubmit` / `SessionStart` JSON 输出
 - planning data delimiter framing
 - 可选 hash attestation 匹配和篡改阻断
-- `Stop` 未完成任务拦截
+- `Stop` 未完成任务非阻塞提示
 
 ## 设计原则
 

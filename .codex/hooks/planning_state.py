@@ -231,8 +231,8 @@ MESSAGES = {
             "If a phase is now complete, update task_plan.md status."
         ),
         "stop_incomplete": (
-            "[planning-with-files] Task incomplete ({complete}/{total} phases done). "
-            "Update progress.md, then read task_plan.md and continue working on the remaining phases."
+            "[planning-with-files] Task in progress ({complete}/{total} phases complete). "
+            "If ending this turn, make sure progress.md is up to date."
         ),
     },
     "zh-CN": {
@@ -268,8 +268,8 @@ MESSAGES = {
             "如果阶段已经完成，请更新 task_plan.md 状态。"
         ),
         "stop_incomplete": (
-            "[planning-with-files] 任务未完成（已完成 {complete}/{total} 个阶段）。"
-            "请更新 progress.md，然后阅读 task_plan.md 并继续处理剩余阶段。"
+            "[planning-with-files] 任务进行中（已完成 {complete}/{total} 个阶段）。"
+            "如果正在结束本轮，请确保 progress.md 是最新的。"
         ),
     },
 }
