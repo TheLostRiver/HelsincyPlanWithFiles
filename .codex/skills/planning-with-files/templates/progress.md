@@ -20,3 +20,14 @@
   These records are factual audit entries. They are useful for recovery,
   but interpretive summaries belong in findings.md.
 -->
+
+## 5-Question Recovery Check
+<!--
+  This is a read-only recovery guide, not a prompt to hand-write progress entries.
+
+  1. Where am I? -> Current phase/status in task_plan.md
+  2. Where am I going? -> Remaining phases in task_plan.md
+  3. What's the goal? -> Goal statement in task_plan.md
+  4. What have I learned? -> findings.md
+  5. What changed? -> Hook-written auto records in this file
+-->
