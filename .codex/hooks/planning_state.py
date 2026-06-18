@@ -283,6 +283,14 @@ VALID_PLAN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$")
 LEASE_STATUSES = {"active", "stale", "released", "shared"}
 DEFAULT_SESSION_LEASE_TTL_SECONDS = 600
 DEFAULT_TASK_LEASE_LOCK_TIMEOUT_SECONDS = 2.0
+PRE_COMPACT_NOTICE = (
+    "[planning-with-files] PreCompact: context compaction is about to occur.\n"
+    "Before compaction completes: keep task_plan.md phase/status current; "
+    "leave progress.md as the objective log written by hooks; "
+    "capture interpretive notes in findings.md.\n"
+    "task_plan.md, findings.md, progress.md remain on disk and will be re-read "
+    "after compaction."
+)
 
 
 def current_lang(env: Mapping[str, str] | None = None) -> str:
@@ -1317,6 +1325,24 @@ def progress_compaction_notice(root: Path, session_id: str | None = None) -> str
     if count < threshold or count % threshold != 0:
         return ""
     return message("progress_compaction_notice", count=count)
+
+
+def render_pre_compact_context(root: Path, session_id: str | None = None) -> str:
+    access = resolve_planning_access(root, session_id=session_id)
+    if not access.allowed:
+        return access.warning or ""
+    if access.resolution is None:
+        return ""
+
+    parts = [PRE_COMPACT_NOTICE]
+    status = plan_attestation_status(root, access.resolution.paths)
+    if status.valid is True and status.actual:
+        parts.append(f"Plan-SHA256 at compaction: {status.actual}")
+    elif status.valid is False:
+        if status.expected:
+            parts.append(f"Plan-SHA256 at compaction: {status.expected}")
+        parts.append(message("plan_tampered"))
+    return "\n".join(parts).rstrip()
 
 
 def _attestation_path(project_root: Path, paths: PlanningPaths) -> Path:

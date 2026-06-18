@@ -2582,6 +2582,143 @@ class HookTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stdout.strip(), "")
 
+    def test_pre_compact_is_silent_without_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            result = run_hook(
+                "pre_compact.py",
+                root,
+                {"hook_event_name": "PreCompact", "session_id": "session-a"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), "")
+
+    def test_pre_compact_warns_before_compaction(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+
+            result = run_hook(
+                "pre_compact.py",
+                root,
+                {"hook_event_name": "PreCompact", "session_id": "session-a"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            message = payload["systemMessage"]
+            self.assertIn("PreCompact: context compaction is about to occur", message)
+            self.assertIn("leave progress.md as the objective log written by hooks", message)
+            self.assertIn("capture interpretive notes in findings.md", message)
+            self.assertNotIn("captures recent actions", message)
+            self.assertIn("task_plan.md, findings.md, progress.md remain on disk", message)
+
+    def test_pre_compact_reports_valid_attestation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            digest = attest_plan(root, legacy=True)
+
+            result = run_hook(
+                "pre_compact.py",
+                root,
+                {"hook_event_name": "PreCompact", "session_id": "session-a"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertIn(f"Plan-SHA256 at compaction: {digest}", payload["systemMessage"])
+
+    def test_pre_compact_reports_tampered_attestation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            attest_plan(root, legacy=True)
+            (root / "task_plan.md").write_text("# Task Plan: Changed\n", encoding="utf-8")
+
+            result = run_hook(
+                "pre_compact.py",
+                root,
+                {"hook_event_name": "PreCompact", "session_id": "session-a"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertIn("PreCompact: context compaction is about to occur", payload["systemMessage"])
+            self.assertIn("[PLAN TAMPERED - injection blocked]", payload["systemMessage"])
+            self.assertIn("Plan-SHA256 at compaction", payload["systemMessage"])
+
+    def test_pre_compact_uses_session_bound_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / ".planning" / "workspace"
+            session_plan = root / ".planning" / "session-plan"
+            write_plan(workspace)
+            write_plan(session_plan)
+            (workspace / "task_plan.md").write_text("# Task Plan: Workspace\n", encoding="utf-8")
+            (session_plan / "task_plan.md").write_text("# Task Plan: Session\n", encoding="utf-8")
+            workspace_digest = attest_plan(workspace)
+            session_digest = attest_plan(session_plan)
+            (root / ".planning" / ".active_plan").write_text("workspace\n", encoding="utf-8")
+            key = PLANNING_STATE.session_key("session-a")
+            bindings = root / ".planning" / "session-bindings"
+            bindings.mkdir(parents=True, exist_ok=True)
+            (bindings / f"{key}.json").write_text(
+                json.dumps({"version": 1, "session_id": "session-a", "plan_id": "session-plan"}),
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "pre_compact.py",
+                root,
+                {"hook_event_name": "PreCompact", "session_id": "session-a"},
+                env={"PWF_SESSION_ID": "session-a"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertIn(f"Plan-SHA256 at compaction: {session_digest}", payload["systemMessage"])
+            self.assertNotIn(workspace_digest, payload["systemMessage"])
+
+    def test_pre_compact_reports_ownership_denial(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_dir = root / ".planning" / "owned"
+            write_plan(plan_dir)
+            (root / ".planning" / ".active_plan").write_text("owned\n", encoding="utf-8")
+            PLANNING_STATE.write_task_lease(root, "owned", PLANNING_STATE.session_key("session-a"))
+
+            result = run_hook(
+                "pre_compact.py",
+                root,
+                {"hook_event_name": "PreCompact", "session_id": "session-b"},
+                env={"PWF_SESSION_ID": "session-b"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertIn("owned by another session", payload["systemMessage"])
+            self.assertNotIn("PreCompact: context compaction is about to occur", payload["systemMessage"])
+
+    def test_pre_compact_runs_when_session_context_paused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            self._write_paused_flag(root, "session-a", paused=True)
+
+            result = run_hook(
+                "pre_compact.py",
+                root,
+                {"hook_event_name": "PreCompact", "session_id": "session-a"},
+                env={"PWF_SESSION_ID": "session-a"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertIn("PreCompact: context compaction is about to occur", payload["systemMessage"])
+
     def test_pause_does_not_block_post_tool_progress_recording(self):
         # Core safety assertion: PostToolUse objective progress recording must
         # keep working while the session is paused. Pause only suppresses

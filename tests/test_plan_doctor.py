@@ -15,6 +15,7 @@ REQUIRED_HOOKS = [
     "user_prompt_submit.py",
     "pre_tool_use.py",
     "post_tool_use.py",
+    "pre_compact.py",
     "stop.py",
 ]
 
@@ -47,6 +48,7 @@ def write_hooks(root, hooks_json=None, hook_files=None):
                 "UserPromptSubmit": [{"hooks": [{"command": "python .codex/hooks/user_prompt_submit.py"}]}],
                 "PreToolUse": [{"hooks": [{"command": "python .codex/hooks/pre_tool_use.py"}]}],
                 "PostToolUse": [{"hooks": [{"command": "python .codex/hooks/post_tool_use.py"}]}],
+                "PreCompact": [{"hooks": [{"command": "python .codex/hooks/pre_compact.py"}]}],
                 "Stop": [{"hooks": [{"command": "python .codex/hooks/stop.py"}]}],
             }
         }
