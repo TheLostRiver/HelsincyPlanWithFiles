@@ -97,6 +97,30 @@ class ProjectConsistencyTests(unittest.TestCase):
         ):
             self.assertIn(phrase, combined)
 
+    def test_docs_document_pre_compact_hook(self):
+        readme_cn = read_text("README.md")
+        readme_en = read_text("README.en.md")
+        faq = read_text("docs/FAQ.md")
+        skill = read_text(".codex/skills/planning-with-files/SKILL.md")
+        changelog = read_text("CHANGELOG.md")
+
+        for text in (readme_cn, readme_en, faq, skill, changelog):
+            self.assertIn("PreCompact", text)
+            self.assertIn("progress.md", text)
+            self.assertIn("task_plan.md", text)
+
+        self.assertIn("客观日志", readme_cn)
+        for text in (readme_en, faq, skill, changelog):
+            self.assertIn("objective log", text)
+
+        for text in (readme_cn, readme_en, faq, skill, changelog):
+            self.assertNotIn("flush recent actions into `progress.md`", text)
+            self.assertNotIn("captures recent actions", text)
+            self.assertNotIn("recent actions are represented in `progress.md`", text)
+
+        for text in (faq, skill):
+            self.assertIn("findings.md", text)
+
     def test_docs_document_session_context_profile_commands(self):
         readme_cn = read_text("README.md")
         readme_en = read_text("README.en.md")
@@ -203,6 +227,7 @@ class ProjectConsistencyTests(unittest.TestCase):
 
     def test_hooks_json_references_existing_hook_files(self):
         hooks = json.loads(read_text(".codex/hooks.json"))
+        self.assertIn("PreCompact", hooks["hooks"])
         commands = collect_commands(hooks)
 
         referenced = []

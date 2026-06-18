@@ -30,6 +30,7 @@ REQUIRED_HOOK_ENTRYPOINTS = [
     ".codex/hooks/user_prompt_submit.py",
     ".codex/hooks/pre_tool_use.py",
     ".codex/hooks/post_tool_use.py",
+    ".codex/hooks/pre_compact.py",
     ".codex/hooks/stop.py",
 ]
 DEFAULT_COMPACT_THRESHOLD = 100

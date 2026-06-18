@@ -581,6 +581,12 @@ If doctor is clean but a specific Codex UI turn does not show visible hook text,
 
 If doctor reports missing hook files, Python failure, missing active plan, or strict session mismatch, treat it as a tool configuration issue first.
 
+### 10a. What does the `PreCompact` hook do?
+
+`PreCompact` runs right before Codex compacts the chat context. It emits a short reminder to keep `task_plan.md` aligned with the current phase, leave `progress.md` as the objective log written by hooks, and put interpretive notes or decisions in `findings.md` before older chat context disappears.
+
+It is intentionally non-destructive: it does not edit planning files, does not run `/pwf-compact`, and does not inject `task_plan.md`, `findings.md`, or `progress.md` contents. If plan attestation is set, it reports the attested plan hash as a compaction-time anchor; if the plan is tampered, it reports the same tamper warning used by the normal injection hooks.
+
 ### 11. Should I use `workspace` or `strict` mode?
 
 Most projects should use the default `workspace` mode. It treats `.planning/.active_plan` as the source of truth and is best when one project has one main Codex workflow, or when reliable recovery after context compaction matters most.

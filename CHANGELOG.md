@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- English: Added a Codex `PreCompact` hook that reminds the agent to keep `task_plan.md` status current before context compaction while preserving `progress.md` as the hook-written objective log; the hook reuses the Python planning resolver, respects session ownership, reports attestation hashes, and does not modify files.
+
 ## 0.3.1 - 2026-06-16
 
 - 中文：新增源码安全声明和正式免责声明，明确 Helsincy Plan With Files 不会删除或覆盖用户源码，只维护 `.planning/`、`.codex/` 相关任务计划、发现笔记、进度日志、会话绑定和元数据；README 现在直接链接免责声明和源码删除安全审计报告。
