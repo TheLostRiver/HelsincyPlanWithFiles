@@ -28,8 +28,8 @@ This is a Codex helper installed inside a project. After installation, the proje
 ```
 
 - `task_plan.md`: the task checklist, goal, phases, and completion state.
-- `findings.md`: notes for discoveries, decisions, and external context summaries.
-- `progress.md`: the progress log, including what Codex did, which files changed, and which tests ran.
+- `findings.md`: notes for discoveries, test conclusions, errors, decisions, and external context summaries.
+- `progress.md`: the objective progress log maintained by hooks, including write/edit auto records and changed files.
 
 For daily use, the first commands to remember are `/pwf-doctor` to check installation, `/pwf-init` to start a task, and `/pwf-status` to see the current state.
 
@@ -77,7 +77,7 @@ The value is not simply creating a few `.md` files. The value is giving Codex a 
 
 ## Version
 
-Current version: `0.3.1`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current version: `0.3.2`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 Important: please do not use `v0.1.0` or earlier anymore. Older versions include the incorrect `/plw-*` command prefix and briefly introduced a global prompts installation route, which can make migration and uninstall confusing. Upgrade to the current version and use `/pwf-*` commands instead.
 
@@ -85,7 +85,7 @@ Important: please do not use `v0.1.0` or earlier anymore. Older versions include
 
 - [普通用户使用指南](docs/USER_GUIDE.zh-CN.md): Chinese plain-language guide for what this tool does, when to use it, how to start, how to continue tasks, and how to avoid mixed progress with multiple sessions.
 - [FAQ](docs/FAQ.md): user-facing answers for installation, missing commands, context compaction, session policy, progress compaction, attestation, and Chinese mode.
-- [v0.3.1 Release Notes](docs/RELEASE_NOTES_0.3.1.md): bilingual release notes ready to reuse on GitHub Releases.
+- [v0.3.2 Release Notes](docs/RELEASE_NOTES_0.3.2.md): bilingual release notes ready to reuse on GitHub Releases.
 - [CHANGELOG.md](CHANGELOG.md): complete version history.
 
 ## Chinese Mode
@@ -114,12 +114,12 @@ Other `PWF_LANG` values fall back to English; `plan.py doctor` reports `language
 
 ## Installation
 
-For regular users, download `HelsincyPlanWithFiles-v0.3.1-codex.zip` from the release page. This package contains only the project-local `.codex/`, hooks, `/pwf-*` commands, and basic docs needed for installation.
+For regular users, download `HelsincyPlanWithFiles-v0.3.2-codex.zip` from the release page. This package contains only the project-local `.codex/`, hooks, `/pwf-*` commands, and basic docs needed for installation.
 
 ### Option A: Download From Release
 
 1. Open the [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest).
-2. Download `HelsincyPlanWithFiles-v0.3.1-codex.zip`.
+2. Download `HelsincyPlanWithFiles-v0.3.2-codex.zip`.
 3. Unzip it and copy the `.codex/` directory into your target project root.
 4. Restart Codex and approve the hooks when Codex asks for trust.
 5. Run `/pwf-doctor` in Codex to check the installation.

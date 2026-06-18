@@ -2,8 +2,13 @@
 
 ## Unreleased
 
+## 0.3.2 - 2026-06-19
+
 - 中文：统一 Stop/PostToolUse、兼容脚本、Skill 示例、初始化模板和 FAQ/README 的 `progress.md` 责任边界：`progress.md` 保持为 hooks 写入的客观 auto records，agent 更新 `task_plan.md` 阶段状态，并把解释性笔记、测试结论、错误分析和决策写入 `findings.md`。
 - English: Aligned Stop/PostToolUse messages, compatibility scripts, skill hook examples, initialization templates, and FAQ/README wording around `progress.md` ownership: `progress.md` remains the objective hook-written auto-record log, while agents update `task_plan.md` phase/status and put interpretive notes, test conclusions, errors, and decisions in `findings.md`.
+- 中文：将 `progress.md` 初始化模板改为 hook-owned 客观记录模板，移除“手写 session log / test results / error log”的引导，同时保留只读 5 问恢复检查，避免破坏中文模板初始化兼容性。
+- English: Reworked `progress.md` initialization templates into hook-owned objective-record templates, removing prompts to hand-write session logs, test results, or error logs while preserving the read-only 5-question recovery check for template compatibility.
+- 中文：新增 Codex `PreCompact` hook，在上下文压缩前提醒 agent 更新 `task_plan.md` 阶段状态、保持 `progress.md` 作为 hook-written objective log；该 hook 复用 Python planning resolver，遵守 session ownership，报告 attestation hash，且不修改文件。
 - English: Added a Codex `PreCompact` hook that reminds the agent to keep `task_plan.md` status current before context compaction while preserving `progress.md` as the hook-written objective log; the hook reuses the Python planning resolver, respects session ownership, reports attestation hashes, and does not modify files.
 
 ## 0.3.1 - 2026-06-16
