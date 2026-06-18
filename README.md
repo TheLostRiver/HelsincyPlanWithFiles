@@ -193,7 +193,7 @@ Copy-Item -Recurse -Force .\HelsincyPlanWithFiles\.codex .\your-project\
 - 在工具调用前提醒 agent 查看当前计划。
 - 在文件写入或修改后，把变更摘要追加到 `progress.md`。
 - 在 Codex 上下文压缩前输出 `PreCompact` 提醒，提示同步 `task_plan.md` 阶段状态，并保持 `progress.md` 作为 hook 写入的客观日志。
-- 在停止前报告任务阶段进度，未完成时提醒保持 `progress.md` 最新。
+- 在停止前报告任务阶段进度，未完成时提醒检查 `task_plan.md` 阶段状态，并把解释性结论写入 `findings.md`。
 - 支持 Windows 优先的 Python hook runtime，同时保留 shell/PowerShell helper 脚本。
 
 ## 工作方式
@@ -202,8 +202,8 @@ Copy-Item -Recurse -Force .\HelsincyPlanWithFiles\.codex .\your-project\
 
 ```text
 task_plan.md   # 阶段、目标、当前状态
-findings.md    # 研究发现、决策、外部资料摘要
-progress.md    # 执行动作、测试结果、文件变更记录
+findings.md    # 研究发现、决策、测试结论、错误分析、外部资料摘要
+progress.md    # hooks 写入的客观 auto records 和文件变更记录
 ```
 
 hook 会解析当前 active plan：

@@ -193,7 +193,7 @@ The first batch uses the `/pwf-XXX` naming pattern. `pwf` means planning with fi
 - Reminds the agent to check the current plan before tool use.
 - Appends a compact change summary to `progress.md` after file writes or edits.
 - Emits a `PreCompact` reminder before Codex context compaction to keep plan status current while preserving `progress.md` as the hook-written objective log.
-- Reports task progress before stop and reminds the agent to keep `progress.md` up to date when phases are incomplete.
+- Reports task progress before stop and reminds the agent to review `task_plan.md` phase/status and put interpretive conclusions in `findings.md`.
 - Uses a Windows-first Python hook runtime while keeping shell and PowerShell helper scripts for compatibility.
 
 ## How It Works
@@ -202,8 +202,8 @@ The tool uses three local planning files:
 
 ```text
 task_plan.md   # phases, goal, current status
-findings.md    # research findings, decisions, external context summaries
-progress.md    # actions, test results, file change records
+findings.md    # research findings, decisions, test conclusions, errors, external context summaries
+progress.md    # objective hook-written auto records and file change records
 ```
 
 Hooks resolve the active plan in this order:

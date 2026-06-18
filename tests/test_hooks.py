@@ -547,7 +547,10 @@ class HookTests(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr)
             message = json.loads(result.stdout)["systemMessage"]
-            self.assertIn("Recorded PostToolUse context", message)
+            self.assertIn("Objective PostToolUse auto record appended by hooks", message)
+            self.assertIn("update task_plan.md status", message)
+            self.assertIn("put interpretive notes in findings.md", message)
+            self.assertNotIn("Update progress.md", message)
             self.assertIn("progress.md has 100 auto records", message)
             self.assertIn("Consider running /pwf-compact", message)
 
@@ -611,8 +614,11 @@ class HookTests(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr)
             message = json.loads(result.stdout)["systemMessage"]
-            self.assertIn("已将 PostToolUse 上下文记录到 progress.md", message)
-            self.assertIn("如果阶段已经完成", message)
+            self.assertIn("PostToolUse", message)
+            self.assertIn("hook", message)
+            self.assertIn("task_plan.md", message)
+            self.assertIn("findings.md", message)
+            self.assertNotIn("progress.md 是最新", message)
 
     def test_post_tool_use_records_edit_file_path(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2460,7 +2466,10 @@ class HookTests(unittest.TestCase):
                 self.assertNotIn("reason", payload)
                 self.assertIn("systemMessage", payload)
                 self.assertIn("Task in progress", payload["systemMessage"])
-                self.assertIn("progress.md is up to date", payload["systemMessage"])
+                self.assertIn("review task_plan.md phase/status", payload["systemMessage"])
+                self.assertIn("findings.md", payload["systemMessage"])
+                self.assertIn("progress.md is maintained by hooks", payload["systemMessage"])
+                self.assertNotIn("progress.md is up to date", payload["systemMessage"])
                 self.assertNotIn("continue working", payload["systemMessage"])
                 self.assertNotIn("remaining phases", payload["systemMessage"])
 
@@ -2481,8 +2490,10 @@ class HookTests(unittest.TestCase):
             self.assertNotIn("decision", payload)
             self.assertNotIn("reason", payload)
             self.assertIn("任务进行中", payload["systemMessage"])
+            self.assertIn("task_plan.md", payload["systemMessage"])
+            self.assertIn("findings.md", payload["systemMessage"])
             self.assertIn("progress.md", payload["systemMessage"])
-            self.assertIn("最新", payload["systemMessage"])
+            self.assertNotIn("最新", payload["systemMessage"])
             self.assertNotIn("继续", payload["systemMessage"])
 
     def test_stop_is_silent_when_all_phases_complete(self):
