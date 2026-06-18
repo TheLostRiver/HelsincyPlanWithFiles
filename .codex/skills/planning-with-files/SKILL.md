@@ -17,7 +17,7 @@ hooks:
     - matcher: "Write|Edit"
       hooks:
         - type: command
-          command: "if [ -f task_plan.md ]; then echo '[planning-with-files] Update progress.md with what you just did. If a phase is now complete, update task_plan.md status.'; fi"
+          command: "if [ -f task_plan.md ]; then echo '[planning-with-files] Objective PostToolUse auto records are maintained by hooks. If a phase is now complete, update task_plan.md status; put interpretive notes in findings.md.'; fi"
   PreCompact:
     - matcher: "*"
       hooks:
@@ -99,13 +99,15 @@ Filesystem = Disk (persistent, unlimited)
 |------|---------|----------------|
 | `task_plan.md` | Phases, progress, decisions | After each phase |
 | `findings.md` | Research, discoveries | After ANY discovery |
-| `progress.md` | Session log, test results | Throughout session |
+| `progress.md` | Objective hook-written auto records | Maintained by hooks after write/edit tools |
 
 ## Objective Records vs Agent Notes
 
 Hooks may append objective auto records to `progress.md`: tool name, timestamp, result, and changed file paths. These records are factual audit entries.
 
 Automatic records also include stable `Session` and `Plan-Source` fields when the Codex Python hooks are installed. `Session` is a short session key or `unavailable`; `Plan-Source` shows whether the record came from `env`, `session`, `workspace`, `newest`, or `legacy` plan resolution.
+
+Agents should not hand-write routine action summaries into `progress.md`. Keep phase/status in `task_plan.md`; put interpretive notes, test conclusions, errors, and decisions in `findings.md`; leave `progress.md` as the objective log written by hooks.
 
 Agent-written notes are interpretive: rationale, conclusions, risks, and next steps. They are useful working memory, but they are not guaranteed to be fully accurate. When accuracy matters, verify agent notes against hook records, tests, and the actual code.
 
@@ -297,7 +299,7 @@ Copy these templates to start:
 
 - [templates/task_plan.md](templates/task_plan.md) — Phase tracking
 - [templates/findings.md](templates/findings.md) — Research storage
-- [templates/progress.md](templates/progress.md) — Session logging
+- [templates/progress.md](templates/progress.md) — Hook-written objective records
 
 ## Scripts
 

@@ -29,5 +29,5 @@ if [ "$COMPLETE" -eq "$TOTAL" ] && [ "$TOTAL" -gt 0 ]; then
     exit 0
 fi
 
-echo "{\"followup_message\": \"[planning-with-files] Task in progress ($COMPLETE/$TOTAL phases complete). If ending this turn, make sure progress.md is up to date.\"}"
+echo "{\"followup_message\": \"[planning-with-files] Task in progress ($COMPLETE/$TOTAL phases complete). If ending this turn, review task_plan.md phase/status; put interpretive notes in findings.md; progress.md is maintained by hooks as the objective log.\"}"
 exit 0

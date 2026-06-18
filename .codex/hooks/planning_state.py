@@ -227,12 +227,15 @@ MESSAGES = {
             "~{chars} chars (~{tokens} tokens). {hint}. Mute: /pwf-context-notice-off."
         ),
         "post_tool_recorded": (
-            "[planning-with-files] Recorded PostToolUse context in progress.md. "
-            "If a phase is now complete, update task_plan.md status."
+            "[planning-with-files] Objective PostToolUse auto record appended by hooks. "
+            "If a phase is now complete, update task_plan.md status; "
+            "put interpretive notes in findings.md."
         ),
         "stop_incomplete": (
             "[planning-with-files] Task in progress ({complete}/{total} phases complete). "
-            "If ending this turn, make sure progress.md is up to date."
+            "If ending this turn, review task_plan.md phase/status; "
+            "put interpretive notes or test conclusions in findings.md; "
+            "progress.md is maintained by hooks as the objective log."
         ),
     },
     "zh-CN": {
@@ -264,12 +267,13 @@ MESSAGES = {
             "约 {chars} chars（~{tokens} tokens）。{hint}。静音：/pwf-context-notice-off。"
         ),
         "post_tool_recorded": (
-            "[planning-with-files] 已将 PostToolUse 上下文记录到 progress.md。"
-            "如果阶段已经完成，请更新 task_plan.md 状态。"
+            "[planning-with-files] PostToolUse 客观 auto record 已由 hook 追加。"
+            "如果阶段已经完成，请更新 task_plan.md 状态；解释性笔记或测试结论写入 findings.md。"
         ),
         "stop_incomplete": (
             "[planning-with-files] 任务进行中（已完成 {complete}/{total} 个阶段）。"
-            "如果正在结束本轮，请确保 progress.md 是最新的。"
+            "如果正在结束本轮，请检查 task_plan.md 阶段/状态；解释性笔记或测试结论写入 findings.md；"
+            "progress.md 由 hooks 维护为客观日志。"
         ),
     },
 }

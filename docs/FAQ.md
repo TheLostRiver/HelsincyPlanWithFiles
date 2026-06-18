@@ -18,8 +18,8 @@
 
 ```text
 task_plan.md   # 目标、阶段、当前状态
-findings.md    # 研究发现、决策、外部资料摘要
-progress.md    # 执行动作、测试结果、文件变更记录
+findings.md    # 研究发现、决策、测试结论、错误分析、外部资料摘要
+progress.md    # hooks 写入的客观 auto records 和文件变更记录
 ```
 
 hook 会在会话开始、用户提交提示、工具调用前后和停止前读取或更新这些文件，让 Codex 在上下文变短或会话恢复后仍能找到任务状态。
@@ -424,8 +424,8 @@ Normal notes depend on the agent remembering to write them. This tool organizes 
 
 ```text
 task_plan.md   # goal, phases, current status
-findings.md    # research findings, decisions, external summaries
-progress.md    # actions, test results, file change records
+findings.md    # research findings, decisions, test conclusions, errors, external summaries
+progress.md    # objective hook-written auto records and file change records
 ```
 
 Hooks read or update those files at session start, user prompt submit, tool use, and stop time, so Codex can recover task state after the chat context gets shorter.

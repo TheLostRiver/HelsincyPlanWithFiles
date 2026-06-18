@@ -121,6 +121,49 @@ class ProjectConsistencyTests(unittest.TestCase):
         for text in (faq, skill):
             self.assertIn("findings.md", text)
 
+    def test_progress_ownership_language_does_not_prompt_manual_progress_writes(self):
+        checked_paths = [
+            ".codex/hooks/planning_state.py",
+            ".codex/hooks/post-tool-use.sh",
+            ".codex/hooks/stop.sh",
+            ".codex/skills/planning-with-files/SKILL.md",
+            ".codex/skills/planning-with-files/scripts/check-complete.sh",
+            ".codex/skills/planning-with-files/scripts/check-complete.ps1",
+            ".codex/skills/planning-with-files/templates/task_plan.md",
+            ".codex/skills/planning-with-files/templates/progress.md",
+            ".codex/skills/planning-with-files/templates/zh-CN/task_plan.md",
+            ".codex/skills/planning-with-files/templates/zh-CN/progress.md",
+            "README.md",
+            "README.en.md",
+            "docs/FAQ.md",
+            "CHANGELOG.md",
+        ]
+        combined = "\n".join(read_text(path) for path in checked_paths)
+
+        for forbidden in (
+            "Update progress.md with what you just did",
+            "Update progress.md before stopping",
+            "make sure progress.md is up to date",
+            "progress.md is up to date",
+            "Document test results in progress.md",
+            "将测试结果记录到 progress.md",
+            "请确保 progress.md 是最新的",
+            "保持 `progress.md` 最新",
+            "reminds the agent to keep `progress.md` up to date",
+            "progress.md    # actions, test results, file change records",
+            "progress.md    # 执行动作、测试结果、文件变更记录",
+            "Session logging",
+        ):
+            self.assertNotIn(forbidden, combined)
+
+        for required in (
+            "progress.md as the objective log written by hooks",
+            "progress.md is maintained by hooks",
+            "findings.md",
+            "task_plan.md",
+        ):
+            self.assertIn(required, combined)
+
     def test_docs_document_session_context_profile_commands(self):
         readme_cn = read_text("README.md")
         readme_en = read_text("README.en.md")
