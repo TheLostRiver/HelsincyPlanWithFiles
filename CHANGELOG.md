@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- 中文：默认在 `SessionStart` / `UserPromptSubmit` 中注入有界 `findings.md` tail，保留 `PWF_INCLUDE_FINDINGS=0` 显式关闭和 `PWF_FINDINGS_TAIL_LINES` 窗口调节；findings 仍使用 delimiter framing 和不可信内容提示。
+- English: Include a bounded `findings.md` tail by default in `SessionStart` / `UserPromptSubmit`, while preserving `PWF_INCLUDE_FINDINGS=0` as an explicit opt-out and `PWF_FINDINGS_TAIL_LINES` as the window override; findings still use delimiter framing and untrusted-content warnings.
+- 中文：`SessionStart` hook matcher 现在覆盖 Codex 的 `compact` source，压缩后恢复复用正常 context renderer；`PreCompact` 仍只提醒和报告 attestation，暂不使用 `PostCompact` 做上下文注入。
+- English: The `SessionStart` hook matcher now covers Codex's `compact` source, so post-compaction recovery reuses the normal context renderer; `PreCompact` remains a reminder/attestation hook, and `PostCompact` is intentionally not used for context injection.
+
 ## 0.3.2 - 2026-06-19
 
 - 中文：统一 Stop/PostToolUse、兼容脚本、Skill 示例、初始化模板和 FAQ/README 的 `progress.md` 责任边界：`progress.md` 保持为 hooks 写入的客观 auto records，agent 更新 `task_plan.md` 阶段状态，并把解释性笔记、测试结论、错误分析和决策写入 `findings.md`。
