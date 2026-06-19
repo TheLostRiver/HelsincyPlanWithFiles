@@ -2348,10 +2348,14 @@ class HookTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            payload = json.loads(result.stdout)
+            context = payload["hookSpecificOutput"]["additionalContext"]
             self.assertIn("planning context omitted", context)
             self.assertNotIn("---BEGIN", context)
             self.assertNotIn("---END", context)
+            self.assertIn("planning context was not injected", payload["systemMessage"])
+            self.assertIn("PWF_CONTEXT_MAX_CHARS is too small", payload["systemMessage"])
+            self.assertNotIn("context: profile=", payload["systemMessage"])
 
     def test_user_prompt_submit_total_budget_trims_record_aware_progress_on_record_boundaries(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2451,10 +2455,14 @@ class HookTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            payload = json.loads(result.stdout)
+            context = payload["hookSpecificOutput"]["additionalContext"]
             self.assertIn("[PLAN TAMPERED - injection blocked]", context)
             self.assertNotIn("# Task Plan: Test", context)
             self.assertNotIn("---BEGIN PLAN DATA---", context)
+            self.assertIn("planning context was not injected", payload["systemMessage"])
+            self.assertIn("attestation mismatch", payload["systemMessage"])
+            self.assertNotIn("context: profile=", payload["systemMessage"])
 
     def test_pre_tool_use_blocks_tampered_active_plan_attestation(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2514,6 +2522,28 @@ class HookTests(unittest.TestCase):
             self.assertIn("- compact recovery finding", output)
             self.assertNotIn("[planning-with-files] context:", output)
             self.assertIn("[planning-with-files] context:", payload["systemMessage"])
+
+    def test_session_start_tampered_plan_reports_blocked_notice_with_catchup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            (root / ".plan-attestation").write_text("0" * 64, encoding="ascii")
+
+            result = run_hook(
+                "session_start.py",
+                root,
+                {"hook_event_name": "SessionStart", "source": "startup"},
+                env={"PWF_SESSION_CATCHUP_ECHO_ARGS": "1"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            output = payload["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("[planning-with-files] catchup project:", output)
+            self.assertIn("[PLAN TAMPERED - injection blocked]", output)
+            self.assertIn("planning context was not injected", payload["systemMessage"])
+            self.assertIn("attestation mismatch", payload["systemMessage"])
+            self.assertNotIn("context: profile=", payload["systemMessage"])
 
     def test_session_start_calls_catchup_for_effective_plan_directory(self):
         with tempfile.TemporaryDirectory() as tmp:
