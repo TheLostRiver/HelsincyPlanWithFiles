@@ -2439,6 +2439,26 @@ class HookTests(unittest.TestCase):
             self.assertEqual(hook_output["hookEventName"], "SessionStart")
             self.assertIn("# Task Plan: Test", hook_output["additionalContext"])
 
+    def test_session_start_compact_source_outputs_prompt_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            (root / "findings.md").write_text(
+                "# Findings\n\n- compact recovery finding\n",
+                encoding="utf-8",
+            )
+
+            result = run_hook(
+                "session_start.py",
+                root,
+                {"hook_event_name": "SessionStart", "source": "compact", "session_id": "session-a"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            output = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("# Task Plan: Test", output)
+            self.assertIn("- compact recovery finding", output)
+
     def test_session_start_calls_catchup_for_effective_plan_directory(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
