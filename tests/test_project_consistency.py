@@ -281,6 +281,13 @@ class ProjectConsistencyTests(unittest.TestCase):
         for path in referenced:
             self.assertTrue((REPO_ROOT / path).is_file(), path)
 
+    def test_session_start_hook_matches_compact_source(self):
+        hooks = json.loads(read_text(".codex/hooks.json"))
+        entries = hooks["hooks"].get("SessionStart", [])
+        matchers = [entry.get("matcher", "") for entry in entries]
+
+        self.assertTrue(any("compact" in matcher.split("|") for matcher in matchers))
+
     def test_version_is_recorded_in_changelog(self):
         version = read_text("VERSION").strip()
         changelog = read_text("CHANGELOG.md")
