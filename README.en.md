@@ -185,14 +185,16 @@ The first batch uses the `/pwf-XXX` naming pattern. `pwf` means planning with fi
 | Hook runtime | Shell-oriented scripts and platform mirrors | Python hook runtime for more reliable Windows behavior |
 | Progress records | Mostly reminds the agent to write notes | Hooks automatically record objective file changes |
 | Diagnostics | Requires users to inspect scripts and hook state | `plan.py doctor` diagnoses install, active plan, and attestation |
-| Security boundary | Canonical skill emphasizes delimiter and attestation | Delimiter, attestation, and findings opt-in framing are implemented in Codex hooks |
+| Security boundary | Canonical skill emphasizes delimiter and attestation | Delimiter, attestation, and findings data framing are implemented in Codex hooks |
 
 ## Features
 
 - Injects the active plan into Codex context on session start and user prompt submit.
+- Includes a bounded `findings.md` tail by default during session start and user prompt submit, with an explicit opt-out.
 - Reminds the agent to check the current plan before tool use.
 - Appends a compact change summary to `progress.md` after file writes or edits.
 - Emits a `PreCompact` reminder before Codex context compaction to keep plan status current while preserving `progress.md` as the hook-written objective log.
+- Routes Codex compact recovery through the normal `SessionStart` context renderer; `PostCompact` is not used for context injection.
 - Reports task progress before stop and reminds the agent to review `task_plan.md` phase/status and put interpretive conclusions in `findings.md`.
 - Uses a Windows-first Python hook runtime while keeping shell and PowerShell helper scripts for compatibility.
 
@@ -291,11 +293,10 @@ Automatic `progress.md` records include `Session` and `Plan-Source` fields so au
 
 ### Context Profiles
 
-Default hook context stays compatible: the plan head, recent progress, and opt-in findings use the original compact windows. For large tasks or recovery after context compaction, enable a larger injection profile:
+Default hook context stays bounded: the plan head, recent progress, and a small `findings.md` tail use compact windows. For large tasks or recovery after context compaction, enable a larger injection profile:
 
 ```powershell
 $env:PWF_CONTEXT_PROFILE = "expanded"
-$env:PWF_INCLUDE_FINDINGS = "1"
 ```
 
 `PWF_CONTEXT_PROFILE` supports:
@@ -308,7 +309,7 @@ $env:PWF_INCLUDE_FINDINGS = "1"
 | `deep` | Deliberate recovery after heavy context compaction or resume |
 | `custom` | Advanced tuning through explicit `PWF_*` limit variables |
 
-`findings.md` always stays opt-in: findings are injected only when `PWF_INCLUDE_FINDINGS=1` is set. Run `/pwf-status` or `/pwf-doctor` to see the active profile, progress mode, findings state, and effective context budget.
+`findings.md` is included by default as a bounded tail for `UserPromptSubmit` and `SessionStart`, including Codex `SessionStart` events with source `compact`. Set `PWF_INCLUDE_FINDINGS=0` to disable findings injection, or `PWF_FINDINGS_TAIL_LINES=N` to tune the tail window. Findings are still framed as untrusted data. Run `/pwf-status` or `/pwf-doctor` to see the active profile, progress mode, findings state, and effective context budget.
 
 `PostToolUse` only records tools that write or edit files:
 

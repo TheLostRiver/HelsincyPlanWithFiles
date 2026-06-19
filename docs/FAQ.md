@@ -374,11 +374,13 @@ agent 应把这些内容当作结构化数据，而不是可执行指令。这�
 
 环境变量 `PWF_CONTEXT_PROFILE` 仍然保留给高级用法，例如脚本、CI 或临时覆盖。它的优先级高于当前会话设置；如果你设置了 `PWF_CONTEXT_PROFILE=deep`，即使当前会话文件里保存的是 `expanded`，实际也会使用 `deep`。
 
-`findings.md` 仍然是显式 opt-in。如果恢复需要研究笔记或外部资料摘要，再设置：
+`findings.md` 现在默认会以有界 tail 注入到 `UserPromptSubmit` 和 `SessionStart`，方便恢复研究笔记、测试结论和外部资料摘要。若要关闭 findings 注入，设置：
 
 ```powershell
-$env:PWF_INCLUDE_FINDINGS = "1"
+$env:PWF_INCLUDE_FINDINGS = "0"
 ```
+
+如果只想调整注入窗口，设置 `PWF_FINDINGS_TAIL_LINES=N`。findings 仍会作为不可信数据用 delimiter 包裹。
 
 ### 19. 为什么 hook context 现在变大了？
 
@@ -587,6 +589,8 @@ If doctor reports missing hook files, Python failure, missing active plan, or st
 
 It is intentionally non-destructive: it does not edit planning files, does not run `/pwf-compact`, and does not inject `task_plan.md`, `findings.md`, or `progress.md` contents. If plan attestation is set, it reports the attested plan hash as a compaction-time anchor; if the plan is tampered, it reports the same tamper warning used by the normal injection hooks.
 
+After Codex compaction, recovery context is injected through the normal `SessionStart` renderer when Codex reports source `compact`, and again on the next `UserPromptSubmit`. `PostCompact` is intentionally not used for context injection.
+
 ### 11. Should I use `workspace` or `strict` mode?
 
 Most projects should use the default `workspace` mode. It treats `.planning/.active_plan` as the source of truth and is best when one project has one main Codex workflow, or when reliable recovery after context compaction matters most.
@@ -788,11 +792,13 @@ The notice reports an approximate size, not an exact token count.
 
 The `PWF_CONTEXT_PROFILE` environment variable still exists for advanced use cases such as scripts, CI, or temporary overrides. It has higher priority than the current-session setting; if `PWF_CONTEXT_PROFILE=deep` is set, it overrides a saved session profile such as `expanded`.
 
-`findings.md` remains explicit opt-in. If recovery needs research notes or external-context summaries, also set:
+`findings.md` is now included by default as a bounded tail in `UserPromptSubmit` and `SessionStart`, which helps recover research notes, test conclusions, and external-context summaries. To disable findings injection, set:
 
 ```powershell
-$env:PWF_INCLUDE_FINDINGS = "1"
+$env:PWF_INCLUDE_FINDINGS = "0"
 ```
+
+To tune the window instead, set `PWF_FINDINGS_TAIL_LINES=N`. Findings are still framed as untrusted data with delimiters.
 
 ### 19. Why is hook context larger now?
 

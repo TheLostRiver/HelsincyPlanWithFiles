@@ -185,7 +185,7 @@ Copy-Item -Recurse -Force .\HelsincyPlanWithFiles\.codex .\your-project\
 | hook runtime | 偏 shell 脚本和跨平台镜像 | Python hook runtime，Windows 上更稳定 |
 | progress 记录 | 更偏提醒 agent 手动记录 | hook 自动记录客观文件变更 |
 | 诊断能力 | 依赖用户理解脚本和 hook 状态 | `plan.py doctor` 一条命令诊断安装、active plan、attestation |
-| 安全边界 | canonical skill 强调 delimiter 和 attestation | delimiter、attestation、findings opt-in framing 已在 Codex hook 中落地 |
+| 安全边界 | canonical skill 强调 delimiter 和 attestation | delimiter、attestation、findings 数据边界已在 Codex hook 中落地 |
 
 ## 功能
 
@@ -193,6 +193,7 @@ Copy-Item -Recurse -Force .\HelsincyPlanWithFiles\.codex .\your-project\
 - 在工具调用前提醒 agent 查看当前计划。
 - 在文件写入或修改后，把变更摘要追加到 `progress.md`。
 - 在 Codex 上下文压缩前输出 `PreCompact` 提醒，提示同步 `task_plan.md` 阶段状态，并保持 `progress.md` 作为 hook 写入的客观日志。
+- Codex 压缩恢复时通过 `SessionStart` 的 `compact` source 复用正常上下文注入；暂不使用 `PostCompact` 做上下文注入。
 - 在停止前报告任务阶段进度，未完成时提醒检查 `task_plan.md` 阶段状态，并把解释性结论写入 `findings.md`。
 - 支持 Windows 优先的 Python hook runtime，同时保留 shell/PowerShell helper 脚本。
 
@@ -291,11 +292,10 @@ $env:PWF_STRICT_REQUIRES_BINDING=1
 
 ### Context Profiles
 
-默认 hook 上下文保持兼容：计划开头、最近 progress 和 opt-in findings 都使用原来的紧凑窗口。大型任务或上下文压缩后恢复时，可以开启更大的上下文注入 profile：
+默认 hook 上下文保持有界：计划开头、最近 progress 和一小段 `findings.md` tail 都使用紧凑窗口。大型任务或上下文压缩后恢复时，可以开启更大的上下文注入 profile：
 
 ```powershell
 $env:PWF_CONTEXT_PROFILE = "expanded"
-$env:PWF_INCLUDE_FINDINGS = "1"
 ```
 
 `PWF_CONTEXT_PROFILE` 支持：
@@ -308,7 +308,7 @@ $env:PWF_INCLUDE_FINDINGS = "1"
 | `deep` | 上下文压缩或 resume 后需要更强恢复信息的刻意恢复模式 |
 | `custom` | 高级用户用显式 `PWF_*` limit 变量调参 |
 
-`findings.md` 始终需要显式开启：只有设置 `PWF_INCLUDE_FINDINGS=1` 后才会注入 findings。运行 `/pwf-status` 或 `/pwf-doctor` 可以查看当前 profile、progress 注入模式、findings 是否开启和有效预算。
+`findings.md` 现在默认会作为有界 tail 注入到 `UserPromptSubmit` 和 `SessionStart`，也包括 Codex `SessionStart` 的 `compact` source。设置 `PWF_INCLUDE_FINDINGS=0` 可以关闭 findings 注入；设置 `PWF_FINDINGS_TAIL_LINES=N` 可以调整 tail 窗口。findings 仍然会作为不可信数据用 delimiter 包裹。运行 `/pwf-status` 或 `/pwf-doctor` 可以查看当前 profile、progress 注入模式、findings 状态和有效预算。
 
 `PostToolUse` 只记录真正的写文件/改文件工具：
 
