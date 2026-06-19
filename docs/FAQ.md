@@ -790,6 +790,8 @@ To see when the tool injected task context, use:
 
 The notice reports an approximate size, not an exact token count.
 
+The notice is user-visible hook output, not injected planning context. The agent receives `task_plan.md`, recent progress, and findings data through `additionalContext`; the approximate size line, profile hints, and mute command stay outside that context so they cannot be mistaken for task instructions.
+
 The `PWF_CONTEXT_PROFILE` environment variable still exists for advanced use cases such as scripts, CI, or temporary overrides. It has higher priority than the current-session setting; if `PWF_CONTEXT_PROFILE=deep` is set, it overrides a saved session profile such as `expanded`.
 
 `findings.md` is now included by default as a bounded tail in `UserPromptSubmit` and `SessionStart`, which helps recover research notes, test conclusions, and external-context summaries. To disable findings injection, set:
@@ -820,7 +822,7 @@ Rationale: if you pause, change a bunch of files, then resume, the objective cha
 
 ### 22. `/pwf-context-notice` now shows on every prompt — how do I mute it?
 
-Auto mode (`/pwf-context-notice-auto`) now shows a single concise line on all profiles, telling you how many chars/tokens the injection used plus an upgrade/downgrade hint. To mute it completely, run:
+Auto mode (`/pwf-context-notice-auto`) now shows a single concise line on all profiles, telling you how many chars/tokens the injection used plus an upgrade/downgrade hint. This line is shown to the user as hook output and is kept out of the agent's injected planning context. To mute it completely, run:
 
 ```text
 /pwf-context-notice-off
