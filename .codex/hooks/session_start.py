@@ -50,14 +50,21 @@ def main() -> None:
     ]
     output = "\n\n".join(part for part in parts if part)
     if output:
-        adapter.emit_json(
-            {
-                "hookSpecificOutput": {
-                    "hookEventName": "SessionStart",
-                    "additionalContext": output,
-                }
+        payload = {
+            "hookSpecificOutput": {
+                "hookEventName": "SessionStart",
+                "additionalContext": output,
             }
+        }
+        notice = planning_state.render_context_notice(
+            output,
+            root=root,
+            session_id=session_id,
+            event="SessionStart",
         )
+        if notice:
+            payload["systemMessage"] = notice
+        adapter.emit_json(payload)
 
 
 if __name__ == "__main__":

@@ -6,6 +6,8 @@
 - English: Include a bounded `findings.md` tail by default in `SessionStart` / `UserPromptSubmit`, while preserving `PWF_INCLUDE_FINDINGS=0` as an explicit opt-out and `PWF_FINDINGS_TAIL_LINES` as the window override; findings still use delimiter framing and untrusted-content warnings.
 - 中文：`SessionStart` hook matcher 现在覆盖 Codex 的 `compact` source，压缩后恢复复用正常 context renderer；`PreCompact` 仍只提醒和报告 attestation，暂不使用 `PostCompact` 做上下文注入。
 - English: The `SessionStart` hook matcher now covers Codex's `compact` source, so post-compaction recovery reuses the normal context renderer; `PreCompact` remains a reminder/attestation hook, and `PostCompact` is intentionally not used for context injection.
+- 中文：context injection notice 现在作为用户可见 hook message 输出，不再拼进 `additionalContext`；agent 只接收 planning 数据，约 chars/tokens、profile 建议和静音命令不会污染压缩恢复上下文。
+- English: Context injection notices are now emitted as user-visible hook messages instead of being prepended to `additionalContext`; agents receive only planning data, while approximate chars/tokens, profile hints, and mute commands stay out of compaction recovery context.
 
 ## 0.3.2 - 2026-06-19
 

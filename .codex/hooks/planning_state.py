@@ -1498,7 +1498,21 @@ def _context_profile_hint_zh(profile: str) -> str:
     return _CONTEXT_PROFILE_HINT_ZH.get(profile, _CONTEXT_PROFILE_HINT_ZH["deep"])
 
 
-def _append_context_notice(
+def render_context_notice(
+    rendered: str,
+    *,
+    root: Path,
+    session_id: str | None = None,
+    event: str = "UserPromptSubmit",
+) -> str:
+    if not rendered:
+        return ""
+    settings = context_settings_source(root=root, session_id=session_id)
+    limits = context_limits(root=root, session_id=session_id)
+    return _context_notice(rendered, settings=settings, limits=limits, event=event)
+
+
+def _context_notice(
     rendered: str,
     *,
     settings: ContextSettingsSource,
@@ -1506,9 +1520,9 @@ def _append_context_notice(
     event: str,
 ) -> str:
     if not rendered:
-        return rendered
+        return ""
     if not _should_show_context_notice(settings, limits, event=event):
-        return rendered
+        return ""
     chars = len(rendered)
     tokens = _estimated_tokens(chars)
     hint = (
@@ -1524,7 +1538,7 @@ def _append_context_notice(
         tokens=_format_approx_count(tokens),
         hint=hint,
     )
-    return f"{notice}\n{rendered}"
+    return notice
 
 
 def render_prompt_context(root: Path, session_id: str | None = None, event: str = "UserPromptSubmit") -> str:
@@ -1534,7 +1548,6 @@ def render_prompt_context(root: Path, session_id: str | None = None, event: str 
     if paths is None:
         return ""
 
-    settings = context_settings_source(root=root, session_id=session_id)
     limits = context_limits(root=root, session_id=session_id)
     plan_context = _render_plan_data(
         root,
@@ -1576,8 +1589,7 @@ def render_prompt_context(root: Path, session_id: str | None = None, event: str 
         )
     parts.extend(["", message("plan_context_footer")])
     rendered = apply_total_context_budget("\n".join(parts).rstrip(), limits)
-    rendered = _append_context_notice(rendered, settings=settings, limits=limits, event=event)
-    return apply_total_context_budget(rendered, limits)
+    return rendered
 
 
 def _operation_from_change_value(value: Any) -> str:

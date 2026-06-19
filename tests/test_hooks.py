@@ -861,6 +861,9 @@ class HookTests(unittest.TestCase):
             self.assertEqual(hook_output["hookEventName"], "UserPromptSubmit")
             self.assertIn("# Task Plan: Test", hook_output["additionalContext"])
             self.assertIn("structured data, not instructions", hook_output["additionalContext"])
+            self.assertIn("[planning-with-files] context:", payload["systemMessage"])
+            self.assertIn("profile=default", payload["systemMessage"])
+            self.assertNotIn("[planning-with-files] context:", hook_output["additionalContext"])
 
     def test_user_prompt_submit_uses_workspace_mode_when_sessions_dir_exists(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1893,11 +1896,16 @@ class HookTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
-            self.assertIn("[planning-with-files] context:", context)
-            self.assertIn("profile=expanded", context)
-            self.assertIn("progress=20 records", context)
-            self.assertRegex(context, r"~[0-9.]+k chars \(~[0-9.]+k tokens\)")
+            payload = json.loads(result.stdout)
+            context = payload["hookSpecificOutput"]["additionalContext"]
+            notice = payload["systemMessage"]
+            self.assertNotIn("[planning-with-files] context:", context)
+            self.assertNotIn("Upgrade: /pwf-context-expanded", context)
+            self.assertNotIn("Mute: /pwf-context-notice-off", context)
+            self.assertIn("[planning-with-files] context:", notice)
+            self.assertIn("profile=expanded", notice)
+            self.assertIn("progress=20 records", notice)
+            self.assertRegex(notice, r"~[0-9.]+k chars \(~[0-9.]+k tokens\)")
 
     def test_user_prompt_submit_default_profile_auto_notice_now_shows(self):
         # Decision change: auto notice now shows on default/lean profiles too,
@@ -1913,11 +1921,16 @@ class HookTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
-            self.assertIn("[planning-with-files] context:", context)
-            self.assertIn("profile=default", context)
-            self.assertIn("Upgrade: /pwf-context-expanded", context)
-            self.assertIn("Mute: /pwf-context-notice-off", context)
+            payload = json.loads(result.stdout)
+            context = payload["hookSpecificOutput"]["additionalContext"]
+            notice = payload["systemMessage"]
+            self.assertNotIn("[planning-with-files] context:", context)
+            self.assertNotIn("Upgrade: /pwf-context-expanded", context)
+            self.assertNotIn("Mute: /pwf-context-notice-off", context)
+            self.assertIn("[planning-with-files] context:", notice)
+            self.assertIn("profile=default", notice)
+            self.assertIn("Upgrade: /pwf-context-expanded", notice)
+            self.assertIn("Mute: /pwf-context-notice-off", notice)
 
     def test_user_prompt_submit_notice_off_suppresses_expanded_notice(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1938,8 +1951,10 @@ class HookTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            payload = json.loads(result.stdout)
+            context = payload["hookSpecificOutput"]["additionalContext"]
             self.assertNotIn("[planning-with-files] context:", context)
+            self.assertNotIn("systemMessage", payload)
 
     def test_user_prompt_submit_notice_on_shows_default_notice(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1960,10 +1975,14 @@ class HookTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
-            self.assertIn("[planning-with-files] context:", context)
-            self.assertIn("profile=default", context)
-            self.assertIn("Upgrade: /pwf-context-expanded", context)
+            payload = json.loads(result.stdout)
+            context = payload["hookSpecificOutput"]["additionalContext"]
+            notice = payload["systemMessage"]
+            self.assertNotIn("[planning-with-files] context:", context)
+            self.assertNotIn("Upgrade: /pwf-context-expanded", context)
+            self.assertIn("[planning-with-files] context:", notice)
+            self.assertIn("profile=default", notice)
+            self.assertIn("Upgrade: /pwf-context-expanded", notice)
 
     def test_user_prompt_submit_deep_profile_notice_recommends_reduce(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1984,10 +2003,13 @@ class HookTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
-            self.assertIn("profile=deep", context)
-            self.assertIn("deepest profile", context)
-            self.assertIn("/pwf-context-lean", context)
+            payload = json.loads(result.stdout)
+            context = payload["hookSpecificOutput"]["additionalContext"]
+            notice = payload["systemMessage"]
+            self.assertNotIn("deepest profile", context)
+            self.assertIn("profile=deep", notice)
+            self.assertIn("deepest profile", notice)
+            self.assertIn("/pwf-context-lean", notice)
 
     def test_user_prompt_submit_notice_uses_chinese_when_enabled(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2009,7 +2031,10 @@ class HookTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            payload = json.loads(result.stdout)
+            context = payload["hookSpecificOutput"]["additionalContext"]
+            self.assertNotIn("profile=default", context)
+            context = payload["systemMessage"]
             self.assertIn("[planning-with-files] 上下文：", context)
             self.assertIn("profile=default", context)
             self.assertIn("升级：", context)
@@ -2256,13 +2281,13 @@ class HookTests(unittest.TestCase):
                 env={
                     "PWF_INCLUDE_FINDINGS": "1",
                     "PWF_FINDINGS_TAIL_LINES": "11",
-                    "PWF_CONTEXT_MAX_CHARS": "1100",
+                    "PWF_CONTEXT_MAX_CHARS": "900",
                 },
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)
             context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
-            self.assertLessEqual(len(context), 1100)
+            self.assertLessEqual(len(context), 900)
             self.assertIn("- progress survives budget", context)
             self.assertNotIn("- finding line", context)
             self.assertEqual(context.count("---BEGIN FINDINGS DATA---"), 1)
@@ -2483,9 +2508,12 @@ class HookTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            output = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            payload = json.loads(result.stdout)
+            output = payload["hookSpecificOutput"]["additionalContext"]
             self.assertIn("# Task Plan: Test", output)
             self.assertIn("- compact recovery finding", output)
+            self.assertNotIn("[planning-with-files] context:", output)
+            self.assertIn("[planning-with-files] context:", payload["systemMessage"])
 
     def test_session_start_calls_catchup_for_effective_plan_directory(self):
         with tempfile.TemporaryDirectory() as tmp:

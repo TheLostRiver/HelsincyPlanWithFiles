@@ -311,6 +311,8 @@ $env:PWF_CONTEXT_PROFILE = "expanded"
 
 `findings.md` 现在默认会作为有界 tail 注入到 `UserPromptSubmit` 和 `SessionStart`，也包括 Codex `SessionStart` 的 `compact` source。设置 `PWF_INCLUDE_FINDINGS=0` 可以关闭 findings 注入；设置 `PWF_FINDINGS_TAIL_LINES=N` 可以调整 tail 窗口。findings 仍然会作为不可信数据用 delimiter 包裹。运行 `/pwf-status` 或 `/pwf-doctor` 可以查看当前 profile、progress 注入模式、findings 状态和有效预算。
 
+上下文注入提示会作为用户可见的 hook message 输出，和注入给 agent 的 `additionalContext` 分离。agent 只接收 planning 数据；约 chars/tokens、profile 建议和静音命令不会进入 agent 上下文。
+
 `PostToolUse` 只记录真正的写文件/改文件工具：
 
 ```text

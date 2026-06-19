@@ -311,6 +311,8 @@ $env:PWF_CONTEXT_PROFILE = "expanded"
 
 `findings.md` is included by default as a bounded tail for `UserPromptSubmit` and `SessionStart`, including Codex `SessionStart` events with source `compact`. Set `PWF_INCLUDE_FINDINGS=0` to disable findings injection, or `PWF_FINDINGS_TAIL_LINES=N` to tune the tail window. Findings are still framed as untrusted data. Run `/pwf-status` or `/pwf-doctor` to see the active profile, progress mode, findings state, and effective context budget.
 
+Context injection notices are emitted as user-visible hook messages, separate from the injected `additionalContext`. The agent receives only the planning data; the approximate chars/tokens line, profile hints, and mute command stay out of the agent context.
+
 `PostToolUse` only records tools that write or edit files:
 
 ```text
