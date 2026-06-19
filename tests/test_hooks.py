@@ -258,6 +258,34 @@ class ContextLimitResolverTests(unittest.TestCase):
         self.assertIsNotNone(warning)
         self.assertIn('invalid PWF_INCLUDE_FINDINGS=""', warning)
 
+    def test_findings_injection_state_treats_explicit_auto_as_enabled(self):
+        state, enabled, warning = PLANNING_STATE.findings_injection_state(
+            {"PWF_INCLUDE_FINDINGS": "auto"}
+        )
+
+        self.assertEqual(state, "auto")
+        self.assertTrue(enabled)
+        self.assertIsNone(warning)
+
+    def test_findings_injection_state_treats_explicit_auto_case_insensitive(self):
+        state, enabled, warning = PLANNING_STATE.findings_injection_state(
+            {"PWF_INCLUDE_FINDINGS": "AUTO"}
+        )
+
+        self.assertEqual(state, "auto")
+        self.assertTrue(enabled)
+        self.assertIsNone(warning)
+
+    def test_findings_injection_state_warning_disables_findings(self):
+        state, enabled, warning = PLANNING_STATE.findings_injection_state(
+            {"PWF_INCLUDE_FINDINGS": "maybe"}
+        )
+
+        self.assertEqual(state, "invalid")
+        self.assertFalse(enabled)
+        self.assertIsNotNone(warning)
+        self.assertIn("findings injection disabled", warning)
+
     def test_safe_env_value_escapes_markdown_heading_syntax(self):
         value = PLANNING_STATE.safe_env_value("# injected heading\n## nested")
 

@@ -1174,6 +1174,8 @@ def findings_injection_state(env: Mapping[str, str] | None = None) -> tuple[str,
     if raw is None:
         return "auto", True, None
     value = raw.strip(" \t\r\n").lower()
+    if value == "auto":
+        return "auto", True, None
     if value in {"1", "true", "yes", "on"}:
         return "on", True, None
     if value in {"0", "false", "no", "off"}:
@@ -1181,7 +1183,7 @@ def findings_injection_state(env: Mapping[str, str] | None = None) -> tuple[str,
     return (
         "invalid",
         False,
-        f'[warn] invalid PWF_INCLUDE_FINDINGS="{safe_env_value(raw)}"; using default auto',
+        f'[warn] invalid PWF_INCLUDE_FINDINGS="{safe_env_value(raw)}"; findings injection disabled',
     )
 
 

@@ -190,6 +190,7 @@ Copy-Item -Recurse -Force .\HelsincyPlanWithFiles\.codex .\your-project\
 ## 功能
 
 - 在会话开始和用户提交提示时，把当前计划注入为 Codex 上下文。
+- 在会话开始和用户提交提示时，默认注入有界的 `findings.md` 尾部内容，并支持显式 opt-out。
 - 在工具调用前提醒 agent 查看当前计划。
 - 在文件写入或修改后，把变更摘要追加到 `progress.md`。
 - 在 Codex 上下文压缩前输出 `PreCompact` 提醒，提示同步 `task_plan.md` 阶段状态，并保持 `progress.md` 作为 hook 写入的客观日志。
