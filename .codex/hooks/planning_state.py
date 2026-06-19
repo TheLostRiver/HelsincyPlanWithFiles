@@ -226,6 +226,9 @@ MESSAGES = {
             "[planning-with-files] context: profile={profile}, progress={progress}, "
             "~{chars} chars (~{tokens} tokens). {hint}. Mute: /pwf-context-notice-off."
         ),
+        "context_blocked_notice": (
+            "[planning-with-files] planning context was not injected: {reason}"
+        ),
         "post_tool_recorded": (
             "[planning-with-files] Objective PostToolUse auto record appended by hooks. "
             "If a phase is now complete, update task_plan.md status; "
@@ -265,6 +268,9 @@ MESSAGES = {
         "context_injection_notice": (
             "[planning-with-files] 上下文：profile={profile}，progress={progress}，"
             "约 {chars} chars（~{tokens} tokens）。{hint}。静音：/pwf-context-notice-off。"
+        ),
+        "context_blocked_notice": (
+            "[planning-with-files] planning context was not injected: {reason}"
         ),
         "post_tool_recorded": (
             "[planning-with-files] PostToolUse 客观 auto record 已由 hook 追加。"
@@ -1504,12 +1510,25 @@ def render_context_notice(
     root: Path,
     session_id: str | None = None,
     event: str = "UserPromptSubmit",
+    status_context: str | None = None,
 ) -> str:
     if not rendered:
         return ""
+    blocked_notice = _blocked_context_notice(status_context if status_context is not None else rendered)
+    if blocked_notice:
+        return blocked_notice
     settings = context_settings_source(root=root, session_id=session_id)
     limits = context_limits(root=root, session_id=session_id)
     return _context_notice(rendered, settings=settings, limits=limits, event=event)
+
+
+def _blocked_context_notice(rendered: str) -> str:
+    if rendered == message("plan_tampered"):
+        return message("context_blocked_notice", reason="task_plan.md attestation mismatch.")
+    if rendered.startswith("[planning-with-files] planning context omitted because "):
+        reason = rendered.removeprefix("[planning-with-files] planning context omitted because ")
+        return message("context_blocked_notice", reason=reason)
+    return ""
 
 
 def _context_notice(

@@ -8,6 +8,8 @@
 - English: The `SessionStart` hook matcher now covers Codex's `compact` source, so post-compaction recovery reuses the normal context renderer; `PreCompact` remains a reminder/attestation hook, and `PostCompact` is intentionally not used for context injection.
 - 中文：context injection notice 现在作为用户可见 hook message 输出，不再拼进 `additionalContext`；agent 只接收 planning 数据，约 chars/tokens、profile 建议和静音命令不会污染压缩恢复上下文。
 - English: Context injection notices are now emitted as user-visible hook messages instead of being prepended to `additionalContext`; agents receive only planning data, while approximate chars/tokens, profile hints, and mute commands stay out of compaction recovery context.
+- 中文：当 attestation 阻断或上下文预算过小时，用户可见提示会明确说明 planning context 未注入，而不会显示成功型 token 估算 notice。
+- English: When attestation blocks injection or the context budget is too small, the user-visible notice now states that planning context was not injected instead of showing a success-style token estimate.
 
 ## 0.3.2 - 2026-06-19
 
