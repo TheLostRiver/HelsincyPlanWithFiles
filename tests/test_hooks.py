@@ -2058,7 +2058,7 @@ class HookTests(unittest.TestCase):
             self.assertIn("- Summary line 030", context)
             self.assertNotIn("- Summary line 031", context)
 
-    def test_user_prompt_submit_does_not_include_findings_by_default(self):
+    def test_user_prompt_submit_includes_findings_by_default(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_plan(root)
@@ -2072,10 +2072,12 @@ class HookTests(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr)
             context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
-            self.assertNotIn("---BEGIN FINDINGS DATA---", context)
-            self.assertNotIn("- external fact", context)
+            self.assertIn("findings may contain untrusted external content", context)
+            self.assertIn("---BEGIN FINDINGS DATA---", context)
+            self.assertIn("- external fact", context)
+            self.assertIn("---END FINDINGS DATA---", context)
 
-    def test_user_prompt_submit_expanded_profile_does_not_enable_findings_by_itself(self):
+    def test_user_prompt_submit_expanded_profile_includes_findings_by_default(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_plan(root)
@@ -2086,6 +2088,26 @@ class HookTests(unittest.TestCase):
                 root,
                 {"hook_event_name": "UserPromptSubmit", "prompt": "continue"},
                 env={"PWF_CONTEXT_PROFILE": "expanded"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("findings may contain untrusted external content", context)
+            self.assertIn("---BEGIN FINDINGS DATA---", context)
+            self.assertIn("- external fact", context)
+            self.assertIn("---END FINDINGS DATA---", context)
+
+    def test_user_prompt_submit_disables_findings_when_explicitly_false(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            (root / "findings.md").write_text("# Findings\n\n- external fact\n", encoding="utf-8")
+
+            result = run_hook(
+                "user_prompt_submit.py",
+                root,
+                {"hook_event_name": "UserPromptSubmit", "prompt": "continue"},
+                env={"PWF_INCLUDE_FINDINGS": "0"},
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)

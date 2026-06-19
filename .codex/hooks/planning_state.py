@@ -1168,8 +1168,25 @@ def compact_threshold() -> int:
     return value if value >= 1 else DEFAULT_COMPACT_THRESHOLD
 
 
+def findings_injection_state(env: Mapping[str, str] | None = None) -> tuple[str, bool, str | None]:
+    source = env if env is not None else os.environ
+    raw = source.get("PWF_INCLUDE_FINDINGS")
+    if raw is None:
+        return "auto", True, None
+    value = raw.strip(" \t\r\n").lower()
+    if value in {"1", "true", "yes", "on"}:
+        return "on", True, None
+    if value in {"0", "false", "no", "off"}:
+        return "off", False, None
+    return (
+        "invalid",
+        False,
+        f'[warn] invalid PWF_INCLUDE_FINDINGS="{safe_env_value(raw)}"; using default auto',
+    )
+
+
 def findings_injection_enabled() -> bool:
-    enabled, _warning = env_bool("PWF_INCLUDE_FINDINGS", default=False)
+    _state, enabled, _warning = findings_injection_state()
     return enabled
 
 
