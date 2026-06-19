@@ -99,11 +99,13 @@ def findings_injection_state(
     if raw is None:
         return "auto", True, None
     value = raw.strip(" \t\r\n").lower()
+    if value == "auto":
+        return "auto", True, None
     if value in {"1", "true", "yes", "on"}:
         return "on", True, None
     if value in {"0", "false", "no", "off"}:
         return "off", False, None
-    warning = f'[warn] invalid PWF_INCLUDE_FINDINGS="{safe_env_value(raw)}"; using default auto'
+    warning = f'[warn] invalid PWF_INCLUDE_FINDINGS="{safe_env_value(raw)}"; findings injection disabled'
     return "invalid", False, warning
 ```
 
