@@ -2545,6 +2545,28 @@ class HookTests(unittest.TestCase):
             self.assertIn("attestation mismatch", payload["systemMessage"])
             self.assertNotIn("context: profile=", payload["systemMessage"])
 
+    def test_session_start_tampered_plan_reports_chinese_blocked_notice(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_plan(root)
+            (root / ".plan-attestation").write_text("0" * 64, encoding="ascii")
+
+            result = run_hook(
+                "session_start.py",
+                root,
+                {"hook_event_name": "SessionStart", "source": "startup"},
+                env={"PWF_SESSION_CATCHUP_ECHO_ARGS": "1", "PWF_LANG": "zh-CN"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            output = payload["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("[planning-with-files] catchup project:", output)
+            self.assertIn("[PLAN TAMPERED - injection blocked]", output)
+            self.assertIn("规划上下文未注入", payload["systemMessage"])
+            self.assertIn("attestation mismatch", payload["systemMessage"])
+            self.assertNotIn("context: profile=", payload["systemMessage"])
+
     def test_session_start_calls_catchup_for_effective_plan_directory(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

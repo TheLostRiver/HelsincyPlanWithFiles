@@ -270,7 +270,7 @@ MESSAGES = {
             "约 {chars} chars（~{tokens} tokens）。{hint}。静音：/pwf-context-notice-off。"
         ),
         "context_blocked_notice": (
-            "[planning-with-files] planning context was not injected: {reason}"
+            "[planning-with-files] 规划上下文未注入：{reason}"
         ),
         "post_tool_recorded": (
             "[planning-with-files] PostToolUse 客观 auto record 已由 hook 追加。"
