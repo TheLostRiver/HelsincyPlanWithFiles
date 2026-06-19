@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.3 - 2026-06-19
 
 - 中文：默认在 `SessionStart` / `UserPromptSubmit` 中注入有界 `findings.md` tail，保留 `PWF_INCLUDE_FINDINGS=0` 显式关闭和 `PWF_FINDINGS_TAIL_LINES` 窗口调节；findings 仍使用 delimiter framing 和不可信内容提示。
 - English: Include a bounded `findings.md` tail by default in `SessionStart` / `UserPromptSubmit`, while preserving `PWF_INCLUDE_FINDINGS=0` as an explicit opt-out and `PWF_FINDINGS_TAIL_LINES` as the window override; findings still use delimiter framing and untrusted-content warnings.
