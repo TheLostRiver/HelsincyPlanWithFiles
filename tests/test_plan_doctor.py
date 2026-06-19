@@ -138,7 +138,7 @@ class PlanDoctorTests(unittest.TestCase):
             self.assertIn("planning files: ok", result.stdout)
             self.assertIn("attestation: not set", result.stdout)
             self.assertIn("context profile: default", result.stdout)
-            self.assertIn("context findings: off", result.stdout)
+            self.assertIn("context findings: auto tail 20", result.stdout)
             self.assertIn("context progress mode: line tail 80", result.stdout)
 
     def test_doctor_reports_expanded_context_profile(self):

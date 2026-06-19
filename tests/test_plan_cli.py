@@ -142,7 +142,7 @@ class PlanCliTests(unittest.TestCase):
             self.assertIn("attestation: not set", result.stdout)
             self.assertIn("progress: 0 auto records", result.stdout)
             self.assertIn(
-                "context: profile=default, plan=head 50 tail 0, progress=tail 80 lines, findings=off, max=32000 chars",
+                "context: profile=default, plan=head 50 tail 0, progress=tail 80 lines, findings=auto tail 20, max=32000 chars",
                 result.stdout,
             )
 
@@ -164,6 +164,16 @@ class PlanCliTests(unittest.TestCase):
             )
             self.assertIn("context source: env PWF_CONTEXT_PROFILE", result.stdout)
             self.assertIn("context notice: auto", result.stdout)
+
+    def test_status_reports_findings_off_when_explicitly_disabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_active_plan(root)
+
+            result = run_plan(root, "status", env={"PWF_INCLUDE_FINDINGS": "0"})
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("findings=off", result.stdout)
 
     def test_context_set_expanded_writes_current_session_context(self):
         with tempfile.TemporaryDirectory() as tmp:
