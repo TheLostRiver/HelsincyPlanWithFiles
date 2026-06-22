@@ -49,12 +49,14 @@ def main() -> None:
     parts = [catchup_context, prompt_context]
     output = "\n\n".join(part for part in parts if part)
     if output:
-        payload = {
-            "hookSpecificOutput": {
-                "hookEventName": "SessionStart",
-                "additionalContext": output,
+        adapter.emit_json(
+            {
+                "hookSpecificOutput": {
+                    "hookEventName": "SessionStart",
+                    "additionalContext": output,
+                }
             }
-        }
+        )
         notice_source = prompt_context or output
         notice = planning_state.render_context_notice(
             output,
@@ -64,8 +66,7 @@ def main() -> None:
             status_context=notice_source,
         )
         if notice:
-            payload["systemMessage"] = notice
-        adapter.emit_json(payload)
+            adapter.emit_json({"systemMessage": notice})
 
 
 if __name__ == "__main__":

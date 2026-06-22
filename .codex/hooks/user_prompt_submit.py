@@ -20,12 +20,14 @@ def main() -> None:
 
     context = planning_state.render_prompt_context(root, session_id=session_id)
     if context:
-        output = {
-            "hookSpecificOutput": {
-                "hookEventName": "UserPromptSubmit",
-                "additionalContext": context,
+        adapter.emit_json(
+            {
+                "hookSpecificOutput": {
+                    "hookEventName": "UserPromptSubmit",
+                    "additionalContext": context,
+                }
             }
-        }
+        )
         notice = planning_state.render_context_notice(
             context,
             root=root,
@@ -33,8 +35,7 @@ def main() -> None:
             event="UserPromptSubmit",
         )
         if notice:
-            output["systemMessage"] = notice
-        adapter.emit_json(output)
+            adapter.emit_json({"systemMessage": notice})
 
 
 if __name__ == "__main__":
