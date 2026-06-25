@@ -387,6 +387,13 @@ class ProjectConsistencyTests(unittest.TestCase):
         self.assertIn("English", release_notes)
         self.assertIn(f"HelsincyPlanWithFiles-v{version}", release_notes)
 
+    def test_release_script_includes_safe_installer_files(self):
+        script = read_text("build-release.ps1")
+
+        self.assertIn("install-pwf.ps1", script)
+        self.assertIn("install-pwf.sh", script)
+        self.assertIn("installer", script)
+
     def test_released_compaction_hardening_is_recorded_in_0_2_0(self):
         changelog = read_text("CHANGELOG.md")
         match = re.search(
