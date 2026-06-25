@@ -1,3 +1,5 @@
+import contextlib
+import io
 import importlib.util
 import json
 import sys
@@ -375,6 +377,51 @@ class InstallerUninstallTests(unittest.TestCase):
             self.assertEqual(2, result.exit_code)
             self.assertTrue(owned_file.exists())
             self.assertTrue((target / ".codex/pwf-install-state.json").exists())
+
+
+class InstallerCliTests(unittest.TestCase):
+    def test_cli_dry_run_returns_zero(self):
+        module = load_installer()
+        with tempfile.TemporaryDirectory() as source_dir, tempfile.TemporaryDirectory() as target_dir:
+            source = Path(source_dir)
+            (source / "installer").mkdir(parents=True)
+            (source / ".codex/hooks/pwf").mkdir(parents=True)
+            (source / ".codex/hooks/pwf/session_start.py").write_text("print('pwf')\n", encoding="utf-8")
+            (source / "VERSION").write_text("0.3.4\n", encoding="utf-8")
+            (source / "installer/pwf_install_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "schema": 1,
+                        "package": "HelsincyPlanWithFiles",
+                        "owned_files": [
+                            {
+                                "source": ".codex/hooks/pwf/session_start.py",
+                                "target": ".codex/hooks/pwf/session_start.py",
+                                "kind": "hook",
+                            }
+                        ],
+                        "owned_directory_globs": [],
+                        "hook_entries": [
+                            {"event": "SessionStart", "command": "python .codex/hooks/pwf/session_start.py"}
+                        ],
+                        "legacy_hook_commands": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                result = module.main(["install", "--source", str(source), "--target", target_dir, "--dry-run"])
+
+            self.assertEqual(0, result)
+
+    def test_cli_rejects_missing_target_argument(self):
+        module = load_installer()
+
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            result = module.main(["install"])
+
+        self.assertEqual(2, result)
 
 
 if __name__ == "__main__":

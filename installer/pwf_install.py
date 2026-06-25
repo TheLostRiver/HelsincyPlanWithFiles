@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import argparse
 import json
 import hashlib
 import shutil
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -458,3 +460,78 @@ def uninstall(target_root: Path, *, dry_run: bool = False) -> InstallResult:
         state_path.unlink()
 
     return InstallResult(0, tuple(operations), tuple(messages))
+
+
+def default_source_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def read_version(source_root: Path) -> str:
+    version_path = source_root / "VERSION"
+    if version_path.exists():
+        return version_path.read_text(encoding="utf-8").strip()
+    return "0.0.0"
+
+
+def print_result(result: InstallResult) -> None:
+    for message in result.messages:
+        print(message)
+    if result.exit_code == 0:
+        print("PWF installer completed.")
+    else:
+        print("PWF installer stopped because conflicts were found.", file=sys.stderr)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Install Helsincy Plan With Files into a project without overwriting unrelated .codex files."
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    install_cmd = sub.add_parser("install")
+    install_cmd.add_argument("--target", required=True, help="Target project root")
+    install_cmd.add_argument("--source", default=None, help="Installer package root; defaults to this script's package")
+    install_cmd.add_argument("--dry-run", action="store_true")
+    install_cmd.add_argument("--force-owned", action="store_true")
+
+    uninstall_cmd = sub.add_parser("uninstall")
+    uninstall_cmd.add_argument("--target", required=True, help="Target project root")
+    uninstall_cmd.add_argument("--dry-run", action="store_true")
+
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return int(exc.code)
+
+    if args.command == "install":
+        source_root = Path(args.source).resolve() if args.source else default_source_root()
+        target_root = Path(args.target).resolve()
+        manifest = load_manifest(source_root / "installer" / "pwf_install_manifest.json")
+        result = install(
+            source_root,
+            target_root,
+            manifest,
+            version=read_version(source_root),
+            dry_run=args.dry_run,
+            force_owned=args.force_owned,
+        )
+        print_result(result)
+        return result.exit_code
+
+    if args.command == "uninstall":
+        target_root = Path(args.target).resolve()
+        result = uninstall(target_root, dry_run=args.dry_run)
+        print_result(result)
+        return result.exit_code
+
+    parser.error("unsupported command")
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
