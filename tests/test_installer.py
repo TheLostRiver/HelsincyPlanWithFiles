@@ -310,5 +310,72 @@ class InstallerApplyTests(unittest.TestCase):
             self.assertFalse((target / ".codex/pwf-install-state.json").exists())
 
 
+class InstallerUninstallTests(unittest.TestCase):
+    def test_uninstall_removes_only_state_owned_files_and_hooks(self):
+        module = load_installer()
+        with tempfile.TemporaryDirectory() as target_dir:
+            target = Path(target_dir)
+            (target / ".codex/hooks/pwf").mkdir(parents=True)
+            (target / ".codex/hooks").mkdir(exist_ok=True)
+            (target / ".codex/hooks/custom.py").write_text("print('custom')\n", encoding="utf-8")
+            owned_file = target / ".codex/hooks/pwf/session_start.py"
+            owned_file.write_text("print('pwf')\n", encoding="utf-8")
+            hooks = {
+                "hooks": {
+                    "SessionStart": [
+                        {"hooks": [{"type": "command", "command": "python .codex/hooks/pwf/session_start.py"}]},
+                        {"hooks": [{"type": "command", "command": "python .codex/hooks/custom.py"}]},
+                    ]
+                }
+            }
+            (target / ".codex/hooks.json").write_text(json.dumps(hooks), encoding="utf-8")
+            state = {
+                "schema": 1,
+                "package": "HelsincyPlanWithFiles",
+                "version": "0.3.4",
+                "installed_at": "2026-06-25T15:00:00Z",
+                "files": [{"path": ".codex/hooks/pwf/session_start.py", "sha256": module.sha256_file(owned_file)}],
+                "hooks": [{"event": "SessionStart", "command": "python .codex/hooks/pwf/session_start.py"}],
+            }
+            (target / ".codex/pwf-install-state.json").write_text(json.dumps(state), encoding="utf-8")
+
+            result = module.uninstall(target, dry_run=False)
+
+            self.assertEqual(0, result.exit_code)
+            self.assertFalse(owned_file.exists())
+            self.assertTrue((target / ".codex/hooks/custom.py").exists())
+            merged = json.loads((target / ".codex/hooks.json").read_text(encoding="utf-8"))
+            commands = [
+                hook["command"]
+                for group in merged["hooks"]["SessionStart"]
+                for hook in group.get("hooks", [])
+            ]
+            self.assertEqual(["python .codex/hooks/custom.py"], commands)
+            self.assertFalse((target / ".codex/pwf-install-state.json").exists())
+
+    def test_uninstall_refuses_modified_state_owned_file(self):
+        module = load_installer()
+        with tempfile.TemporaryDirectory() as target_dir:
+            target = Path(target_dir)
+            (target / ".codex/hooks/pwf").mkdir(parents=True)
+            owned_file = target / ".codex/hooks/pwf/session_start.py"
+            owned_file.write_text("print('local edit')\n", encoding="utf-8")
+            state = {
+                "schema": 1,
+                "package": "HelsincyPlanWithFiles",
+                "version": "0.3.4",
+                "installed_at": "2026-06-25T15:00:00Z",
+                "files": [{"path": ".codex/hooks/pwf/session_start.py", "sha256": "previous-hash"}],
+                "hooks": [{"event": "SessionStart", "command": "python .codex/hooks/pwf/session_start.py"}],
+            }
+            (target / ".codex/pwf-install-state.json").write_text(json.dumps(state), encoding="utf-8")
+
+            result = module.uninstall(target, dry_run=False)
+
+            self.assertEqual(2, result.exit_code)
+            self.assertTrue(owned_file.exists())
+            self.assertTrue((target / ".codex/pwf-install-state.json").exists())
+
+
 if __name__ == "__main__":
     unittest.main()

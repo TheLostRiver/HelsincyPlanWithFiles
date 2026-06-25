@@ -348,3 +348,113 @@ def install(
 
     write_install_state(target_root, manifest, version, (owned.target for owned in owned_files))
     return InstallResult(0, operations, tuple(messages))
+
+
+def remove_state_hooks(existing: Mapping[str, Any], state: Mapping[str, Any]) -> tuple[dict[str, Any], bool]:
+    merged = json.loads(json.dumps(existing))
+    hooks = merged.get("hooks", {})
+    if not isinstance(hooks, dict):
+        return merged, False
+
+    changed = False
+    commands_by_event: dict[str, set[str]] = {}
+    for item in state.get("hooks", []):
+        event = item.get("event")
+        command = item.get("command")
+        if isinstance(event, str) and isinstance(command, str):
+            commands_by_event.setdefault(event, set()).add(normalize_command(command))
+
+    for event, commands in commands_by_event.items():
+        groups = hooks.get(event, [])
+        if not isinstance(groups, list):
+            continue
+
+        new_groups = []
+        for group in groups:
+            if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+                new_groups.append(group)
+                continue
+
+            kept = [
+                hook
+                for hook in group["hooks"]
+                if not (
+                    isinstance(hook, dict)
+                    and normalize_command(str(hook.get("command", ""))) in commands
+                )
+            ]
+            if kept:
+                updated = dict(group)
+                updated["hooks"] = kept
+                new_groups.append(updated)
+            elif group["hooks"]:
+                changed = True
+
+        if new_groups != groups:
+            changed = True
+            hooks[event] = new_groups
+
+    return merged, changed
+
+
+def _safe_relative_target(target_root: Path, rel_path: str) -> Path:
+    rel = _require_relative(rel_path, "state path")
+    path = (target_root / rel).resolve()
+    root = target_root.resolve()
+    if root != path and root not in path.parents:
+        raise ValueError(f"state path escapes target root: {rel_path}")
+    return path
+
+
+def uninstall(target_root: Path, *, dry_run: bool = False) -> InstallResult:
+    state = read_install_state(target_root)
+    if not state:
+        return InstallResult(0, (), ("no PWF install state found",))
+
+    messages: list[str] = []
+    operations: list[FileOperation] = []
+    for item in state.get("files", []):
+        rel = item.get("path")
+        expected_hash = item.get("sha256")
+        if not isinstance(rel, str) or not isinstance(expected_hash, str):
+            continue
+        path = _safe_relative_target(target_root, rel)
+        if not path.exists():
+            messages.append(f"skip missing: {rel}")
+            continue
+        if sha256_file(path) != expected_hash:
+            messages.append(f"conflict modified: {rel}")
+            return InstallResult(2, tuple(operations), tuple(messages))
+        operations.append(FileOperation("delete", path, path, rel, "state-owned file hash matches"))
+
+    try:
+        hooks_json = load_hooks_json(target_root)
+    except ValueError as exc:
+        return InstallResult(2, tuple(operations), (str(exc),))
+    merged_hooks, hooks_changed = remove_state_hooks(hooks_json, state)
+
+    if dry_run:
+        return InstallResult(
+            0,
+            tuple(operations),
+            tuple(messages + [f"delete: {op.relative_target}" for op in operations]),
+        )
+
+    backup_root = backup_path(target_root)
+    if hooks_changed:
+        backup_root.mkdir(parents=True, exist_ok=True)
+        hooks_path = target_root / ".codex" / "hooks.json"
+        if hooks_path.exists():
+            backup_file = backup_root / ".codex" / "hooks.json"
+            backup_file.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(hooks_path, backup_file)
+        hooks_path.write_text(json.dumps(merged_hooks, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    for op in operations:
+        op.target.unlink()
+
+    state_path = target_root / ".codex" / "pwf-install-state.json"
+    if state_path.exists():
+        state_path.unlink()
+
+    return InstallResult(0, tuple(operations), tuple(messages))
