@@ -1,5 +1,6 @@
 import importlib.util
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -32,6 +33,123 @@ class InstallerManifestTests(unittest.TestCase):
         commands = [hook.command for hook in manifest.hook_entries]
         self.assertIn("python .codex/hooks/pwf/session_start.py", commands)
         self.assertTrue(all(".codex/hooks/pwf/" in command for command in commands))
+
+
+class InstallerFilePlanTests(unittest.TestCase):
+    def test_missing_target_file_is_planned_for_copy(self):
+        module = load_installer()
+        with tempfile.TemporaryDirectory() as source_dir, tempfile.TemporaryDirectory() as target_dir:
+            source = Path(source_dir)
+            target = Path(target_dir)
+            (source / ".codex/hooks/pwf").mkdir(parents=True)
+            (source / ".codex/hooks/pwf/session_start.py").write_text("print('pwf')\n", encoding="utf-8")
+
+            owned = module.OwnedFile(".codex/hooks/pwf/session_start.py", ".codex/hooks/pwf/session_start.py", "hook")
+            op = module.plan_file_operation(source, target, owned, state=None)
+
+            self.assertEqual("copy", op.action)
+
+    def test_unknown_existing_target_file_is_conflict(self):
+        module = load_installer()
+        with tempfile.TemporaryDirectory() as source_dir, tempfile.TemporaryDirectory() as target_dir:
+            source = Path(source_dir)
+            target = Path(target_dir)
+            (source / ".codex/hooks/pwf").mkdir(parents=True)
+            (target / ".codex/hooks/pwf").mkdir(parents=True)
+            (source / ".codex/hooks/pwf/session_start.py").write_text("print('pwf')\n", encoding="utf-8")
+            (target / ".codex/hooks/pwf/session_start.py").write_text("print('user')\n", encoding="utf-8")
+
+            owned = module.OwnedFile(".codex/hooks/pwf/session_start.py", ".codex/hooks/pwf/session_start.py", "hook")
+            op = module.plan_file_operation(source, target, owned, state=None)
+
+            self.assertEqual("conflict", op.action)
+
+    def test_identical_existing_target_file_is_skip(self):
+        module = load_installer()
+        with tempfile.TemporaryDirectory() as source_dir, tempfile.TemporaryDirectory() as target_dir:
+            source = Path(source_dir)
+            target = Path(target_dir)
+            for root in (source, target):
+                (root / ".codex/hooks/pwf").mkdir(parents=True)
+                (root / ".codex/hooks/pwf/session_start.py").write_text("print('pwf')\n", encoding="utf-8")
+
+            owned = module.OwnedFile(".codex/hooks/pwf/session_start.py", ".codex/hooks/pwf/session_start.py", "hook")
+            op = module.plan_file_operation(source, target, owned, state=None)
+
+            self.assertEqual("skip", op.action)
+
+    def test_owned_matching_previous_hash_is_planned_for_overwrite(self):
+        module = load_installer()
+        with tempfile.TemporaryDirectory() as source_dir, tempfile.TemporaryDirectory() as target_dir:
+            source = Path(source_dir)
+            target = Path(target_dir)
+            (source / ".codex/hooks/pwf").mkdir(parents=True)
+            (target / ".codex/hooks/pwf").mkdir(parents=True)
+            source_file = source / ".codex/hooks/pwf/session_start.py"
+            target_file = target / ".codex/hooks/pwf/session_start.py"
+            source_file.write_text("print('new pwf')\n", encoding="utf-8")
+            target_file.write_text("print('old pwf')\n", encoding="utf-8")
+            state = {
+                "files": [
+                    {
+                        "path": ".codex/hooks/pwf/session_start.py",
+                        "sha256": module.sha256_file(target_file),
+                    }
+                ]
+            }
+
+            owned = module.OwnedFile(".codex/hooks/pwf/session_start.py", ".codex/hooks/pwf/session_start.py", "hook")
+            op = module.plan_file_operation(source, target, owned, state=state)
+
+            self.assertEqual("overwrite", op.action)
+
+    def test_owned_modified_target_is_conflict_without_force(self):
+        module = load_installer()
+        with tempfile.TemporaryDirectory() as source_dir, tempfile.TemporaryDirectory() as target_dir:
+            source = Path(source_dir)
+            target = Path(target_dir)
+            (source / ".codex/hooks/pwf").mkdir(parents=True)
+            (target / ".codex/hooks/pwf").mkdir(parents=True)
+            (source / ".codex/hooks/pwf/session_start.py").write_text("print('new pwf')\n", encoding="utf-8")
+            (target / ".codex/hooks/pwf/session_start.py").write_text("print('local edit')\n", encoding="utf-8")
+            state = {
+                "files": [
+                    {
+                        "path": ".codex/hooks/pwf/session_start.py",
+                        "sha256": "previous-hash",
+                    }
+                ]
+            }
+
+            owned = module.OwnedFile(".codex/hooks/pwf/session_start.py", ".codex/hooks/pwf/session_start.py", "hook")
+            op = module.plan_file_operation(source, target, owned, state=state)
+
+            self.assertEqual("conflict", op.action)
+
+    def test_expand_owned_files_adds_pwf_skill_wrappers(self):
+        module = load_installer()
+        with tempfile.TemporaryDirectory() as source_dir:
+            source = Path(source_dir)
+            wrapper = source / ".codex/skills/pwf-status/SKILL.md"
+            wrapper.parent.mkdir(parents=True)
+            wrapper.write_text("---\nname: pwf-status\n---\n", encoding="utf-8")
+            (source / ".codex/skills/pwf-status/__pycache__").mkdir()
+            (source / ".codex/skills/pwf-status/__pycache__/ignored.pyc").write_bytes(b"cache")
+            manifest = module.Manifest(
+                schema=1,
+                package="HelsincyPlanWithFiles",
+                owned_files=(),
+                owned_directory_globs=(".codex/skills/pwf-*",),
+                hook_entries=(),
+                legacy_hook_commands=(),
+            )
+
+            owned_files = module.expand_owned_files(source, manifest)
+
+            self.assertEqual(
+                (module.OwnedFile(".codex/skills/pwf-status/SKILL.md", ".codex/skills/pwf-status/SKILL.md", "skill-wrapper"),),
+                owned_files,
+            )
 
 
 if __name__ == "__main__":
