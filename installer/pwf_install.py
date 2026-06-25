@@ -291,7 +291,7 @@ def load_hooks_json(target_root: Path) -> dict[str, Any]:
     if not path.exists():
         return {"hooks": {}}
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        raw = json.loads(path.read_text(encoding="utf-8-sig"))
     except json.JSONDecodeError as exc:
         raise ValueError(f"hooks.json is invalid JSON: {exc}") from exc
     if not isinstance(raw, dict):

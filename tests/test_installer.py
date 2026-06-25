@@ -261,6 +261,36 @@ class InstallerApplyTests(unittest.TestCase):
             self.assertFalse((target / ".codex/hooks/pwf/session_start.py").exists())
             self.assertFalse((target / ".codex/hooks.json").exists())
 
+    def test_dry_run_accepts_existing_hooks_json_with_utf8_bom(self):
+        module = load_installer()
+        with tempfile.TemporaryDirectory() as source_dir, tempfile.TemporaryDirectory() as target_dir:
+            source = Path(source_dir)
+            target = Path(target_dir)
+            (source / ".codex/hooks/pwf").mkdir(parents=True)
+            (source / ".codex/hooks/pwf/session_start.py").write_text("print('pwf')\n", encoding="utf-8")
+            (target / ".codex").mkdir(parents=True)
+            existing_hooks = {
+                "hooks": {
+                    "SessionStart": [
+                        {"hooks": [{"type": "command", "command": "python .codex/hooks/custom.py"}]}
+                    ]
+                }
+            }
+            (target / ".codex/hooks.json").write_text(json.dumps(existing_hooks), encoding="utf-8-sig")
+            manifest = module.Manifest(
+                schema=1,
+                package="HelsincyPlanWithFiles",
+                owned_files=(module.OwnedFile(".codex/hooks/pwf/session_start.py", ".codex/hooks/pwf/session_start.py", "hook"),),
+                owned_directory_globs=(),
+                hook_entries=(module.HookEntry(event="SessionStart", matcher="startup|resume|compact", command="python .codex/hooks/pwf/session_start.py"),),
+                legacy_hook_commands=(),
+            )
+
+            result = module.install(source, target, manifest, version="0.3.4", dry_run=True)
+
+            self.assertEqual(0, result.exit_code)
+            self.assertIn("merge: .codex/hooks.json", result.messages)
+
     def test_install_copies_files_merges_hooks_and_writes_state(self):
         module = load_installer()
         with tempfile.TemporaryDirectory() as source_dir, tempfile.TemporaryDirectory() as target_dir:
