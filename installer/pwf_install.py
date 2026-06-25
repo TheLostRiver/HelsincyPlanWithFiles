@@ -149,3 +149,82 @@ def expand_owned_files(source_root: Path, manifest: Manifest) -> tuple[OwnedFile
     for item in files:
         deduped[item.target] = item
     return tuple(deduped[path] for path in sorted(deduped))
+
+
+def normalize_command(command: str) -> str:
+    return " ".join(command.replace("\\", "/").split())
+
+
+def hook_entry_to_group(entry: HookEntry) -> dict[str, Any]:
+    hook: dict[str, Any] = {"type": entry.type, "command": entry.command}
+    if entry.statusMessage:
+        hook["statusMessage"] = entry.statusMessage
+    if entry.timeout is not None:
+        hook["timeout"] = entry.timeout
+
+    group: dict[str, Any] = {"hooks": [hook]}
+    if entry.matcher is not None:
+        group["matcher"] = entry.matcher
+    return group
+
+
+def merge_hooks_json(existing: Mapping[str, Any], manifest: Manifest) -> tuple[dict[str, Any], bool]:
+    merged = json.loads(json.dumps(existing))
+    hooks = merged.setdefault("hooks", {})
+    if not isinstance(hooks, dict):
+        raise ValueError("hooks.json field 'hooks' must be an object")
+
+    changed = False
+    legacy_by_event: dict[str, set[str]] = {}
+    for legacy in manifest.legacy_hook_commands:
+        legacy_by_event.setdefault(legacy.event, set()).add(normalize_command(legacy.command))
+
+    for entry in manifest.hook_entries:
+        event_groups = hooks.setdefault(entry.event, [])
+        if not isinstance(event_groups, list):
+            raise ValueError(f"hooks.json event {entry.event} must be an array")
+
+        current_command = normalize_command(entry.command)
+        legacy_commands = legacy_by_event.get(entry.event, set())
+        found_current = False
+        filtered_groups: list[Any] = []
+
+        for group in event_groups:
+            if not isinstance(group, dict):
+                filtered_groups.append(group)
+                continue
+            group_hooks = group.get("hooks", [])
+            if not isinstance(group_hooks, list):
+                filtered_groups.append(group)
+                continue
+
+            kept_hooks = []
+            for hook in group_hooks:
+                if not isinstance(hook, dict):
+                    kept_hooks.append(hook)
+                    continue
+                command = hook.get("command")
+                normalized = normalize_command(command) if isinstance(command, str) else ""
+                if normalized == current_command:
+                    found_current = True
+                    kept_hooks.append(hook)
+                elif normalized in legacy_commands:
+                    changed = True
+                else:
+                    kept_hooks.append(hook)
+
+            if kept_hooks:
+                new_group = dict(group)
+                new_group["hooks"] = kept_hooks
+                filtered_groups.append(new_group)
+            elif group_hooks:
+                changed = True
+
+        if not found_current:
+            filtered_groups.append(hook_entry_to_group(entry))
+            changed = True
+        if filtered_groups != event_groups:
+            changed = True
+        hooks[entry.event] = filtered_groups
+
+    return merged, changed

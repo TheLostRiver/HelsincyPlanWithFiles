@@ -152,5 +152,88 @@ class InstallerFilePlanTests(unittest.TestCase):
             )
 
 
+class InstallerHooksMergeTests(unittest.TestCase):
+    def test_merge_hooks_preserves_existing_hook(self):
+        module = load_installer()
+        existing = {
+            "hooks": {
+                "UserPromptSubmit": [
+                    {"hooks": [{"type": "command", "command": "python .codex/hooks/custom.py"}]}
+                ]
+            }
+        }
+        manifest = module.Manifest(
+            schema=1,
+            package="HelsincyPlanWithFiles",
+            owned_files=(),
+            owned_directory_globs=(),
+            hook_entries=(module.HookEntry(event="UserPromptSubmit", command="python .codex/hooks/pwf/user_prompt_submit.py"),),
+            legacy_hook_commands=(),
+        )
+
+        merged, changed = module.merge_hooks_json(existing, manifest)
+        commands = [
+            hook["command"]
+            for group in merged["hooks"]["UserPromptSubmit"]
+            for hook in group.get("hooks", [])
+        ]
+
+        self.assertTrue(changed)
+        self.assertIn("python .codex/hooks/custom.py", commands)
+        self.assertIn("python .codex/hooks/pwf/user_prompt_submit.py", commands)
+
+    def test_merge_hooks_dedupes_existing_pwf_hook(self):
+        module = load_installer()
+        existing = {
+            "hooks": {
+                "UserPromptSubmit": [
+                    {"hooks": [{"type": "command", "command": "python .codex/hooks/pwf/user_prompt_submit.py"}]}
+                ]
+            }
+        }
+        manifest = module.Manifest(
+            schema=1,
+            package="HelsincyPlanWithFiles",
+            owned_files=(),
+            owned_directory_globs=(),
+            hook_entries=(module.HookEntry(event="UserPromptSubmit", command="python .codex/hooks/pwf/user_prompt_submit.py"),),
+            legacy_hook_commands=(),
+        )
+
+        merged, changed = module.merge_hooks_json(existing, manifest)
+
+        self.assertFalse(changed)
+        self.assertEqual(1, len(merged["hooks"]["UserPromptSubmit"]))
+
+    def test_merge_hooks_replaces_legacy_pwf_command(self):
+        module = load_installer()
+        existing = {
+            "hooks": {
+                "UserPromptSubmit": [
+                    {"hooks": [{"type": "command", "command": "python .codex/hooks/user_prompt_submit.py"}]}
+                ]
+            }
+        }
+        manifest = module.Manifest(
+            schema=1,
+            package="HelsincyPlanWithFiles",
+            owned_files=(),
+            owned_directory_globs=(),
+            hook_entries=(module.HookEntry(event="UserPromptSubmit", command="python .codex/hooks/pwf/user_prompt_submit.py"),),
+            legacy_hook_commands=(module.HookEntry(event="UserPromptSubmit", command="python .codex/hooks/user_prompt_submit.py"),),
+        )
+
+        merged, changed = module.merge_hooks_json(existing, manifest)
+        commands = [
+            hook["command"]
+            for group in merged["hooks"]["UserPromptSubmit"]
+            for hook in group.get("hooks", [])
+        ]
+
+        self.assertTrue(changed)
+        self.assertNotIn("python .codex/hooks/user_prompt_submit.py", commands)
+        self.assertIn("python .codex/hooks/pwf/user_prompt_submit.py", commands)
+
+
 if __name__ == "__main__":
     unittest.main()
