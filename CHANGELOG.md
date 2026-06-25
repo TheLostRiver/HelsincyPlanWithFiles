@@ -2,6 +2,9 @@
 
 ## 0.3.3 - 2026-06-19
 
+- 中文：新增 manifest 驱动的安全安装器，默认合并 `.codex/hooks.json`、记录 `.codex/pwf-install-state.json`，并在遇到未知同名文件时停止，避免直接复制 `.codex/` 覆盖项目已有配置。
+- English: Added a manifest-driven safe installer that merges `.codex/hooks.json`, records `.codex/pwf-install-state.json`, and stops on unknown same-path files so users no longer need to copy `.codex/` over existing project configuration.
+
 - 中文：默认在 `SessionStart` / `UserPromptSubmit` 中注入有界 `findings.md` tail，保留 `PWF_INCLUDE_FINDINGS=0` 显式关闭和 `PWF_FINDINGS_TAIL_LINES` 窗口调节；findings 仍使用 delimiter framing 和不可信内容提示。
 - English: Include a bounded `findings.md` tail by default in `SessionStart` / `UserPromptSubmit`, while preserving `PWF_INCLUDE_FINDINGS=0` as an explicit opt-out and `PWF_FINDINGS_TAIL_LINES` as the window override; findings still use delimiter framing and untrusted-content warnings.
 - 中文：`SessionStart` hook matcher 现在覆盖 Codex 的 `compact` source，压缩后恢复复用正常 context renderer；`PreCompact` 仍只提醒和报告 attestation，暂不使用 `PostCompact` 做上下文注入。

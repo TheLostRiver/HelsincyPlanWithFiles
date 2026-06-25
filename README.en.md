@@ -68,7 +68,7 @@ The value is not simply creating a few `.md` files. The value is giving Codex a 
 
 ## Core Workflow
 
-1. Install `.codex/` into the target project root.
+1. Run `install-pwf.ps1` from the release package; preview with dry-run before installing into the target project root.
 2. Run `/pwf-doctor` to check hooks and commands.
 3. Create a planning task with `/pwf-init <task name>`.
 4. Let Codex research, edit, test, and summarize normally.
@@ -114,15 +114,33 @@ Other `PWF_LANG` values fall back to English; `plan.py doctor` reports `language
 
 ## Installation
 
-For regular users, download `HelsincyPlanWithFiles-v0.3.3-codex.zip` from the release page. This package contains only the project-local `.codex/`, hooks, `/pwf-*` commands, and basic docs needed for installation.
+For regular users, download `HelsincyPlanWithFiles-v0.3.3-codex.zip` from the release page. This package contains the safe installer, project-local `.codex/` payload, hooks, `/pwf-*` commands, and basic docs needed for installation.
 
 ### Option A: Download From Release
 
 1. Open the [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest).
 2. Download `HelsincyPlanWithFiles-v0.3.3-codex.zip`.
-3. Unzip it and copy the `.codex/` directory into your target project root.
-4. Restart Codex and approve the hooks when Codex asks for trust.
-5. Run `/pwf-doctor` in Codex to check the installation.
+3. Extract it to a temporary directory.
+4. Preview the install:
+
+   ```powershell
+   .\install-pwf.ps1 -TargetPath C:\path\to\your-project -DryRun
+   ```
+
+   In a POSIX shell, use:
+
+   ```bash
+   sh ./install-pwf.sh --target /path/to/your-project --dry-run
+   ```
+
+5. If dry-run reports no conflicts, install:
+
+   ```powershell
+   .\install-pwf.ps1 -TargetPath C:\path\to\your-project
+   ```
+
+6. Restart Codex and approve hooks when prompted.
+7. Run `/pwf-doctor` inside the target project.
 
 The target project should look like this:
 
@@ -134,7 +152,7 @@ your-project/
     skills/
 ```
 
-If the target project already has a `.codex/` directory, back it up or merge `hooks.json` manually so existing project configuration is not overwritten.
+The installer does not recursively overwrite the whole `.codex/` directory. It copies only files declared as PWF-owned in the manifest, parses and merges `.codex/hooks.json`, and records install state in `.codex/pwf-install-state.json`. If it finds an unknown same-path file, invalid `hooks.json`, or a locally modified installed file, it stops and reports a conflict by default.
 
 ### Option B: Install From git clone
 
@@ -142,16 +160,17 @@ Use this path if you want to inspect source code, run tests, or contribute:
 
 ```powershell
 git clone https://github.com/TheLostRiver/HelsincyPlanWithFiles.git
-Copy-Item -Recurse -Force .\HelsincyPlanWithFiles\.codex .\your-project\
+.\HelsincyPlanWithFiles\install-pwf.ps1 -TargetPath .\your-project -DryRun
+.\HelsincyPlanWithFiles\install-pwf.ps1 -TargetPath .\your-project
 ```
 
 ### Option C: Download Source ZIP
 
-You can also use `Code` -> `Download ZIP` on GitHub to download the full source. After extracting it, copy only `.codex/` into the target project root. For normal use, prefer the release `codex.zip` package.
+You can also use `Code` -> `Download ZIP` on GitHub to download the full source. After extracting it, install with `install-pwf.ps1` or `install-pwf.sh`. For normal use, prefer the release `codex.zip` package.
 
 ## Agent Slash Commands
 
-The repository includes local user-invocable skill wrappers in `.codex/skills/pwf-*`. After copying `.codex/` into a target project, these commands work like `/planning-with-files`; they do not need to be installed into the user-level `.codex`, so uninstalling is just removing the project-local `.codex/`.
+The repository includes local user-invocable skill wrappers in `.codex/skills/pwf-*`. After installing into a target project, these commands work like `/planning-with-files`; they do not need to be installed into the user-level `.codex`. To uninstall, run `.\install-pwf.ps1 -TargetPath C:\path\to\your-project -Uninstall`; it removes only PWF files and hook entries recorded in install state and leaves `.planning/` intact.
 
 The first batch uses the `/pwf-XXX` naming pattern. `pwf` means planning with files:
 

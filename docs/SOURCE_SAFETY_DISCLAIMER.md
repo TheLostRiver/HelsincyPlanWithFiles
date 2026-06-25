@@ -35,7 +35,7 @@ Helsincy Plan With Files 的当前项目代码不会主动删除、覆盖、清�
   - 用户自己运行的 shell、git、编辑器或项目工具链操作
   - 项目自身构建、格式化、生成、测试或清理流程
   - 第三方工具、插件、hook、脚本或其他自动化系统
-  - 用户在安装、复制、覆盖 `.codex/` 或其他目录时执行的文件操作
+  - 用户手动安装、复制、覆盖 `.codex/` 或其他目录时执行的文件操作
 
 这些行为不属于 Helsincy Plan With Files 的自动记录机制。
 
@@ -59,14 +59,21 @@ Helsincy Plan With Files 是一个项目本地的任务记忆工具。它的目�
   - `.planning/session-leases/...`
   - `.planning/<plan-id>/.task-lease.json`
   - `.planning/<plan-id>/.attestation` 或 legacy `.plan-attestation`
-  - 项目安装包内的 `.codex/hooks`、`.codex/skills` 和 `.codex/hooks.json`
+  - 项目安装包内的 `.codex/hooks`、`.codex/skills`、`.codex/hooks.json`
+    和 `.codex/pwf-install-state.json`
 
 这些文件用于保存任务状态、会话归属、上下文设置、计划锁定信息和进度记录。
 它们不是用户业务源码的替代品，也不应被写入用户业务源码路径。
 
-如果目标项目原本已经有 `.codex/`，请先备份或手动合并配置。直接复制目录并
-选择覆盖，是用户或外部文件管理工具执行的安装行为，不是本项目运行时的自动
-源码修改机制。
+当前推荐安装方式是运行 release 包里的 installer。installer 的默认策略是冲
+突即停止：它不会递归覆盖目标项目的 `.codex/`，也不会把已有
+`.codex/hooks.json` 整文件替换掉，而是解析 JSON 并追加 PWF hook。它只会复
+制 manifest 中声明的 PWF-owned 文件，并把安装状态记录到
+`.codex/pwf-install-state.json`；如果遇到未知同名文件、无效 `hooks.json`，
+或已安装文件被本地修改，它会停止并报告 conflict。
+
+手动复制 `.codex/` 并选择覆盖，仍然属于用户或外部文件管理工具执行的安装行
+为，不是本项目运行时的自动源码修改机制。
 
 ================================================================================
 2. 本项目不会做哪些事
@@ -156,7 +163,8 @@ Helsincy Plan With Files 给 agent 提供的是任务上下文和状态记录，
 使用者应自行确认：
 
   - 正在安装的是可信版本
-  - 目标项目内已有的 `.codex/` 配置不会被盲目覆盖
+  - installer dry-run 没有报告无法接受的 conflict
+  - 目标项目内已有的 `.codex/` 配置不会被手动复制流程盲目覆盖
   - agent 获得的权限符合自己的风险承受范围
   - shell、git、构建工具、格式化工具和清理脚本不会执行未预期的破坏性操作
   - 重要源码已经纳入版本控制或有独立备份

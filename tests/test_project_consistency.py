@@ -35,6 +35,15 @@ class ProjectConsistencyTests(unittest.TestCase):
         self.assertIn("attestation", readme_cn)
         self.assertIn("attestation", readme_en)
 
+    def test_readmes_document_safe_installer(self):
+        readme_cn = read_text("README.md")
+        readme_en = read_text("README.en.md")
+
+        self.assertIn("install-pwf.ps1", readme_cn)
+        self.assertIn("install-pwf.ps1", readme_en)
+        self.assertIn("--dry-run", readme_cn)
+        self.assertIn("--dry-run", readme_en)
+
     def test_readmes_link_chinese_localization_plan(self):
         readme_cn = read_text("README.md")
         readme_en = read_text("README.en.md")

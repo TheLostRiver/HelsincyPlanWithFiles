@@ -46,17 +46,34 @@ progress.md    # 进度日志：什么时候做了什么，改了哪些文件
 普通用户推荐下载 release 里的这个包：
 
 ```text
-HelsincyPlanWithFiles-v0.2.7-codex.zip
+HelsincyPlanWithFiles-v0.3.3-codex.zip
 ```
 
 安装步骤：
 
 1. 打开 GitHub 的 Latest Release 页面。
-2. 下载 `HelsincyPlanWithFiles-v0.2.7-codex.zip`。
-3. 解压。
-4. 把解压出来的 `.codex/` 文件夹复制到你的项目根目录。
-5. 重启 Codex。
-6. 如果 Codex 提示是否信任 hooks，选择允许或批准。
+2. 下载 `HelsincyPlanWithFiles-v0.3.3-codex.zip`。
+3. 解压到任意临时目录。
+4. 先预览安装：
+
+   ```powershell
+   .\install-pwf.ps1 -TargetPath C:\path\to\your-project -DryRun
+   ```
+
+   如果你在 POSIX shell 环境里，也可以运行：
+
+   ```bash
+   sh ./install-pwf.sh --target /path/to/your-project --dry-run
+   ```
+
+5. 如果 dry-run 没有报告 conflict，再执行安装：
+
+   ```powershell
+   .\install-pwf.ps1 -TargetPath C:\path\to\your-project
+   ```
+
+6. 重启 Codex。
+7. 如果 Codex 提示是否信任 hooks，选择允许或批准。
 
 你的项目大概会变成这样：
 
@@ -66,7 +83,7 @@ your-project/
   你的其他文件...
 ```
 
-如果你的项目本来就有 `.codex/` 文件夹，不要直接覆盖。先备份，或者让 Codex 帮你合并。
+如果你的项目本来就有 `.codex/` 文件夹，请先运行 dry-run。安装器会合并 `hooks.json`，不会递归覆盖整个 `.codex/`；如果发现未知同名文件、无效 `hooks.json`，或已安装文件被本地修改，它会停止并报告 conflict。
 
 ## 安装后先做什么？
 
@@ -414,7 +431,7 @@ Codex 聊天变长后，系统可能会压缩上下文。压缩后，聊天里�
 python .codex\skills\planning-with-files\scripts\plan.py doctor
 ```
 
-如果 doctor 也找不到文件，通常是 `.codex/` 没有复制到项目根目录，或者你当前打开的不是目标项目。
+如果 doctor 也找不到文件，通常是 installer 没有安装到当前项目根目录，或者你当前打开的不是目标项目。先回到 release 解压目录运行 `install-pwf.ps1 -DryRun` 检查目标路径，再决定是否安装。
 
 ## 推荐记忆法
 
