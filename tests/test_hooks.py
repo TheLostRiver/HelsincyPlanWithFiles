@@ -13,16 +13,16 @@ from unittest import mock
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PLANNING_STATE = SourceFileLoader(
     "planning_state_under_test",
-    str(REPO_ROOT / ".codex" / "hooks" / "planning_state.py"),
+    str(REPO_ROOT / ".codex" / "hooks" / "pwf" / "planning_state.py"),
 ).load_module()
 CODEX_HOOK_ADAPTER = SourceFileLoader(
     "codex_hook_adapter_under_test",
-    str(REPO_ROOT / ".codex" / "hooks" / "codex_hook_adapter.py"),
+    str(REPO_ROOT / ".codex" / "hooks" / "pwf" / "codex_hook_adapter.py"),
 ).load_module()
 
 
 def run_hook(script_name, project_root, payload, env=None):
-    script = REPO_ROOT / ".codex" / "hooks" / script_name
+    script = REPO_ROOT / ".codex" / "hooks" / "pwf" / script_name
     run_env = {
         key: value
         for key, value in os.environ.items()
@@ -498,6 +498,27 @@ class HookTests(unittest.TestCase):
         post_tool_use = hooks["hooks"]["PostToolUse"][0]
 
         self.assertEqual(post_tool_use["matcher"], "apply_patch|Edit|Write")
+
+    def test_legacy_hook_wrapper_delegates_to_namespaced_hook(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            script = REPO_ROOT / ".codex" / "hooks" / "user_prompt_submit.py"
+            result = subprocess.run(
+                [sys.executable, str(script)],
+                cwd=str(REPO_ROOT),
+                input=json.dumps(
+                    {
+                        "cwd": str(root),
+                        "hook_event_name": "UserPromptSubmit",
+                        "prompt": "status",
+                    }
+                ),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(0, result.returncode, result.stderr)
 
     def test_post_tool_use_records_apply_patch_changed_files(self):
         with tempfile.TemporaryDirectory() as tmp:

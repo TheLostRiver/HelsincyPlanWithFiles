@@ -275,11 +275,22 @@ class ProjectConsistencyTests(unittest.TestCase):
 
         referenced = []
         for command in commands:
-            referenced.extend(re.findall(r"\.codex/hooks/[A-Za-z0-9_]+\.py", command))
+            referenced.extend(re.findall(r"\.codex/hooks/(?:pwf/)?[A-Za-z0-9_]+\.py", command))
 
         self.assertTrue(referenced)
         for path in referenced:
             self.assertTrue((REPO_ROOT / path).is_file(), path)
+
+    def test_hooks_json_uses_namespaced_pwf_hooks(self):
+        hooks = json.loads(read_text(".codex/hooks.json"))
+        commands = [
+            command
+            for command in collect_commands(hooks)
+            if ".codex/hooks/" in command
+        ]
+
+        self.assertTrue(commands)
+        self.assertTrue(all(".codex/hooks/pwf/" in command for command in commands))
 
     def test_session_start_hook_matches_compact_source(self):
         hooks = json.loads(read_text(".codex/hooks.json"))
