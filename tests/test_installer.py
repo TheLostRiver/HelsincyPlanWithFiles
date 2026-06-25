@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import sys
 import tempfile
 import unittest
@@ -233,6 +234,80 @@ class InstallerHooksMergeTests(unittest.TestCase):
         self.assertTrue(changed)
         self.assertNotIn("python .codex/hooks/user_prompt_submit.py", commands)
         self.assertIn("python .codex/hooks/pwf/user_prompt_submit.py", commands)
+
+
+class InstallerApplyTests(unittest.TestCase):
+    def test_dry_run_writes_nothing(self):
+        module = load_installer()
+        with tempfile.TemporaryDirectory() as source_dir, tempfile.TemporaryDirectory() as target_dir:
+            source = Path(source_dir)
+            target = Path(target_dir)
+            (source / ".codex/hooks/pwf").mkdir(parents=True)
+            (source / ".codex/hooks/pwf/session_start.py").write_text("print('pwf')\n", encoding="utf-8")
+            manifest = module.Manifest(
+                schema=1,
+                package="HelsincyPlanWithFiles",
+                owned_files=(module.OwnedFile(".codex/hooks/pwf/session_start.py", ".codex/hooks/pwf/session_start.py", "hook"),),
+                owned_directory_globs=(),
+                hook_entries=(module.HookEntry(event="SessionStart", matcher="startup|resume|compact", command="python .codex/hooks/pwf/session_start.py"),),
+                legacy_hook_commands=(),
+            )
+
+            result = module.install(source, target, manifest, version="0.3.4", dry_run=True)
+
+            self.assertEqual(0, result.exit_code)
+            self.assertFalse((target / ".codex/hooks/pwf/session_start.py").exists())
+            self.assertFalse((target / ".codex/hooks.json").exists())
+
+    def test_install_copies_files_merges_hooks_and_writes_state(self):
+        module = load_installer()
+        with tempfile.TemporaryDirectory() as source_dir, tempfile.TemporaryDirectory() as target_dir:
+            source = Path(source_dir)
+            target = Path(target_dir)
+            (source / ".codex/hooks/pwf").mkdir(parents=True)
+            (source / ".codex/hooks/pwf/session_start.py").write_text("print('pwf')\n", encoding="utf-8")
+            manifest = module.Manifest(
+                schema=1,
+                package="HelsincyPlanWithFiles",
+                owned_files=(module.OwnedFile(".codex/hooks/pwf/session_start.py", ".codex/hooks/pwf/session_start.py", "hook"),),
+                owned_directory_globs=(),
+                hook_entries=(module.HookEntry(event="SessionStart", matcher="startup|resume|compact", command="python .codex/hooks/pwf/session_start.py"),),
+                legacy_hook_commands=(),
+            )
+
+            result = module.install(source, target, manifest, version="0.3.4", dry_run=False)
+
+            self.assertEqual(0, result.exit_code)
+            self.assertTrue((target / ".codex/hooks/pwf/session_start.py").is_file())
+            hooks = json.loads((target / ".codex/hooks.json").read_text(encoding="utf-8"))
+            self.assertEqual("python .codex/hooks/pwf/session_start.py", hooks["hooks"]["SessionStart"][0]["hooks"][0]["command"])
+            state = json.loads((target / ".codex/pwf-install-state.json").read_text(encoding="utf-8"))
+            self.assertEqual("0.3.4", state["version"])
+            self.assertEqual(".codex/hooks/pwf/session_start.py", state["files"][0]["path"])
+
+    def test_install_aborts_before_writing_when_conflict_exists(self):
+        module = load_installer()
+        with tempfile.TemporaryDirectory() as source_dir, tempfile.TemporaryDirectory() as target_dir:
+            source = Path(source_dir)
+            target = Path(target_dir)
+            (source / ".codex/hooks/pwf").mkdir(parents=True)
+            (target / ".codex/hooks/pwf").mkdir(parents=True)
+            (source / ".codex/hooks/pwf/session_start.py").write_text("print('pwf')\n", encoding="utf-8")
+            (target / ".codex/hooks/pwf/session_start.py").write_text("print('custom')\n", encoding="utf-8")
+            manifest = module.Manifest(
+                schema=1,
+                package="HelsincyPlanWithFiles",
+                owned_files=(module.OwnedFile(".codex/hooks/pwf/session_start.py", ".codex/hooks/pwf/session_start.py", "hook"),),
+                owned_directory_globs=(),
+                hook_entries=(),
+                legacy_hook_commands=(),
+            )
+
+            result = module.install(source, target, manifest, version="0.3.4", dry_run=False)
+
+            self.assertEqual(2, result.exit_code)
+            self.assertEqual("print('custom')\n", (target / ".codex/hooks/pwf/session_start.py").read_text(encoding="utf-8"))
+            self.assertFalse((target / ".codex/pwf-install-state.json").exists())
 
 
 if __name__ == "__main__":

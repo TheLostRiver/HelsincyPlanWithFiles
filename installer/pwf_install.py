@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import hashlib
+import shutil
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 
 
 @dataclass(frozen=True)
@@ -41,6 +43,13 @@ class FileOperation:
     target: Path
     relative_target: str
     reason: str
+
+
+@dataclass(frozen=True)
+class InstallResult:
+    exit_code: int
+    operations: tuple[FileOperation, ...]
+    messages: tuple[str, ...]
 
 
 def _require_relative(path_text: str, field_name: str) -> str:
@@ -228,3 +237,114 @@ def merge_hooks_json(existing: Mapping[str, Any], manifest: Manifest) -> tuple[d
         hooks[entry.event] = filtered_groups
 
     return merged, changed
+
+
+def utc_timestamp() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def backup_path(target_root: Path) -> Path:
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return target_root / ".codex" / "backups" / f"pwf-install-{stamp}"
+
+
+def copy_with_backup(op: FileOperation, backup_root: Path | None) -> None:
+    if op.target.exists() and backup_root is not None:
+        backup_file = backup_root / op.relative_target
+        backup_file.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(op.target, backup_file)
+    op.target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(op.source, op.target)
+
+
+def write_install_state(target_root: Path, manifest: Manifest, version: str, installed_files: Iterable[str]) -> None:
+    files = []
+    for rel in sorted(installed_files):
+        path = target_root / rel
+        if path.is_file():
+            files.append({"path": rel, "sha256": sha256_file(path)})
+
+    hooks = []
+    for entry in manifest.hook_entries:
+        item: dict[str, Any] = {"event": entry.event, "command": entry.command}
+        if entry.matcher is not None:
+            item["matcher"] = entry.matcher
+        hooks.append(item)
+
+    state = {
+        "schema": 1,
+        "package": manifest.package,
+        "version": version,
+        "installed_at": utc_timestamp(),
+        "files": files,
+        "hooks": hooks,
+    }
+    state_path = target_root / ".codex" / "pwf-install-state.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def load_hooks_json(target_root: Path) -> dict[str, Any]:
+    path = target_root / ".codex" / "hooks.json"
+    if not path.exists():
+        return {"hooks": {}}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"hooks.json is invalid JSON: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ValueError("hooks.json root must be an object")
+    return raw
+
+
+def install(
+    source_root: Path,
+    target_root: Path,
+    manifest: Manifest,
+    *,
+    version: str,
+    dry_run: bool = False,
+    force_owned: bool = False,
+) -> InstallResult:
+    state = read_install_state(target_root)
+    owned_files = expand_owned_files(source_root, manifest)
+    operations = tuple(
+        plan_file_operation(source_root, target_root, owned, state, force_owned=force_owned)
+        for owned in owned_files
+    )
+    messages = [f"{op.action}: {op.relative_target} ({op.reason})" for op in operations]
+    conflicts = [op for op in operations if op.action == "conflict"]
+    if conflicts:
+        return InstallResult(2, operations, tuple(messages))
+
+    try:
+        hooks_json = load_hooks_json(target_root)
+        merged_hooks, hooks_changed = merge_hooks_json(hooks_json, manifest)
+    except ValueError as exc:
+        return InstallResult(2, operations, tuple(messages + [str(exc)]))
+
+    if dry_run:
+        if hooks_changed:
+            messages.append("merge: .codex/hooks.json")
+        return InstallResult(0, operations, tuple(messages))
+
+    backup_root = backup_path(target_root)
+    backup_needed = hooks_changed or any(op.action == "overwrite" for op in operations)
+    if backup_needed:
+        backup_root.mkdir(parents=True, exist_ok=True)
+
+    for op in operations:
+        if op.action in {"copy", "overwrite"}:
+            copy_with_backup(op, backup_root if op.action == "overwrite" else None)
+
+    hooks_path = target_root / ".codex" / "hooks.json"
+    if hooks_changed:
+        if hooks_path.exists():
+            backup_file = backup_root / ".codex" / "hooks.json"
+            backup_file.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(hooks_path, backup_file)
+        hooks_path.parent.mkdir(parents=True, exist_ok=True)
+        hooks_path.write_text(json.dumps(merged_hooks, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    write_install_state(target_root, manifest, version, (owned.target for owned in owned_files))
+    return InstallResult(0, operations, tuple(messages))
