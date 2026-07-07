@@ -1,15 +1,20 @@
 from __future__ import annotations
 
 import argparse
+import os
 import json
 import hashlib
 import shutil
 import stat
 import sys
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
+
+
+INSTALL_STATE_PACKAGE = "HelsincyPlanWithFiles"
 
 
 @dataclass(frozen=True)
@@ -133,18 +138,22 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def read_install_state(target_root: Path) -> dict[str, Any] | None:
+def read_install_state(target_root: Path, *, expected_package: str = INSTALL_STATE_PACKAGE) -> dict[str, Any] | None:
     state_path = _safe_target_path(target_root, ".codex/pwf-install-state.json", "state path")
     if not state_path.exists():
         return None
+    if not state_path.is_file():
+        raise ValueError("install state is invalid: state path is not a file")
     try:
         raw = json.loads(state_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise ValueError(f"install state is invalid: invalid JSON: {exc}") from exc
-    return validate_install_state(raw)
+    except OSError as exc:
+        raise ValueError(f"install state is invalid: cannot read state file: {exc}") from exc
+    return validate_install_state(raw, expected_package=expected_package)
 
 
-def validate_install_state(raw: Any) -> dict[str, Any]:
+def validate_install_state(raw: Any, *, expected_package: str = INSTALL_STATE_PACKAGE) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise ValueError("install state is invalid: root must be an object")
 
@@ -152,7 +161,13 @@ def validate_install_state(raw: Any) -> dict[str, Any]:
     if type(schema) is not int or schema != 1:
         raise ValueError("install state is invalid: schema must be 1")
 
-    for field in ("package", "version", "installed_at"):
+    package = raw.get("package")
+    if not isinstance(package, str) or not package:
+        raise ValueError("install state is invalid: package must be a non-empty string")
+    if package != expected_package:
+        raise ValueError("install state is invalid: package mismatch")
+
+    for field in ("version", "installed_at"):
         if not isinstance(raw.get(field), str) or not raw[field]:
             raise ValueError(f"install state is invalid: {field} must be a non-empty string")
 
@@ -213,6 +228,8 @@ def plan_file_operation(
         return FileOperation("conflict", source, target, rel, "source file missing from installer package")
     if not target.exists():
         return FileOperation("copy", source, target, rel, "target file is missing")
+    if not target.is_file():
+        return FileOperation("conflict", source, target, rel, "target path exists but is not a file")
 
     source_hash = sha256_file(source)
     target_hash = sha256_file(target)
@@ -346,13 +363,52 @@ def backup_path(target_root: Path) -> Path:
     return target_root / ".codex" / "backups" / f"pwf-install-{stamp}"
 
 
+def _temp_path_for_atomic_replace(target_root: Path, target: Path, field_name: str) -> Path:
+    target = _safe_child_path(target_root, target, field_name)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f".{target.name}.",
+        suffix=".tmp",
+        dir=str(target.parent),
+    )
+    os.close(fd)
+    return _safe_child_path(target_root, Path(temp_name), f"{field_name} temp path")
+
+
+def atomic_write_text(target_root: Path, target: Path, text: str, *, encoding: str = "utf-8") -> None:
+    safe_target = _safe_child_path(target_root, target, "write path")
+    temp_path = _temp_path_for_atomic_replace(target_root, safe_target, "write path")
+    try:
+        temp_path.write_text(text, encoding=encoding)
+        temp_path.replace(safe_target)
+    except OSError:
+        try:
+            temp_path.unlink()
+        except OSError:
+            pass
+        raise
+
+
+def atomic_copy_file(source: Path, target_root: Path, target: Path) -> None:
+    safe_target = _safe_child_path(target_root, target, "copy path")
+    temp_path = _temp_path_for_atomic_replace(target_root, safe_target, "copy path")
+    try:
+        shutil.copy2(source, temp_path)
+        temp_path.replace(safe_target)
+    except OSError:
+        try:
+            temp_path.unlink()
+        except OSError:
+            pass
+        raise
+
+
 def copy_with_backup(op: FileOperation, target_root: Path, backup_root: Path | None) -> None:
     if op.target.exists() and backup_root is not None:
         backup_file = _safe_child_path(target_root, backup_root / op.relative_target, "backup path")
         backup_file.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(op.target, backup_file)
-    op.target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(op.source, op.target)
+    atomic_copy_file(op.source, target_root, op.target)
 
 
 def write_install_state(target_root: Path, manifest: Manifest, version: str, installed_files: Iterable[str]) -> None:
@@ -378,18 +434,21 @@ def write_install_state(target_root: Path, manifest: Manifest, version: str, ins
         "hooks": hooks,
     }
     state_path = _safe_target_path(target_root, ".codex/pwf-install-state.json", "state path")
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    state_path.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    atomic_write_text(target_root, state_path, json.dumps(state, indent=2, ensure_ascii=False) + "\n")
 
 
 def load_hooks_json(target_root: Path) -> dict[str, Any]:
     path = _safe_target_path(target_root, ".codex/hooks.json")
     if not path.exists():
         return {"hooks": {}}
+    if not path.is_file():
+        raise ValueError("hooks.json path exists but is not a file")
     try:
         raw = json.loads(path.read_text(encoding="utf-8-sig"))
     except json.JSONDecodeError as exc:
         raise ValueError(f"hooks.json is invalid JSON: {exc}") from exc
+    except OSError as exc:
+        raise ValueError(f"hooks.json cannot be read: {exc}") from exc
     if not isinstance(raw, dict):
         raise ValueError("hooks.json root must be an object")
     return raw
@@ -405,7 +464,7 @@ def install(
     force_owned: bool = False,
 ) -> InstallResult:
     try:
-        state = read_install_state(target_root)
+        state = read_install_state(target_root, expected_package=manifest.package)
     except ValueError as exc:
         return InstallResult(2, (), (str(exc),))
     owned_files = expand_owned_files(source_root, manifest)
@@ -430,26 +489,28 @@ def install(
         messages.append("write: .codex/pwf-install-state.json")
         return InstallResult(0, operations, tuple(messages))
 
-    backup_root = backup_path(target_root)
-    backup_needed = hooks_changed or any(op.action == "overwrite" for op in operations)
-    if backup_needed:
-        _safe_child_path(target_root, backup_root / ".keep", "backup path")
-        backup_root.mkdir(parents=True, exist_ok=True)
+    try:
+        backup_root = backup_path(target_root)
+        backup_needed = hooks_changed or any(op.action == "overwrite" for op in operations)
+        if backup_needed:
+            _safe_child_path(target_root, backup_root / ".keep", "backup path")
+            backup_root.mkdir(parents=True, exist_ok=True)
 
-    for op in operations:
-        if op.action in {"copy", "overwrite"}:
-            copy_with_backup(op, target_root, backup_root if op.action == "overwrite" else None)
+        for op in operations:
+            if op.action in {"copy", "overwrite"}:
+                copy_with_backup(op, target_root, backup_root if op.action == "overwrite" else None)
 
-    hooks_path = _safe_target_path(target_root, ".codex/hooks.json")
-    if hooks_changed:
-        if hooks_path.exists():
-            backup_file = _safe_child_path(target_root, backup_root / ".codex" / "hooks.json", "backup path")
-            backup_file.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(hooks_path, backup_file)
-        hooks_path.parent.mkdir(parents=True, exist_ok=True)
-        hooks_path.write_text(json.dumps(merged_hooks, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        hooks_path = _safe_target_path(target_root, ".codex/hooks.json")
+        if hooks_changed:
+            if hooks_path.exists():
+                backup_file = _safe_child_path(target_root, backup_root / ".codex" / "hooks.json", "backup path")
+                backup_file.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(hooks_path, backup_file)
+            atomic_write_text(target_root, hooks_path, json.dumps(merged_hooks, indent=2, ensure_ascii=False) + "\n")
 
-    write_install_state(target_root, manifest, version, (owned.target for owned in owned_files))
+        write_install_state(target_root, manifest, version, (owned.target for owned in owned_files))
+    except OSError as exc:
+        return InstallResult(2, operations, tuple(messages + [f"install failed: {exc}"]))
     return InstallResult(0, operations, tuple(messages))
 
 
@@ -523,6 +584,9 @@ def uninstall(target_root: Path, *, dry_run: bool = False) -> InstallResult:
         if not path.exists():
             messages.append(f"skip missing: {rel}")
             continue
+        if not path.is_file():
+            messages.append(f"conflict non-file: {rel}")
+            return InstallResult(2, tuple(operations), tuple(messages))
         if sha256_file(path) != expected_hash:
             messages.append(f"conflict modified: {rel}")
             return InstallResult(2, tuple(operations), tuple(messages))
@@ -541,23 +605,26 @@ def uninstall(target_root: Path, *, dry_run: bool = False) -> InstallResult:
             tuple(messages + [f"delete: {op.relative_target}" for op in operations]),
         )
 
-    backup_root = backup_path(target_root)
-    if hooks_changed:
-        _safe_child_path(target_root, backup_root / ".keep", "backup path")
-        backup_root.mkdir(parents=True, exist_ok=True)
-        hooks_path = _safe_target_path(target_root, ".codex/hooks.json")
-        if hooks_path.exists():
-            backup_file = _safe_child_path(target_root, backup_root / ".codex" / "hooks.json", "backup path")
-            backup_file.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(hooks_path, backup_file)
-        hooks_path.write_text(json.dumps(merged_hooks, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    try:
+        backup_root = backup_path(target_root)
+        if hooks_changed:
+            _safe_child_path(target_root, backup_root / ".keep", "backup path")
+            backup_root.mkdir(parents=True, exist_ok=True)
+            hooks_path = _safe_target_path(target_root, ".codex/hooks.json")
+            if hooks_path.exists():
+                backup_file = _safe_child_path(target_root, backup_root / ".codex" / "hooks.json", "backup path")
+                backup_file.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(hooks_path, backup_file)
+            atomic_write_text(target_root, hooks_path, json.dumps(merged_hooks, indent=2, ensure_ascii=False) + "\n")
 
-    for op in operations:
-        op.target.unlink()
+        for op in operations:
+            op.target.unlink()
 
-    state_path = _safe_target_path(target_root, ".codex/pwf-install-state.json", "state path")
-    if state_path.exists():
-        state_path.unlink()
+        state_path = _safe_target_path(target_root, ".codex/pwf-install-state.json", "state path")
+        if state_path.exists():
+            state_path.unlink()
+    except OSError as exc:
+        return InstallResult(2, tuple(operations), tuple(messages + [f"uninstall failed: {exc}"]))
 
     return InstallResult(0, tuple(operations), tuple(messages))
 

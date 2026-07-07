@@ -41,6 +41,7 @@ PWF_LEGACY_HOOKS = {
     "PreCompact": ".codex/hooks/pre_compact.py",
     "Stop": ".codex/hooks/stop.py",
 }
+INSTALL_STATE_PACKAGE = "HelsincyPlanWithFiles"
 DEFAULT_COMPACT_THRESHOLD = 100
 LEGACY_BIND_SESSION_UNSUPPORTED = (
     "legacy plans do not support session binding; create a named .planning task "
@@ -544,21 +545,56 @@ def _uses_legacy_pwf_hook_paths(commands: Iterable[str]) -> bool:
     return False
 
 
-def _installer_state_line(root: Path) -> str:
+def _validate_installer_state_payload(payload: Any) -> tuple[str, int]:
+    if not isinstance(payload, dict):
+        raise ValueError("root must be an object")
+    if type(payload.get("schema")) is not int or payload["schema"] != 1:
+        raise ValueError("schema must be 1")
+    package = payload.get("package")
+    if package != INSTALL_STATE_PACKAGE:
+        raise ValueError("package mismatch")
+    for field in ("version", "installed_at"):
+        if not isinstance(payload.get(field), str) or not payload[field]:
+            raise ValueError(f"{field} must be a non-empty string")
+    files = payload.get("files")
+    if not isinstance(files, list):
+        raise ValueError("files must be an array")
+    for index, item in enumerate(files):
+        if not isinstance(item, dict):
+            raise ValueError(f"files[{index}] must be an object")
+        path_text = item.get("path")
+        if not isinstance(path_text, str) or not path_text:
+            raise ValueError(f"files[{index}].path must be a non-empty string")
+        path = Path(path_text)
+        if path.is_absolute() or ".." in path.parts:
+            raise ValueError(f"files[{index}].path must be a safe relative path")
+        if not isinstance(item.get("sha256"), str) or not item["sha256"]:
+            raise ValueError(f"files[{index}].sha256 must be a non-empty string")
+    hooks = payload.get("hooks")
+    if not isinstance(hooks, list):
+        raise ValueError("hooks must be an array")
+    for index, item in enumerate(hooks):
+        if not isinstance(item, dict):
+            raise ValueError(f"hooks[{index}] must be an object")
+        if not isinstance(item.get("event"), str) or not item["event"]:
+            raise ValueError(f"hooks[{index}].event must be a non-empty string")
+        if not isinstance(item.get("command"), str) or not item["command"]:
+            raise ValueError(f"hooks[{index}].command must be a non-empty string")
+    return str(payload.get("version")), len(files)
+
+
+def _installer_state_line(root: Path) -> tuple[str, bool]:
     state_path = root / ".codex" / "pwf-install-state.json"
+    if not state_path.exists():
+        return _message("installer_state_missing"), True
     if not state_path.is_file():
-        return _message("installer_state_missing")
+        return _message("installer_state_invalid"), False
     try:
         payload = json.loads(state_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return _message("installer_state_invalid")
-    if not isinstance(payload, dict):
-        return _message("installer_state_invalid")
-    version = payload.get("version")
-    files = payload.get("files")
-    version_text = version if isinstance(version, str) and version else "unknown"
-    count = len(files) if isinstance(files, list) else 0
-    return _message("installer_state_ok", version=version_text, count=count)
+        version_text, count = _validate_installer_state_payload(payload)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return _message("installer_state_invalid"), False
+    return _message("installer_state_ok", version=version_text, count=count), True
 
 
 def _short_digest(value: str | None) -> str:
@@ -1225,7 +1261,9 @@ def doctor(root: Path, *, verbose: bool = False, as_json: bool = False, strict: 
         lines.append(_message("python_runtime_warning"))
     else:
         lines.append(_message("python_runtime_ok"))
-    lines.append(_installer_state_line(root))
+    installer_line, installer_ok = _installer_state_line(root)
+    lines.append(installer_line)
+    ok = ok and installer_ok
 
     lines.extend(_session_status_lines(root))
 

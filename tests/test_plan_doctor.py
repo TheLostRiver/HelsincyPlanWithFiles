@@ -331,6 +331,68 @@ class PlanDoctorTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("installer state: version 0.3.4, 1 files tracked", result.stdout)
 
+    def test_doctor_reports_invalid_foreign_installer_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_active_plan(root)
+            write_hooks(root)
+            state_path = root / ".codex" / "pwf-install-state.json"
+            state_path.write_text(
+                json.dumps(
+                    {
+                        "schema": 1,
+                        "package": "OtherPackage",
+                        "version": "9.9.9",
+                        "installed_at": "2026-06-25T15:00:00Z",
+                        "files": [{"path": ".codex/hooks/pwf/session_start.py", "sha256": "abc"}],
+                        "hooks": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_plan(root, "doctor")
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("installer state: invalid", result.stdout)
+
+    def test_doctor_reports_invalid_malformed_installer_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_active_plan(root)
+            write_hooks(root)
+            state_path = root / ".codex" / "pwf-install-state.json"
+            state_path.write_text(
+                json.dumps(
+                    {
+                        "schema": 1,
+                        "package": "HelsincyPlanWithFiles",
+                        "version": "0.3.4",
+                        "installed_at": "2026-06-25T15:00:00Z",
+                        "files": [{"path": "../outside.py", "sha256": "abc"}],
+                        "hooks": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_plan(root, "doctor")
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("installer state: invalid", result.stdout)
+
+    def test_doctor_reports_non_file_installer_state_as_invalid(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_active_plan(root)
+            write_hooks(root)
+            (root / ".codex" / "pwf-install-state.json").mkdir(parents=True)
+
+            result = run_plan(root, "doctor")
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("installer state: invalid", result.stdout)
+
     def test_doctor_warns_about_python3_hook_command(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
