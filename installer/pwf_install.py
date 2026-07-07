@@ -8,6 +8,7 @@ import shutil
 import stat
 import sys
 import tempfile
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -58,6 +59,12 @@ class InstallResult:
     exit_code: int
     operations: tuple[FileOperation, ...]
     messages: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class FileSnapshot:
+    target: Path
+    content: bytes | None
 
 
 def _require_relative(path_text: str, field_name: str) -> str:
@@ -359,8 +366,12 @@ def utc_timestamp() -> str:
 
 
 def backup_path(target_root: Path) -> Path:
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    return target_root / ".codex" / "backups" / f"pwf-install-{stamp}"
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
+    for _ in range(100):
+        candidate = target_root / ".codex" / "backups" / f"pwf-install-{stamp}-{uuid.uuid4().hex[:8]}"
+        if not candidate.exists():
+            return candidate
+    raise OSError("could not allocate a unique backup directory")
 
 
 def _temp_path_for_atomic_replace(target_root: Path, target: Path, field_name: str) -> Path:
@@ -389,6 +400,20 @@ def atomic_write_text(target_root: Path, target: Path, text: str, *, encoding: s
         raise
 
 
+def atomic_write_bytes(target_root: Path, target: Path, content: bytes) -> None:
+    safe_target = _safe_child_path(target_root, target, "write path")
+    temp_path = _temp_path_for_atomic_replace(target_root, safe_target, "write path")
+    try:
+        temp_path.write_bytes(content)
+        temp_path.replace(safe_target)
+    except OSError:
+        try:
+            temp_path.unlink()
+        except OSError:
+            pass
+        raise
+
+
 def atomic_copy_file(source: Path, target_root: Path, target: Path) -> None:
     safe_target = _safe_child_path(target_root, target, "copy path")
     temp_path = _temp_path_for_atomic_replace(target_root, safe_target, "copy path")
@@ -401,6 +426,32 @@ def atomic_copy_file(source: Path, target_root: Path, target: Path) -> None:
         except OSError:
             pass
         raise
+
+
+def capture_snapshot(target_root: Path, target: Path) -> FileSnapshot:
+    safe_target = _safe_child_path(target_root, target, "snapshot path")
+    if not safe_target.exists():
+        return FileSnapshot(safe_target, None)
+    if not safe_target.is_file():
+        raise OSError(f"cannot snapshot non-file path: {safe_target}")
+    return FileSnapshot(safe_target, safe_target.read_bytes())
+
+
+def restore_snapshot(target_root: Path, snapshot: FileSnapshot) -> None:
+    safe_target = _safe_child_path(target_root, snapshot.target, "rollback path")
+    if snapshot.content is None:
+        if not safe_target.exists():
+            return
+        if not safe_target.is_file():
+            raise OSError(f"cannot roll back non-file path: {safe_target}")
+        safe_target.unlink()
+        return
+    atomic_write_bytes(target_root, safe_target, snapshot.content)
+
+
+def restore_snapshots(target_root: Path, snapshots: Iterable[FileSnapshot]) -> None:
+    for snapshot in reversed(tuple(snapshots)):
+        restore_snapshot(target_root, snapshot)
 
 
 def copy_with_backup(op: FileOperation, target_root: Path, backup_root: Path | None) -> None:
@@ -454,6 +505,33 @@ def load_hooks_json(target_root: Path) -> dict[str, Any]:
     return raw
 
 
+def manifest_owned_targets(source_root: Path, manifest: Manifest) -> set[str]:
+    return {owned.target for owned in expand_owned_files(source_root, manifest)}
+
+
+def manifest_hook_commands(manifest: Manifest) -> dict[str, set[str]]:
+    commands: dict[str, set[str]] = {}
+    for entry in (*manifest.hook_entries, *manifest.legacy_hook_commands):
+        commands.setdefault(entry.event, set()).add(normalize_command(entry.command))
+    return commands
+
+
+def validate_state_ownership(state: Mapping[str, Any], source_root: Path, manifest: Manifest) -> None:
+    allowed_files = manifest_owned_targets(source_root, manifest)
+    for item in state.get("files", []):
+        rel = item.get("path")
+        if not isinstance(rel, str) or rel not in allowed_files:
+            raise ValueError(f"install state is invalid: unrecognized owned file path: {rel}")
+
+    allowed_hooks = manifest_hook_commands(manifest)
+    for item in state.get("hooks", []):
+        event = item.get("event")
+        command = item.get("command")
+        normalized = normalize_command(command) if isinstance(command, str) else ""
+        if not isinstance(event, str) or normalized not in allowed_hooks.get(event, set()):
+            raise ValueError(f"install state is invalid: unrecognized owned hook command: {command}")
+
+
 def install(
     source_root: Path,
     target_root: Path,
@@ -489,6 +567,7 @@ def install(
         messages.append("write: .codex/pwf-install-state.json")
         return InstallResult(0, operations, tuple(messages))
 
+    snapshots: list[FileSnapshot] = []
     try:
         backup_root = backup_path(target_root)
         backup_needed = hooks_changed or any(op.action == "overwrite" for op in operations)
@@ -496,11 +575,16 @@ def install(
             _safe_child_path(target_root, backup_root / ".keep", "backup path")
             backup_root.mkdir(parents=True, exist_ok=True)
 
+        snapshot_targets = [op.target for op in operations if op.action in {"copy", "overwrite"}]
+        hooks_path = _safe_target_path(target_root, ".codex/hooks.json")
+        if hooks_changed:
+            snapshot_targets.append(hooks_path)
+        snapshots = [capture_snapshot(target_root, target) for target in snapshot_targets]
+
         for op in operations:
             if op.action in {"copy", "overwrite"}:
                 copy_with_backup(op, target_root, backup_root if op.action == "overwrite" else None)
 
-        hooks_path = _safe_target_path(target_root, ".codex/hooks.json")
         if hooks_changed:
             if hooks_path.exists():
                 backup_file = _safe_child_path(target_root, backup_root / ".codex" / "hooks.json", "backup path")
@@ -510,7 +594,12 @@ def install(
 
         write_install_state(target_root, manifest, version, (owned.target for owned in owned_files))
     except OSError as exc:
-        return InstallResult(2, operations, tuple(messages + [f"install failed: {exc}"]))
+        rollback_message = ""
+        try:
+            restore_snapshots(target_root, snapshots)
+        except OSError as rollback_exc:
+            rollback_message = f"; rollback failed: {rollback_exc}"
+        return InstallResult(2, operations, tuple(messages + [f"install failed: {exc}{rollback_message}"]))
     return InstallResult(0, operations, tuple(messages))
 
 
@@ -565,13 +654,25 @@ def _safe_relative_target(target_root: Path, rel_path: str) -> Path:
     return _safe_target_path(target_root, rel_path, "state path")
 
 
-def uninstall(target_root: Path, *, dry_run: bool = False) -> InstallResult:
+def uninstall(
+    target_root: Path,
+    *,
+    dry_run: bool = False,
+    source_root: Path | None = None,
+    manifest: Manifest | None = None,
+) -> InstallResult:
     try:
         state = read_install_state(target_root)
     except ValueError as exc:
         return InstallResult(2, (), (str(exc),))
     if not state:
         return InstallResult(0, (), ("no PWF install state found",))
+    source_root = source_root or default_source_root()
+    try:
+        manifest = manifest or load_manifest(source_root / "installer" / "pwf_install_manifest.json")
+        validate_state_ownership(state, source_root, manifest)
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        return InstallResult(2, (), (str(exc),))
 
     messages: list[str] = []
     operations: list[FileOperation] = []
@@ -605,12 +706,18 @@ def uninstall(target_root: Path, *, dry_run: bool = False) -> InstallResult:
             tuple(messages + [f"delete: {op.relative_target}" for op in operations]),
         )
 
+    snapshots: list[FileSnapshot] = []
     try:
         backup_root = backup_path(target_root)
+        hooks_path = _safe_target_path(target_root, ".codex/hooks.json")
+        snapshot_targets = [op.target for op in operations]
+        if hooks_changed:
+            snapshot_targets.append(hooks_path)
+        snapshots = [capture_snapshot(target_root, target) for target in snapshot_targets if target.exists()]
+
         if hooks_changed:
             _safe_child_path(target_root, backup_root / ".keep", "backup path")
             backup_root.mkdir(parents=True, exist_ok=True)
-            hooks_path = _safe_target_path(target_root, ".codex/hooks.json")
             if hooks_path.exists():
                 backup_file = _safe_child_path(target_root, backup_root / ".codex" / "hooks.json", "backup path")
                 backup_file.parent.mkdir(parents=True, exist_ok=True)
@@ -624,7 +731,12 @@ def uninstall(target_root: Path, *, dry_run: bool = False) -> InstallResult:
         if state_path.exists():
             state_path.unlink()
     except OSError as exc:
-        return InstallResult(2, tuple(operations), tuple(messages + [f"uninstall failed: {exc}"]))
+        rollback_message = ""
+        try:
+            restore_snapshots(target_root, snapshots)
+        except OSError as rollback_exc:
+            rollback_message = f"; rollback failed: {rollback_exc}"
+        return InstallResult(2, tuple(operations), tuple(messages + [f"uninstall failed: {exc}{rollback_message}"]))
 
     return InstallResult(0, tuple(operations), tuple(messages))
 
@@ -692,7 +804,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "uninstall":
         target_root = Path(args.target).resolve()
-        result = uninstall(target_root, dry_run=args.dry_run)
+        source_root = default_source_root()
+        manifest = load_manifest(source_root / "installer" / "pwf_install_manifest.json")
+        result = uninstall(target_root, dry_run=args.dry_run, source_root=source_root, manifest=manifest)
         print_result(result)
         return result.exit_code
 

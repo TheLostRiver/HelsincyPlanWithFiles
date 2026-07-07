@@ -41,6 +41,36 @@ PWF_LEGACY_HOOKS = {
     "PreCompact": ".codex/hooks/pre_compact.py",
     "Stop": ".codex/hooks/stop.py",
 }
+PWF_LEGACY_SHELL_FILES = {
+    ".codex/hooks/post-tool-use.sh",
+    ".codex/hooks/pre-compact.sh",
+    ".codex/hooks/pre-tool-use.sh",
+    ".codex/hooks/resolve-plan-dir.sh",
+    ".codex/hooks/session-start.sh",
+    ".codex/hooks/stop.sh",
+    ".codex/hooks/user-prompt-submit.sh",
+}
+PWF_WRAPPER_SKILL_DIRS = {
+    ".codex/skills/pwf-attest",
+    ".codex/skills/pwf-capture",
+    ".codex/skills/pwf-compact",
+    ".codex/skills/pwf-context-deep",
+    ".codex/skills/pwf-context-default",
+    ".codex/skills/pwf-context-expanded",
+    ".codex/skills/pwf-context-lean",
+    ".codex/skills/pwf-context-notice-auto",
+    ".codex/skills/pwf-context-notice-off",
+    ".codex/skills/pwf-context-notice-on",
+    ".codex/skills/pwf-context-status",
+    ".codex/skills/pwf-doctor",
+    ".codex/skills/pwf-init",
+    ".codex/skills/pwf-pause",
+    ".codex/skills/pwf-resume",
+    ".codex/skills/pwf-status",
+    ".codex/skills/pwf-switch",
+    ".codex/skills/pwf-tasks",
+    ".codex/skills/pwf-use",
+}
 INSTALL_STATE_PACKAGE = "HelsincyPlanWithFiles"
 DEFAULT_COMPACT_THRESHOLD = 100
 LEGACY_BIND_SESSION_UNSUPPORTED = (
@@ -545,6 +575,30 @@ def _uses_legacy_pwf_hook_paths(commands: Iterable[str]) -> bool:
     return False
 
 
+def _installer_state_file_allowed(path_text: str) -> bool:
+    normalized = path_text.replace("\\", "/")
+    wrapper_prefixes = tuple(f"{directory}/" for directory in PWF_WRAPPER_SKILL_DIRS)
+    return (
+        normalized.startswith(".codex/hooks/pwf/")
+        or normalized in PWF_LEGACY_SHELL_FILES
+        or normalized.startswith(".codex/skills/planning-with-files/")
+        or normalized.startswith(wrapper_prefixes)
+    )
+
+
+def _installer_state_hook_allowed(event: str, command: str) -> bool:
+    normalized = " ".join(command.replace("\\", "/").split())
+    allowed = {
+        event_name: {
+            f"python {canonical}",
+            f"python {legacy}",
+        }
+        for event_name, canonical in PWF_CANONICAL_HOOKS.items()
+        for legacy in (PWF_LEGACY_HOOKS[event_name],)
+    }
+    return normalized in allowed.get(event, set())
+
+
 def _validate_installer_state_payload(payload: Any) -> tuple[str, int]:
     if not isinstance(payload, dict):
         raise ValueError("root must be an object")
@@ -568,6 +622,8 @@ def _validate_installer_state_payload(payload: Any) -> tuple[str, int]:
         path = Path(path_text)
         if path.is_absolute() or ".." in path.parts:
             raise ValueError(f"files[{index}].path must be a safe relative path")
+        if not _installer_state_file_allowed(path_text):
+            raise ValueError(f"files[{index}].path is not a PWF-owned path")
         if not isinstance(item.get("sha256"), str) or not item["sha256"]:
             raise ValueError(f"files[{index}].sha256 must be a non-empty string")
     hooks = payload.get("hooks")
@@ -580,6 +636,8 @@ def _validate_installer_state_payload(payload: Any) -> tuple[str, int]:
             raise ValueError(f"hooks[{index}].event must be a non-empty string")
         if not isinstance(item.get("command"), str) or not item["command"]:
             raise ValueError(f"hooks[{index}].command must be a non-empty string")
+        if not _installer_state_hook_allowed(item["event"], item["command"]):
+            raise ValueError(f"hooks[{index}].command is not a PWF-owned hook")
     return str(payload.get("version")), len(files)
 
 

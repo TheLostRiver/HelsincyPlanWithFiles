@@ -612,6 +612,114 @@ class InstallerApplyTests(unittest.TestCase):
             self.assertEqual(2, result.exit_code)
             self.assertFalse(state_path.exists())
 
+    def test_install_rolls_back_hooks_when_state_write_fails(self):
+        module = load_installer()
+        with tempfile.TemporaryDirectory() as source_dir, tempfile.TemporaryDirectory() as target_dir:
+            source = Path(source_dir)
+            target = Path(target_dir)
+            (source / ".codex/hooks/pwf").mkdir(parents=True)
+            (source / ".codex/hooks/pwf/session_start.py").write_text("print('pwf')\n", encoding="utf-8")
+            (target / ".codex").mkdir(parents=True)
+            original_hooks = {
+                "hooks": {
+                    "SessionStart": [
+                        {"hooks": [{"type": "command", "command": "python .codex/hooks/custom.py"}]}
+                    ]
+                }
+            }
+            hooks_path = target / ".codex/hooks.json"
+            original_text = json.dumps(original_hooks)
+            hooks_path.write_text(original_text, encoding="utf-8")
+            manifest = module.Manifest(
+                schema=1,
+                package="HelsincyPlanWithFiles",
+                owned_files=(module.OwnedFile(".codex/hooks/pwf/session_start.py", ".codex/hooks/pwf/session_start.py", "hook"),),
+                owned_directory_globs=(),
+                hook_entries=(module.HookEntry(event="SessionStart", command="python .codex/hooks/pwf/session_start.py"),),
+                legacy_hook_commands=(),
+            )
+            original_write_text = module.Path.write_text
+
+            def flaky_write_text(path, data, *args, **kwargs):
+                if "pwf-install-state.json" in path.name:
+                    raise OSError("simulated state write failure")
+                return original_write_text(path, data, *args, **kwargs)
+
+            module.Path.write_text = flaky_write_text
+            try:
+                result = module.install(source, target, manifest, version="0.3.4", dry_run=False)
+            finally:
+                module.Path.write_text = original_write_text
+
+            self.assertEqual(2, result.exit_code)
+            self.assertEqual(original_text, hooks_path.read_text(encoding="utf-8"))
+
+    def test_install_rolls_back_overwritten_file_when_state_write_fails(self):
+        module = load_installer()
+        with tempfile.TemporaryDirectory() as source_dir, tempfile.TemporaryDirectory() as target_dir:
+            source = Path(source_dir)
+            target = Path(target_dir)
+            (source / ".codex/hooks/pwf").mkdir(parents=True)
+            (target / ".codex/hooks/pwf").mkdir(parents=True)
+            source_file = source / ".codex/hooks/pwf/session_start.py"
+            target_file = target / ".codex/hooks/pwf/session_start.py"
+            source_file.write_text("print('new pwf')\n", encoding="utf-8")
+            original_text = "print('old pwf')\n"
+            target_file.write_text(original_text, encoding="utf-8")
+            state = {
+                "schema": 1,
+                "package": "HelsincyPlanWithFiles",
+                "version": "0.3.3",
+                "installed_at": "2026-06-25T15:00:00Z",
+                "files": [{"path": ".codex/hooks/pwf/session_start.py", "sha256": module.sha256_file(target_file)}],
+                "hooks": [],
+            }
+            (target / ".codex/pwf-install-state.json").write_text(json.dumps(state), encoding="utf-8")
+            manifest = module.Manifest(
+                schema=1,
+                package="HelsincyPlanWithFiles",
+                owned_files=(module.OwnedFile(".codex/hooks/pwf/session_start.py", ".codex/hooks/pwf/session_start.py", "hook"),),
+                owned_directory_globs=(),
+                hook_entries=(),
+                legacy_hook_commands=(),
+            )
+            original_write_text = module.Path.write_text
+
+            def flaky_write_text(path, data, *args, **kwargs):
+                if "pwf-install-state.json" in path.name:
+                    raise OSError("simulated state write failure")
+                return original_write_text(path, data, *args, **kwargs)
+
+            module.Path.write_text = flaky_write_text
+            try:
+                result = module.install(source, target, manifest, version="0.3.4", dry_run=False)
+            finally:
+                module.Path.write_text = original_write_text
+
+            self.assertEqual(2, result.exit_code)
+            self.assertEqual(original_text, target_file.read_text(encoding="utf-8"))
+
+    def test_backup_path_is_unique_for_rapid_calls(self):
+        module = load_installer()
+        original_datetime = module.datetime
+
+        class FixedDateTime:
+            @classmethod
+            def now(cls, tz=None):
+                return original_datetime(2026, 7, 8, 12, 30, 45, tzinfo=tz)
+
+        module.datetime = FixedDateTime
+        try:
+            with tempfile.TemporaryDirectory() as target_dir:
+                target = Path(target_dir)
+                first = module.backup_path(target)
+                first.mkdir(parents=True)
+                second = module.backup_path(target)
+        finally:
+            module.datetime = original_datetime
+
+        self.assertNotEqual(first, second)
+
 
 class InstallerUninstallTests(unittest.TestCase):
     def test_uninstall_removes_only_state_owned_files_and_hooks(self):
@@ -742,6 +850,59 @@ class InstallerUninstallTests(unittest.TestCase):
 
             self.assertEqual(2, result.exit_code)
             self.assertTrue(any("conflict non-file" in message for message in result.messages))
+
+    def test_uninstall_rejects_state_file_outside_manifest_owned_paths(self):
+        module = load_installer()
+        with tempfile.TemporaryDirectory() as target_dir:
+            target = Path(target_dir)
+            victim = target / "project-secret.txt"
+            victim.write_text("do not delete\n", encoding="utf-8")
+            (target / ".codex").mkdir()
+            state = {
+                "schema": 1,
+                "package": "HelsincyPlanWithFiles",
+                "version": "0.3.4",
+                "installed_at": "2026-06-25T15:00:00Z",
+                "files": [{"path": "project-secret.txt", "sha256": module.sha256_file(victim)}],
+                "hooks": [],
+            }
+            (target / ".codex/pwf-install-state.json").write_text(json.dumps(state), encoding="utf-8")
+
+            result = module.uninstall(target, dry_run=False)
+
+            self.assertEqual(2, result.exit_code)
+            self.assertTrue(victim.exists())
+            self.assertTrue(any("install state is invalid" in message for message in result.messages))
+
+    def test_uninstall_rejects_state_hook_outside_pwf_manifest_commands(self):
+        module = load_installer()
+        with tempfile.TemporaryDirectory() as target_dir:
+            target = Path(target_dir)
+            (target / ".codex").mkdir()
+            hooks = {
+                "hooks": {
+                    "UserPromptSubmit": [
+                        {"hooks": [{"type": "command", "command": "python .codex/hooks/custom.py"}]}
+                    ]
+                }
+            }
+            hooks_path = target / ".codex/hooks.json"
+            hooks_path.write_text(json.dumps(hooks), encoding="utf-8")
+            state = {
+                "schema": 1,
+                "package": "HelsincyPlanWithFiles",
+                "version": "0.3.4",
+                "installed_at": "2026-06-25T15:00:00Z",
+                "files": [],
+                "hooks": [{"event": "UserPromptSubmit", "command": "python .codex/hooks/custom.py"}],
+            }
+            (target / ".codex/pwf-install-state.json").write_text(json.dumps(state), encoding="utf-8")
+
+            result = module.uninstall(target, dry_run=False)
+
+            self.assertEqual(2, result.exit_code)
+            self.assertEqual(json.dumps(hooks), hooks_path.read_text(encoding="utf-8"))
+            self.assertTrue(any("install state is invalid" in message for message in result.messages))
 
 
 class InstallerCliTests(unittest.TestCase):
