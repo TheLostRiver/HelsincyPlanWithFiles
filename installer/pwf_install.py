@@ -4,6 +4,7 @@ import argparse
 import json
 import hashlib
 import shutil
+import stat
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -61,6 +62,44 @@ def _require_relative(path_text: str, field_name: str) -> str:
     return path_text.replace("\\", "/")
 
 
+def _is_redirecting_path(path: Path) -> bool:
+    try:
+        if path.is_symlink():
+            return True
+        is_junction = getattr(path, "is_junction", None)
+        if callable(is_junction) and is_junction():
+            return True
+        attrs = path.stat(follow_symlinks=False).st_file_attributes
+    except (AttributeError, OSError):
+        return False
+    return bool(attrs & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0))
+
+
+def _safe_target_path(target_root: Path, rel_path: str, field_name: str = "target path") -> Path:
+    rel = _require_relative(rel_path, field_name)
+    root = target_root.resolve()
+    candidate = target_root / rel
+
+    current = target_root
+    for part in Path(rel).parts:
+        current = current / part
+        if (current.exists() or current.is_symlink()) and _is_redirecting_path(current):
+            raise ValueError(f"unsafe target path uses symlink or junction: {rel}")
+
+    resolved = candidate.resolve(strict=False)
+    if root != resolved and root not in resolved.parents:
+        raise ValueError(f"unsafe target path escapes target root: {rel}")
+    return candidate
+
+
+def _safe_child_path(target_root: Path, path: Path, field_name: str = "target path") -> Path:
+    try:
+        rel = path.relative_to(target_root)
+    except ValueError as exc:
+        raise ValueError(f"{field_name} escapes target root: {path}") from exc
+    return _safe_target_path(target_root, rel.as_posix(), field_name)
+
+
 def load_manifest(path: Path) -> Manifest:
     raw = json.loads(path.read_text(encoding="utf-8"))
     owned_files = tuple(
@@ -95,7 +134,7 @@ def sha256_file(path: Path) -> str:
 
 
 def read_install_state(target_root: Path) -> dict[str, Any] | None:
-    state_path = target_root / ".codex" / "pwf-install-state.json"
+    state_path = _safe_target_path(target_root, ".codex/pwf-install-state.json", "state path")
     if not state_path.exists():
         return None
     return json.loads(state_path.read_text(encoding="utf-8"))
@@ -120,8 +159,11 @@ def plan_file_operation(
     force_owned: bool = False,
 ) -> FileOperation:
     source = source_root / owned.source
-    target = target_root / owned.target
     rel = owned.target
+    try:
+        target = _safe_target_path(target_root, rel)
+    except ValueError as exc:
+        return FileOperation("conflict", source, target_root / rel, rel, str(exc))
     if not source.is_file():
         return FileOperation("conflict", source, target, rel, "source file missing from installer package")
     if not target.exists():
@@ -197,7 +239,8 @@ def merge_hooks_json(existing: Mapping[str, Any], manifest: Manifest) -> tuple[d
 
         current_command = normalize_command(entry.command)
         legacy_commands = legacy_by_event.get(entry.event, set())
-        found_current = False
+        canonical_group = hook_entry_to_group(entry)
+        canonical_present = False
         filtered_groups: list[Any] = []
 
         for group in event_groups:
@@ -210,6 +253,7 @@ def merge_hooks_json(existing: Mapping[str, Any], manifest: Manifest) -> tuple[d
                 continue
 
             kept_hooks = []
+            current_hooks_in_group = 0
             for hook in group_hooks:
                 if not isinstance(hook, dict):
                     kept_hooks.append(hook)
@@ -217,12 +261,16 @@ def merge_hooks_json(existing: Mapping[str, Any], manifest: Manifest) -> tuple[d
                 command = hook.get("command")
                 normalized = normalize_command(command) if isinstance(command, str) else ""
                 if normalized == current_command:
-                    found_current = True
-                    kept_hooks.append(hook)
+                    current_hooks_in_group += 1
                 elif normalized in legacy_commands:
                     changed = True
                 else:
                     kept_hooks.append(hook)
+
+            if current_hooks_in_group and group == canonical_group:
+                canonical_present = True
+                filtered_groups.append(group)
+                continue
 
             if kept_hooks:
                 new_group = dict(group)
@@ -231,8 +279,8 @@ def merge_hooks_json(existing: Mapping[str, Any], manifest: Manifest) -> tuple[d
             elif group_hooks:
                 changed = True
 
-        if not found_current:
-            filtered_groups.append(hook_entry_to_group(entry))
+        if not canonical_present:
+            filtered_groups.append(canonical_group)
             changed = True
         if filtered_groups != event_groups:
             changed = True
@@ -250,9 +298,9 @@ def backup_path(target_root: Path) -> Path:
     return target_root / ".codex" / "backups" / f"pwf-install-{stamp}"
 
 
-def copy_with_backup(op: FileOperation, backup_root: Path | None) -> None:
+def copy_with_backup(op: FileOperation, target_root: Path, backup_root: Path | None) -> None:
     if op.target.exists() and backup_root is not None:
-        backup_file = backup_root / op.relative_target
+        backup_file = _safe_child_path(target_root, backup_root / op.relative_target, "backup path")
         backup_file.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(op.target, backup_file)
     op.target.parent.mkdir(parents=True, exist_ok=True)
@@ -281,13 +329,13 @@ def write_install_state(target_root: Path, manifest: Manifest, version: str, ins
         "files": files,
         "hooks": hooks,
     }
-    state_path = target_root / ".codex" / "pwf-install-state.json"
+    state_path = _safe_target_path(target_root, ".codex/pwf-install-state.json", "state path")
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
 def load_hooks_json(target_root: Path) -> dict[str, Any]:
-    path = target_root / ".codex" / "hooks.json"
+    path = _safe_target_path(target_root, ".codex/hooks.json")
     if not path.exists():
         return {"hooks": {}}
     try:
@@ -308,7 +356,10 @@ def install(
     dry_run: bool = False,
     force_owned: bool = False,
 ) -> InstallResult:
-    state = read_install_state(target_root)
+    try:
+        state = read_install_state(target_root)
+    except ValueError as exc:
+        return InstallResult(2, (), (str(exc),))
     owned_files = expand_owned_files(source_root, manifest)
     operations = tuple(
         plan_file_operation(source_root, target_root, owned, state, force_owned=force_owned)
@@ -328,21 +379,23 @@ def install(
     if dry_run:
         if hooks_changed:
             messages.append("merge: .codex/hooks.json")
+        messages.append("write: .codex/pwf-install-state.json")
         return InstallResult(0, operations, tuple(messages))
 
     backup_root = backup_path(target_root)
     backup_needed = hooks_changed or any(op.action == "overwrite" for op in operations)
     if backup_needed:
+        _safe_child_path(target_root, backup_root / ".keep", "backup path")
         backup_root.mkdir(parents=True, exist_ok=True)
 
     for op in operations:
         if op.action in {"copy", "overwrite"}:
-            copy_with_backup(op, backup_root if op.action == "overwrite" else None)
+            copy_with_backup(op, target_root, backup_root if op.action == "overwrite" else None)
 
-    hooks_path = target_root / ".codex" / "hooks.json"
+    hooks_path = _safe_target_path(target_root, ".codex/hooks.json")
     if hooks_changed:
         if hooks_path.exists():
-            backup_file = backup_root / ".codex" / "hooks.json"
+            backup_file = _safe_child_path(target_root, backup_root / ".codex" / "hooks.json", "backup path")
             backup_file.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(hooks_path, backup_file)
         hooks_path.parent.mkdir(parents=True, exist_ok=True)
@@ -400,16 +453,14 @@ def remove_state_hooks(existing: Mapping[str, Any], state: Mapping[str, Any]) ->
 
 
 def _safe_relative_target(target_root: Path, rel_path: str) -> Path:
-    rel = _require_relative(rel_path, "state path")
-    path = (target_root / rel).resolve()
-    root = target_root.resolve()
-    if root != path and root not in path.parents:
-        raise ValueError(f"state path escapes target root: {rel_path}")
-    return path
+    return _safe_target_path(target_root, rel_path, "state path")
 
 
 def uninstall(target_root: Path, *, dry_run: bool = False) -> InstallResult:
-    state = read_install_state(target_root)
+    try:
+        state = read_install_state(target_root)
+    except ValueError as exc:
+        return InstallResult(2, (), (str(exc),))
     if not state:
         return InstallResult(0, (), ("no PWF install state found",))
 
@@ -444,10 +495,11 @@ def uninstall(target_root: Path, *, dry_run: bool = False) -> InstallResult:
 
     backup_root = backup_path(target_root)
     if hooks_changed:
+        _safe_child_path(target_root, backup_root / ".keep", "backup path")
         backup_root.mkdir(parents=True, exist_ok=True)
-        hooks_path = target_root / ".codex" / "hooks.json"
+        hooks_path = _safe_target_path(target_root, ".codex/hooks.json")
         if hooks_path.exists():
-            backup_file = backup_root / ".codex" / "hooks.json"
+            backup_file = _safe_child_path(target_root, backup_root / ".codex" / "hooks.json", "backup path")
             backup_file.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(hooks_path, backup_file)
         hooks_path.write_text(json.dumps(merged_hooks, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -455,7 +507,7 @@ def uninstall(target_root: Path, *, dry_run: bool = False) -> InstallResult:
     for op in operations:
         op.target.unlink()
 
-    state_path = target_root / ".codex" / "pwf-install-state.json"
+    state_path = _safe_target_path(target_root, ".codex/pwf-install-state.json", "state path")
     if state_path.exists():
         state_path.unlink()
 

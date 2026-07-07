@@ -2,6 +2,8 @@ import contextlib
 import io
 import importlib.util
 import json
+import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -18,6 +20,26 @@ def load_installer():
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def create_redirected_codex_dir(testcase, target: Path, outside: Path) -> None:
+    outside.mkdir(parents=True)
+    link = target / ".codex"
+    if os.name == "nt":
+        result = subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(link), str(outside)],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            testcase.skipTest(f"cannot create junction: {result.stderr or result.stdout}")
+        return
+
+    try:
+        os.symlink(outside, link, target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:
+        testcase.skipTest(f"cannot create directory symlink: {exc}")
 
 
 class InstallerManifestTests(unittest.TestCase):
@@ -237,6 +259,48 @@ class InstallerHooksMergeTests(unittest.TestCase):
         self.assertNotIn("python .codex/hooks/user_prompt_submit.py", commands)
         self.assertIn("python .codex/hooks/pwf/user_prompt_submit.py", commands)
 
+    def test_merge_hooks_canonicalizes_current_pwf_hook_metadata(self):
+        module = load_installer()
+        existing = {
+            "hooks": {
+                "PreToolUse": [
+                    {"hooks": [{"type": "command", "command": "python .codex/hooks/pwf/pre_tool_use.py"}]}
+                ]
+            }
+        }
+        manifest = module.Manifest(
+            schema=1,
+            package="HelsincyPlanWithFiles",
+            owned_files=(),
+            owned_directory_globs=(),
+            hook_entries=(
+                module.HookEntry(
+                    event="PreToolUse",
+                    matcher="Bash|apply_patch|Edit|Write",
+                    command="python .codex/hooks/pwf/pre_tool_use.py",
+                    statusMessage="Checking plan before tool use",
+                ),
+            ),
+            legacy_hook_commands=(),
+        )
+
+        merged, changed = module.merge_hooks_json(existing, manifest)
+
+        self.assertTrue(changed)
+        self.assertEqual(
+            {
+                "matcher": "Bash|apply_patch|Edit|Write",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "python .codex/hooks/pwf/pre_tool_use.py",
+                        "statusMessage": "Checking plan before tool use",
+                    }
+                ],
+            },
+            merged["hooks"]["PreToolUse"][0],
+        )
+
 
 class InstallerApplyTests(unittest.TestCase):
     def test_dry_run_writes_nothing(self):
@@ -260,6 +324,7 @@ class InstallerApplyTests(unittest.TestCase):
             self.assertEqual(0, result.exit_code)
             self.assertFalse((target / ".codex/hooks/pwf/session_start.py").exists())
             self.assertFalse((target / ".codex/hooks.json").exists())
+            self.assertIn("write: .codex/pwf-install-state.json", result.messages)
 
     def test_dry_run_accepts_existing_hooks_json_with_utf8_bom(self):
         module = load_installer()
@@ -340,6 +405,31 @@ class InstallerApplyTests(unittest.TestCase):
             self.assertEqual(2, result.exit_code)
             self.assertEqual("print('custom')\n", (target / ".codex/hooks/pwf/session_start.py").read_text(encoding="utf-8"))
             self.assertFalse((target / ".codex/pwf-install-state.json").exists())
+
+    def test_install_refuses_redirected_codex_directory(self):
+        module = load_installer()
+        with tempfile.TemporaryDirectory() as source_dir, tempfile.TemporaryDirectory() as target_dir:
+            source = Path(source_dir)
+            target = Path(target_dir)
+            outside = target / "outside-codex"
+            (source / ".codex/hooks/pwf").mkdir(parents=True)
+            (source / ".codex/hooks/pwf/session_start.py").write_text("print('pwf')\n", encoding="utf-8")
+            create_redirected_codex_dir(self, target, outside)
+            manifest = module.Manifest(
+                schema=1,
+                package="HelsincyPlanWithFiles",
+                owned_files=(module.OwnedFile(".codex/hooks/pwf/session_start.py", ".codex/hooks/pwf/session_start.py", "hook"),),
+                owned_directory_globs=(),
+                hook_entries=(module.HookEntry(event="SessionStart", matcher="startup|resume|compact", command="python .codex/hooks/pwf/session_start.py"),),
+                legacy_hook_commands=(),
+            )
+
+            result = module.install(source, target, manifest, version="0.3.4", dry_run=False)
+
+            self.assertEqual(2, result.exit_code)
+            self.assertTrue(any("unsafe target path" in message for message in result.messages))
+            self.assertFalse((outside / "hooks/pwf/session_start.py").exists())
+            self.assertFalse((outside / "pwf-install-state.json").exists())
 
 
 class InstallerUninstallTests(unittest.TestCase):
