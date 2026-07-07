@@ -137,7 +137,52 @@ def read_install_state(target_root: Path) -> dict[str, Any] | None:
     state_path = _safe_target_path(target_root, ".codex/pwf-install-state.json", "state path")
     if not state_path.exists():
         return None
-    return json.loads(state_path.read_text(encoding="utf-8"))
+    try:
+        raw = json.loads(state_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"install state is invalid: invalid JSON: {exc}") from exc
+    return validate_install_state(raw)
+
+
+def validate_install_state(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        raise ValueError("install state is invalid: root must be an object")
+
+    schema = raw.get("schema")
+    if type(schema) is not int or schema != 1:
+        raise ValueError("install state is invalid: schema must be 1")
+
+    for field in ("package", "version", "installed_at"):
+        if not isinstance(raw.get(field), str) or not raw[field]:
+            raise ValueError(f"install state is invalid: {field} must be a non-empty string")
+
+    files = raw.get("files")
+    if not isinstance(files, list):
+        raise ValueError("install state is invalid: files must be an array")
+    for index, item in enumerate(files):
+        if not isinstance(item, dict):
+            raise ValueError(f"install state is invalid: files[{index}] must be an object")
+        if not isinstance(item.get("path"), str) or not item["path"]:
+            raise ValueError(f"install state is invalid: files[{index}].path must be a non-empty string")
+        try:
+            _require_relative(item["path"], f"files[{index}].path")
+        except ValueError as exc:
+            raise ValueError(f"install state is invalid: {exc}") from exc
+        if not isinstance(item.get("sha256"), str) or not item["sha256"]:
+            raise ValueError(f"install state is invalid: files[{index}].sha256 must be a non-empty string")
+
+    hooks = raw.get("hooks")
+    if not isinstance(hooks, list):
+        raise ValueError("install state is invalid: hooks must be an array")
+    for index, item in enumerate(hooks):
+        if not isinstance(item, dict):
+            raise ValueError(f"install state is invalid: hooks[{index}] must be an object")
+        if not isinstance(item.get("event"), str) or not item["event"]:
+            raise ValueError(f"install state is invalid: hooks[{index}].event must be a non-empty string")
+        if not isinstance(item.get("command"), str) or not item["command"]:
+            raise ValueError(f"install state is invalid: hooks[{index}].command must be a non-empty string")
+
+    return raw
 
 
 def state_file_hash(state: Mapping[str, Any] | None, rel_path: str) -> str | None:
@@ -268,6 +313,9 @@ def merge_hooks_json(existing: Mapping[str, Any], manifest: Manifest) -> tuple[d
                     kept_hooks.append(hook)
 
             if current_hooks_in_group and group == canonical_group:
+                if canonical_present:
+                    changed = True
+                    continue
                 canonical_present = True
                 filtered_groups.append(group)
                 continue

@@ -230,6 +230,31 @@ class InstallerHooksMergeTests(unittest.TestCase):
         self.assertFalse(changed)
         self.assertEqual(1, len(merged["hooks"]["UserPromptSubmit"]))
 
+    def test_merge_hooks_dedupes_duplicate_canonical_pwf_groups(self):
+        module = load_installer()
+        canonical = {"hooks": [{"type": "command", "command": "python .codex/hooks/pwf/user_prompt_submit.py"}]}
+        existing = {
+            "hooks": {
+                "UserPromptSubmit": [
+                    canonical,
+                    json.loads(json.dumps(canonical)),
+                ]
+            }
+        }
+        manifest = module.Manifest(
+            schema=1,
+            package="HelsincyPlanWithFiles",
+            owned_files=(),
+            owned_directory_globs=(),
+            hook_entries=(module.HookEntry(event="UserPromptSubmit", command="python .codex/hooks/pwf/user_prompt_submit.py"),),
+            legacy_hook_commands=(),
+        )
+
+        merged, changed = module.merge_hooks_json(existing, manifest)
+
+        self.assertTrue(changed)
+        self.assertEqual([canonical], merged["hooks"]["UserPromptSubmit"])
+
     def test_merge_hooks_replaces_legacy_pwf_command(self):
         module = load_installer()
         existing = {
@@ -431,6 +456,30 @@ class InstallerApplyTests(unittest.TestCase):
             self.assertFalse((outside / "hooks/pwf/session_start.py").exists())
             self.assertFalse((outside / "pwf-install-state.json").exists())
 
+    def test_install_reports_invalid_non_object_install_state(self):
+        module = load_installer()
+        with tempfile.TemporaryDirectory() as source_dir, tempfile.TemporaryDirectory() as target_dir:
+            source = Path(source_dir)
+            target = Path(target_dir)
+            (source / ".codex/hooks/pwf").mkdir(parents=True)
+            (target / ".codex/hooks/pwf").mkdir(parents=True)
+            (source / ".codex/hooks/pwf/session_start.py").write_text("print('new pwf')\n", encoding="utf-8")
+            (target / ".codex/hooks/pwf/session_start.py").write_text("print('old pwf')\n", encoding="utf-8")
+            (target / ".codex/pwf-install-state.json").write_text(json.dumps(["not-a-state-object"]), encoding="utf-8")
+            manifest = module.Manifest(
+                schema=1,
+                package="HelsincyPlanWithFiles",
+                owned_files=(module.OwnedFile(".codex/hooks/pwf/session_start.py", ".codex/hooks/pwf/session_start.py", "hook"),),
+                owned_directory_globs=(),
+                hook_entries=(),
+                legacy_hook_commands=(),
+            )
+
+            result = module.install(source, target, manifest, version="0.3.4", dry_run=True)
+
+            self.assertEqual(2, result.exit_code)
+            self.assertTrue(any("install state is invalid" in message for message in result.messages))
+
 
 class InstallerUninstallTests(unittest.TestCase):
     def test_uninstall_removes_only_state_owned_files_and_hooks(self):
@@ -497,6 +546,26 @@ class InstallerUninstallTests(unittest.TestCase):
             self.assertEqual(2, result.exit_code)
             self.assertTrue(owned_file.exists())
             self.assertTrue((target / ".codex/pwf-install-state.json").exists())
+
+    def test_uninstall_reports_invalid_state_file_path(self):
+        module = load_installer()
+        with tempfile.TemporaryDirectory() as target_dir:
+            target = Path(target_dir)
+            (target / ".codex").mkdir(parents=True)
+            state = {
+                "schema": 1,
+                "package": "HelsincyPlanWithFiles",
+                "version": "0.3.4",
+                "installed_at": "2026-06-25T15:00:00Z",
+                "files": [{"path": "../outside.py", "sha256": "previous-hash"}],
+                "hooks": [],
+            }
+            (target / ".codex/pwf-install-state.json").write_text(json.dumps(state), encoding="utf-8")
+
+            result = module.uninstall(target, dry_run=True)
+
+            self.assertEqual(2, result.exit_code)
+            self.assertTrue(any("install state is invalid" in message for message in result.messages))
 
 
 class InstallerCliTests(unittest.TestCase):
