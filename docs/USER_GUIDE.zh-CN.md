@@ -43,16 +43,18 @@ progress.md    # 进度日志：什么时候做了什么，改了哪些文件
 
 ## 第一次安装
 
-普通用户推荐从 GitHub 的 Latest Release 页面下载最新的 `codex.zip` 安装包。
+普通用户推荐从 GitHub 的 Latest Release 页面下载最新的 `codex.zip` 安装包。更详细的 Codex CLI / Codex App 分流步骤见 [Installation Guide](INSTALLATION.md)。
 
 安装步骤：
 
 1. 打开 GitHub 的 Latest Release 页面。
 2. 下载最新 Release 里的 `codex.zip` 安装包。
 3. 解压。
-4. 把解压出来的 `.codex/` 文件夹复制到你的项目根目录。
-5. 重启 Codex。
-6. 如果 Codex 提示是否信任 hooks，选择允许或批准。
+4. 如果你的项目还没有 `.codex/`，把解压出来的 `.codex/` 文件夹复制到项目根目录。
+5. 如果你的项目本来就有 `.codex/`，不要直接覆盖；先备份，或手动合并 `hooks.json`、`hooks/` 和 `skills/`。
+6. 如果你使用 Codex CLI，确认 hooks 使用当前 Codex 口径启用：在 config 里写 `[features] hooks = true`，或用 `codex --enable hooks` 启动。
+7. 如果你使用 Codex App，重新打开目标项目或新建 thread，让 App 重新加载项目本地 `.codex/`。
+8. 如果 Codex 提示是否信任项目或 hooks，选择允许或批准。
 
 你的项目大概会变成这样：
 
@@ -62,7 +64,7 @@ your-project/
   你的其他文件...
 ```
 
-如果你的项目本来就有 `.codex/` 文件夹，不要直接覆盖。先备份，或者让 Codex 帮你合并。
+不要再使用 `[features].codex_hooks`，这是 Codex 已弃用的旧别名。
 
 ## 安装后先做什么？
 

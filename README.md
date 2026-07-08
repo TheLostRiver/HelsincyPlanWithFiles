@@ -122,17 +122,25 @@ $env:PWF_LANG="en"
 
 ## 安装
 
-推荐普通用户从 [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest) 下载最新的 `codex.zip` 安装包。这个包只包含安装到项目所需的 `.codex/`、hooks、`/pwf-*` commands 和基础文档。
+推荐普通用户从 [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest) 下载最新的 `codex.zip` 安装包。详细步骤见 [Installation Guide](docs/INSTALLATION.md)，里面分开说明了 Codex CLI 和 Codex App。
 
-### 方式 A：从 Release 下载
+### Codex CLI
 
-1. 打开 [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest)。
-2. 下载最新 Release 里的 `codex.zip` 安装包。
-3. 解压后，把里面的 `.codex/` 复制到你的项目根目录。
-4. 重启 Codex，第一次提示信任 hook 时选择批准。
-5. 在 Codex 中运行 `/pwf-doctor` 检查安装状态。
+1. 下载最新 Release 里的 `codex.zip` 安装包并解压。
+2. 如果目标项目还没有 `.codex/`，把解压出来的 `.codex/` 复制到项目根目录。
+3. 如果目标项目已经有 `.codex/`，不要直接覆盖；请手动合并 `hooks.json`、`hooks/` 和 `skills/`。
+4. 确保 hooks 使用当前 Codex 口径启用：在 config 里写 `[features] hooks = true`，或用 `codex --enable hooks` 启动 CLI。
+5. 在目标项目中启动 Codex CLI，信任项目和 hooks 后运行 `/pwf-doctor`。
 
-目标项目目录应类似这样：
+### Codex App
+
+1. 在 Codex App 中打开目标项目，并使用 Local mode。
+2. 下载并解压最新 Release 里的 `codex.zip`。
+3. 如果目标项目还没有 `.codex/`，把解压出来的 `.codex/` 复制到项目根目录。
+4. 如果目标项目已经有 `.codex/`，不要直接覆盖；请手动合并项目本地配置。
+5. 重新打开项目或新建 thread，让 App 重新加载项目本地 `.codex/`，信任项目和 hooks 后运行 `/pwf-doctor`。
+
+目标项目目录通常类似这样：
 
 ```text
 your-project/
@@ -142,20 +150,21 @@ your-project/
     skills/
 ```
 
-如果目标项目已经有 `.codex/`，请先备份或手动合并 `hooks.json`，避免覆盖已有的项目配置。
+不要再使用 `[features].codex_hooks`；这是 Codex 已弃用的旧别名。
 
-### 方式 B：从 git clone 安装
+### 从 git clone 安装
 
 适合想看源码、跑测试或参与开发的用户：
 
 ```powershell
 git clone https://github.com/TheLostRiver/HelsincyPlanWithFiles.git
-Copy-Item -Recurse -Force .\HelsincyPlanWithFiles\.codex .\your-project\
+# 目标项目没有 .codex 时才直接复制；已有 .codex 时请手动合并。
+Copy-Item -Recurse .\HelsincyPlanWithFiles\.codex .\your-project\
 ```
 
-### 方式 C：下载源码 zip
+### 下载源码 zip
 
-也可以在 GitHub 页面点击 `Code` -> `Download ZIP` 下载完整源码。解压后同样只需要把 `.codex/` 复制到目标项目根目录。普通使用优先选择 Release 里的 `codex.zip`。
+也可以在 GitHub 页面点击 `Code` -> `Download ZIP` 下载完整源码。解压后同样按上面的 CLI/App 步骤安装。普通使用优先选择 Release 里的 `codex.zip`。
 
 ## Agent Slash Commands
 

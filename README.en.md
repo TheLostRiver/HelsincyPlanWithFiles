@@ -122,17 +122,25 @@ Other `PWF_LANG` values fall back to English; `plan.py doctor` reports `language
 
 ## Installation
 
-For regular users, download the latest `codex.zip` installer package from the [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest). This package contains only the project-local `.codex/`, hooks, `/pwf-*` commands, and basic docs needed for installation.
+For regular users, download the latest `codex.zip` installer package from the [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest). See the [Installation Guide](docs/INSTALLATION.md) for separate Codex CLI and Codex App steps.
 
-### Option A: Download From Release
+### Codex CLI
 
-1. Open the [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest).
-2. Download the latest Release's `codex.zip` installer package.
-3. Unzip it and copy the `.codex/` directory into your target project root.
-4. Restart Codex and approve the hooks when Codex asks for trust.
-5. Run `/pwf-doctor` in Codex to check the installation.
+1. Download and extract the latest Release's `codex.zip` installer package.
+2. If the target project does not have `.codex/`, copy the extracted `.codex/` directory into the project root.
+3. If the target project already has `.codex/`, do not overwrite it; manually merge `hooks.json`, `hooks/`, and `skills/`.
+4. Ensure hooks use the current Codex feature flag: add `[features] hooks = true` in config, or start the CLI with `codex --enable hooks`.
+5. Start Codex CLI in the target project, trust the project and hooks, then run `/pwf-doctor`.
 
-The target project should look like this:
+### Codex App
+
+1. Open the target project in Codex App and use Local mode.
+2. Download and extract the latest Release's `codex.zip`.
+3. If the target project does not have `.codex/`, copy the extracted `.codex/` directory into the project root.
+4. If the target project already has `.codex/`, do not overwrite it; manually merge project-local config.
+5. Reopen the project or start a new thread so the app reloads project-local `.codex/`, trust the project and hooks, then run `/pwf-doctor`.
+
+The target project usually looks like this:
 
 ```text
 your-project/
@@ -142,20 +150,21 @@ your-project/
     skills/
 ```
 
-If the target project already has a `.codex/` directory, back it up or merge `hooks.json` manually so existing project configuration is not overwritten.
+Do not use `[features].codex_hooks` in new docs or examples; it is a deprecated Codex alias.
 
-### Option B: Install From git clone
+### Install From git clone
 
 Use this path if you want to inspect source code, run tests, or contribute:
 
 ```powershell
 git clone https://github.com/TheLostRiver/HelsincyPlanWithFiles.git
-Copy-Item -Recurse -Force .\HelsincyPlanWithFiles\.codex .\your-project\
+# Copy directly only when the target project has no .codex; otherwise merge manually.
+Copy-Item -Recurse .\HelsincyPlanWithFiles\.codex .\your-project\
 ```
 
-### Option C: Download Source ZIP
+### Download Source ZIP
 
-You can also use `Code` -> `Download ZIP` on GitHub to download the full source. After extracting it, copy only `.codex/` into the target project root. For normal use, prefer the release `codex.zip` package.
+You can also use `Code` -> `Download ZIP` on GitHub to download the full source. After extracting it, follow the CLI/App steps above. For normal use, prefer the release `codex.zip` package.
 
 ## Agent Slash Commands
 

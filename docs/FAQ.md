@@ -34,7 +34,28 @@ hook 会在会话开始、用户提交提示、工具调用前后和停止前读
 
 ### 4. 怎么安装到我的项目？
 
-把 Release 包里的 `.codex/` 复制到目标项目根目录，然后重启 Codex，并在首次提示信任 hook 时批准。
+Codex CLI 和 Codex App 的详细步骤见 [Installation Guide](INSTALLATION.md)。共同原则是：从 Latest Release 下载最新 `codex.zip`，解压后安装项目本地 `.codex/`，但不要覆盖已有 `.codex/`。
+
+如果目标项目还没有 `.codex/`，可以把 Release 包里的 `.codex/` 复制到目标项目根目录。
+
+如果目标项目已经有 `.codex/`，不要直接覆盖。先备份，或手动合并 `hooks.json`、`hooks/` 和 `skills/`。
+
+Codex CLI 用户还要确保 hooks 使用当前 Codex 口径启用：
+
+```toml
+[features]
+hooks = true
+```
+
+也可以启动时使用：
+
+```powershell
+codex --enable hooks
+```
+
+不要再使用 `[features].codex_hooks`，这是 Codex 已弃用的旧别名。
+
+Codex App 用户安装后重新打开项目或新建 thread，让 App 重新加载项目本地 `.codex/`。首次提示信任项目或 hook 时批准。
 
 目标项目大致如下：
 
@@ -46,7 +67,7 @@ your-project/
     skills/
 ```
 
-如果你的项目已经有 `.codex/`，不要直接覆盖。先备份，或手动合并 `hooks.json` 和 skills。
+如果你的项目已经有 `.codex/`，不要直接覆盖。先备份，或手动合并 `hooks.json`、`hooks/` 和 `skills/`。
 
 ### 5. `/pwf-*` 命令看不到怎么办？
 
@@ -438,7 +459,28 @@ Use `full.zip` or the GitHub source zip only if you want source code, tests, and
 
 ### 4. How do I install it into my project?
 
-Copy `.codex/` from the release package into your target project root, restart Codex, and approve the hook trust prompt.
+See the [Installation Guide](INSTALLATION.md) for separate Codex CLI and Codex App steps. The shared rule is: download the latest `codex.zip` from Latest Release, extract it, and install the project-local `.codex/` without overwriting an existing `.codex/`.
+
+If the target project does not have `.codex/`, copy `.codex/` from the release package into the project root.
+
+If the project already has `.codex/`, do not overwrite it blindly. Back it up or manually merge `hooks.json`, `hooks/`, and `skills/`.
+
+Codex CLI users should ensure hooks are enabled with the current Codex feature flag:
+
+```toml
+[features]
+hooks = true
+```
+
+Or start the CLI with:
+
+```powershell
+codex --enable hooks
+```
+
+Do not use `[features].codex_hooks` in new docs or examples; it is a deprecated Codex alias.
+
+Codex App users should reopen the project or start a new thread so the app reloads project-local `.codex/`. Approve the project or hook trust prompt when Codex asks.
 
 Your target project should look like this:
 
@@ -450,7 +492,7 @@ your-project/
     skills/
 ```
 
-If the project already has `.codex/`, do not overwrite it blindly. Back it up or merge `hooks.json` and skills manually.
+If the project already has `.codex/`, do not overwrite it blindly. Back it up or merge `hooks.json`, `hooks/`, and `skills/` manually.
 
 ### 5. What if `/pwf-*` commands do not appear?
 
