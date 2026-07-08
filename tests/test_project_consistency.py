@@ -318,8 +318,12 @@ class ProjectConsistencyTests(unittest.TestCase):
         self.assertIn(version, changelog)
         self.assertIn(f"Current version: `{version}`", readme_en)
         self.assertIn(f"当前版本：`{version}`", readme_cn)
-        self.assertIn(f"HelsincyPlanWithFiles-v{version}-codex.zip", readme_cn)
-        self.assertIn(f"HelsincyPlanWithFiles-v{version}-codex.zip", readme_en)
+        self.assertIn("Latest Release", readme_cn)
+        self.assertIn("Latest Release", readme_en)
+        self.assertIn("codex.zip", readme_cn)
+        self.assertIn("codex.zip", readme_en)
+        self.assertNotIn(f"HelsincyPlanWithFiles-v{version}-codex.zip", readme_cn)
+        self.assertNotIn(f"HelsincyPlanWithFiles-v{version}-codex.zip", readme_en)
 
     def test_faq_document_is_linked_and_covers_user_questions(self):
         readme_cn = read_text("README.md")
@@ -332,6 +336,12 @@ class ProjectConsistencyTests(unittest.TestCase):
         self.assertIn("docs/USER_GUIDE.zh-CN.md", readme_cn)
         self.assertIn("docs/USER_GUIDE.zh-CN.md", readme_en)
         self.assertIn("USER_GUIDE.zh-CN.md", faq)
+        self.assertIn("codex.zip", faq)
+        self.assertIn("codex.zip", user_guide)
+        self.assertNotRegex(
+            faq + user_guide,
+            r"HelsincyPlanWithFiles-v\d+\.\d+\.\d+-codex\.zip",
+        )
 
         for phrase in (
             "上下文压缩",

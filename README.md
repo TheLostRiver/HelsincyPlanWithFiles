@@ -114,12 +114,12 @@ $env:PWF_LANG="en"
 
 ## 安装
 
-推荐普通用户从 Release 下载 `HelsincyPlanWithFiles-v0.3.3-codex.zip`。这个包包含安全安装器、项目本地 `.codex/` payload、hooks、`/pwf-*` commands 和基础文档。
+推荐普通用户从 [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest) 下载最新的 `codex.zip` 安装包。这个包包含安全安装器、项目本地 `.codex/` payload、hooks、`/pwf-*` commands 和基础文档。
 
 ### 方式 A：从 Release 下载
 
 1. 打开 [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest)。
-2. 下载 `HelsincyPlanWithFiles-v0.3.3-codex.zip`。
+2. 下载最新 Release 里的 `codex.zip` 安装包。
 3. 解压到任意临时目录。
 4. 先预览安装：
 

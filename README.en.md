@@ -114,12 +114,12 @@ Other `PWF_LANG` values fall back to English; `plan.py doctor` reports `language
 
 ## Installation
 
-For regular users, download `HelsincyPlanWithFiles-v0.3.3-codex.zip` from the release page. This package contains the safe installer, project-local `.codex/` payload, hooks, `/pwf-*` commands, and basic docs needed for installation.
+For regular users, download the latest `codex.zip` installer package from the [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest). This package contains the safe installer, project-local `.codex/` payload, hooks, `/pwf-*` commands, and basic docs needed for installation.
 
 ### Option A: Download From Release
 
 1. Open the [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest).
-2. Download `HelsincyPlanWithFiles-v0.3.3-codex.zip`.
+2. Download the latest Release's `codex.zip` installer package.
 3. Extract it to a temporary directory.
 4. Preview the install:
 
