@@ -317,7 +317,7 @@ class ProjectConsistencyTests(unittest.TestCase):
                 "img.shields.io/badge/license-MIT",
                 "img.shields.io/badge/PRs-welcome",
                 "img.shields.io/badge/version-latest_release",
-                "img.shields.io/badge/downloads-latest_release",
+                "img.shields.io/github/downloads/TheLostRiver/HelsincyPlanWithFiles/total",
             ):
                 self.assertIn(badge, readme)
 

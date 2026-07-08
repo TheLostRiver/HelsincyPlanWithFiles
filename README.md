@@ -8,7 +8,7 @@
 [![License](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 [![PRs](https://img.shields.io/badge/PRs-welcome-blue)](https://github.com/TheLostRiver/HelsincyPlanWithFiles/pulls)
 [![Version](https://img.shields.io/badge/version-latest_release-blue)](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest)
-[![Downloads](https://img.shields.io/badge/downloads-latest_release-orange)](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/TheLostRiver/HelsincyPlanWithFiles/total?label=downloads)](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest)
 
 Helsincy Plan With Files 是给 Codex 准备的“任务记忆本”。
 
