@@ -334,9 +334,9 @@ class ProjectConsistencyTests(unittest.TestCase):
                 "img.shields.io/badge/Codex_CLI-supported",
                 "img.shields.io/badge/Codex_App-supported",
                 "img.shields.io/badge/Windows-supported",
-                "img.shields.io/github/license/TheLostRiver/HelsincyPlanWithFiles",
-                "img.shields.io/github/issues-pr/TheLostRiver/HelsincyPlanWithFiles",
-                "img.shields.io/github/v/release/TheLostRiver/HelsincyPlanWithFiles",
+                "img.shields.io/badge/license-MIT",
+                "img.shields.io/badge/PRs-welcome",
+                "img.shields.io/badge/version-latest_release",
                 "img.shields.io/github/downloads/TheLostRiver/HelsincyPlanWithFiles/total",
             ):
                 self.assertIn(badge, readme)

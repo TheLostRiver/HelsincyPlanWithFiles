@@ -5,9 +5,9 @@
 [![Codex CLI](https://img.shields.io/badge/Codex_CLI-supported-00A67E)](README.md)
 [![Codex App](https://img.shields.io/badge/Codex_App-supported-00A67E)](README.md)
 [![Windows](https://img.shields.io/badge/Windows-supported-0078D4)](README.md)
-[![License](https://img.shields.io/github/license/TheLostRiver/HelsincyPlanWithFiles?label=license)](LICENSE)
-[![PRs](https://img.shields.io/github/issues-pr/TheLostRiver/HelsincyPlanWithFiles?label=PRs)](https://github.com/TheLostRiver/HelsincyPlanWithFiles/pulls)
-[![Version](https://img.shields.io/github/v/release/TheLostRiver/HelsincyPlanWithFiles?label=version)](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest)
+[![License](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
+[![PRs](https://img.shields.io/badge/PRs-welcome-blue)](https://github.com/TheLostRiver/HelsincyPlanWithFiles/pulls)
+[![Version](https://img.shields.io/badge/version-latest_release-blue)](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/TheLostRiver/HelsincyPlanWithFiles/total?label=downloads)](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest)
 
 Helsincy Plan With Files 是给 Codex 准备的“任务记忆本”。
