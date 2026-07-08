@@ -18,6 +18,7 @@ REQUIRED_HOOKS = [
     "pre_compact.py",
     "stop.py",
 ]
+NAMESPACED_HOOKS = [f"pwf/{name}" for name in REQUIRED_HOOKS]
 
 
 def run_plan(project_root, *args, env=None):
@@ -39,7 +40,9 @@ def write_hooks(root, hooks_json=None, hook_files=None):
     hooks_dir = root / ".codex" / "hooks"
     hooks_dir.mkdir(parents=True, exist_ok=True)
     for name in hook_files or REQUIRED_HOOKS:
-        (hooks_dir / name).write_text("# hook\n", encoding="utf-8")
+        hook_path = hooks_dir / name
+        hook_path.parent.mkdir(parents=True, exist_ok=True)
+        hook_path.write_text("# hook\n", encoding="utf-8")
 
     if hooks_json is None:
         hooks_json = {
@@ -268,7 +271,202 @@ class PlanDoctorTests(unittest.TestCase):
             result = run_plan(root, "doctor")
 
             self.assertEqual(result.returncode, 1)
-            self.assertIn("hook files: missing .codex/hooks/pre_tool_use.py", result.stdout)
+            self.assertIn("hook files: missing .codex/hooks/pwf/pre_tool_use.py", result.stdout)
+
+    def test_doctor_accepts_namespaced_hook_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_active_plan(root)
+            hooks_json = {
+                "hooks": {
+                    "SessionStart": [{"hooks": [{"command": "python .codex/hooks/pwf/session_start.py"}]}],
+                    "UserPromptSubmit": [{"hooks": [{"command": "python .codex/hooks/pwf/user_prompt_submit.py"}]}],
+                    "PreToolUse": [{"hooks": [{"command": "python .codex/hooks/pwf/pre_tool_use.py"}]}],
+                    "PostToolUse": [{"hooks": [{"command": "python .codex/hooks/pwf/post_tool_use.py"}]}],
+                    "PreCompact": [{"hooks": [{"command": "python .codex/hooks/pwf/pre_compact.py"}]}],
+                    "Stop": [{"hooks": [{"command": "python .codex/hooks/pwf/stop.py"}]}],
+                }
+            }
+            write_hooks(root, hooks_json=hooks_json, hook_files=NAMESPACED_HOOKS)
+
+            result = run_plan(root, "doctor")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("hooks.json: ok", result.stdout)
+            self.assertIn("hook files: ok", result.stdout)
+
+    def test_doctor_warns_about_legacy_hook_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_active_plan(root)
+            write_hooks(root)
+
+            result = run_plan(root, "doctor")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("hook paths: warning legacy PWF hook paths detected", result.stdout)
+
+    def test_doctor_reports_installer_state_when_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_active_plan(root)
+            write_hooks(root)
+            state_path = root / ".codex" / "pwf-install-state.json"
+            state_path.write_text(
+                json.dumps(
+                    {
+                        "schema": 1,
+                        "package": "HelsincyPlanWithFiles",
+                        "version": "0.3.4",
+                        "installed_at": "2026-06-25T15:00:00Z",
+                        "files": [{"path": ".codex/hooks/pwf/session_start.py", "sha256": "abc"}],
+                        "hooks": [{"event": "SessionStart", "command": "python .codex/hooks/pwf/session_start.py"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_plan(root, "doctor")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("installer state: version 0.3.4, 1 files tracked", result.stdout)
+
+    def test_doctor_reports_invalid_foreign_installer_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_active_plan(root)
+            write_hooks(root)
+            state_path = root / ".codex" / "pwf-install-state.json"
+            state_path.write_text(
+                json.dumps(
+                    {
+                        "schema": 1,
+                        "package": "OtherPackage",
+                        "version": "9.9.9",
+                        "installed_at": "2026-06-25T15:00:00Z",
+                        "files": [{"path": ".codex/hooks/pwf/session_start.py", "sha256": "abc"}],
+                        "hooks": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_plan(root, "doctor")
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("installer state: invalid", result.stdout)
+
+    def test_doctor_reports_invalid_malformed_installer_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_active_plan(root)
+            write_hooks(root)
+            state_path = root / ".codex" / "pwf-install-state.json"
+            state_path.write_text(
+                json.dumps(
+                    {
+                        "schema": 1,
+                        "package": "HelsincyPlanWithFiles",
+                        "version": "0.3.4",
+                        "installed_at": "2026-06-25T15:00:00Z",
+                        "files": [{"path": "../outside.py", "sha256": "abc"}],
+                        "hooks": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_plan(root, "doctor")
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("installer state: invalid", result.stdout)
+
+    def test_doctor_reports_unrecognized_installer_state_file_as_invalid(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_active_plan(root)
+            write_hooks(root)
+            state_path = root / ".codex" / "pwf-install-state.json"
+            state_path.write_text(
+                json.dumps(
+                    {
+                        "schema": 1,
+                        "package": "HelsincyPlanWithFiles",
+                        "version": "0.3.4",
+                        "installed_at": "2026-06-25T15:00:00Z",
+                        "files": [{"path": "project-secret.txt", "sha256": "abc"}],
+                        "hooks": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_plan(root, "doctor")
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("installer state: invalid", result.stdout)
+
+    def test_doctor_reports_unrecognized_pwf_wrapper_state_file_as_invalid(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_active_plan(root)
+            write_hooks(root)
+            state_path = root / ".codex" / "pwf-install-state.json"
+            state_path.write_text(
+                json.dumps(
+                    {
+                        "schema": 1,
+                        "package": "HelsincyPlanWithFiles",
+                        "version": "0.3.4",
+                        "installed_at": "2026-06-25T15:00:00Z",
+                        "files": [{"path": ".codex/skills/pwf-evil/SKILL.md", "sha256": "abc"}],
+                        "hooks": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_plan(root, "doctor")
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("installer state: invalid", result.stdout)
+
+    def test_doctor_reports_unrecognized_installer_state_hook_as_invalid(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_active_plan(root)
+            write_hooks(root)
+            state_path = root / ".codex" / "pwf-install-state.json"
+            state_path.write_text(
+                json.dumps(
+                    {
+                        "schema": 1,
+                        "package": "HelsincyPlanWithFiles",
+                        "version": "0.3.4",
+                        "installed_at": "2026-06-25T15:00:00Z",
+                        "files": [],
+                        "hooks": [{"event": "UserPromptSubmit", "command": "python .codex/hooks/custom.py"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_plan(root, "doctor")
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("installer state: invalid", result.stdout)
+
+    def test_doctor_reports_non_file_installer_state_as_invalid(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_active_plan(root)
+            write_hooks(root)
+            (root / ".codex" / "pwf-install-state.json").mkdir(parents=True)
+
+            result = run_plan(root, "doctor")
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("installer state: invalid", result.stdout)
 
     def test_doctor_warns_about_python3_hook_command(self):
         with tempfile.TemporaryDirectory() as tmp:

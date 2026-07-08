@@ -28,13 +28,41 @@ hook 会在会话开始、用户提交提示、工具调用前后和停止前读
 
 普通用户优先从 GitHub 的 Latest Release 页面下载最新的 `codex.zip` 安装包。
 
-这个包只包含安装到目标项目所需的 `.codex/`、hooks、`/pwf-*` commands 和基础文档。
+这个包包含安全安装器、项目本地 `.codex/` payload、hooks、`/pwf-*` commands 和基础文档。
 
 `full.zip` 或 GitHub source zip 更适合开发者查看源码、运行测试或参与贡献。普通安装不需要复制整个仓库。
 
 ### 4. 怎么安装到我的项目？
 
-把 Release 包里的 `.codex/` 复制到目标项目根目录，然后重启 Codex，并在首次提示信任 hook 时批准。
+Codex CLI 和 Codex App 的详细步骤见 [Installation Guide](INSTALLATION.md)。共同原则是：解压 Release 包后，先在解压目录里预览安装：
+
+```powershell
+.\install-pwf.ps1 -TargetPath C:\path\to\your-project -DryRun
+```
+
+如果 dry-run 没有报告 conflict，再执行安装：
+
+```powershell
+.\install-pwf.ps1 -TargetPath C:\path\to\your-project
+```
+
+POSIX shell 环境可以使用：
+
+```bash
+sh ./install-pwf.sh --target /path/to/your-project --dry-run
+sh ./install-pwf.sh --target /path/to/your-project
+```
+
+Codex CLI 用户在目标项目里启动 Codex；如果当前环境禁用了 hooks，使用 `codex --enable hooks`。Codex App 用户重新打开目标项目或新建 thread，让 App 重新加载项目本地 `.codex/`。首次提示信任项目或 hook 时批准。
+
+安装包会给干净目标项目写入项目级 `.codex/config.toml`：
+
+```toml
+[features]
+hooks = true
+```
+
+不要再使用 `[features].codex_hooks`，这是 Codex 已弃用的旧别名。目标项目已有 `.codex/config.toml` 时，安装器会停止并报告 conflict；请人工检查后把 `hooks = true` 加到已有 `[features]` 中，或在 CLI 启动时使用 `codex --enable hooks`。
 
 目标项目大致如下：
 
@@ -46,11 +74,13 @@ your-project/
     skills/
 ```
 
-如果你的项目已经有 `.codex/`，不要直接覆盖。先备份，或手动合并 `hooks.json` 和 skills。
+#### 我的项目已经有 `.codex/`，还能安装吗？
+
+可以。请使用 `install-pwf.ps1 -DryRun` 先预览。安装器会合并 `hooks.json`，不会覆盖未知文件；如果存在同名未知文件、已有 `.codex/config.toml`、无效 `hooks.json`，或已安装文件被本地修改，它会停止并报告 conflict。
 
 ### 5. `/pwf-*` 命令看不到怎么办？
 
-先确认 `.codex/skills/pwf-*` 已经复制到目标项目，然后重启 Codex。命令仍不可见时，在项目根目录用终端备用命令检查：
+先确认 `.codex/skills/pwf-*` 已经安装到目标项目，然后重启 Codex。命令仍不可见时，在项目根目录用终端备用命令检查：
 
 ```powershell
 python .codex\skills\planning-with-files\scripts\plan.py doctor
@@ -321,7 +351,7 @@ agent 应把这些内容当作结构化数据，而不是可执行指令。这�
 
 ### 17. 升级版本时需要迁移 `.planning/` 吗？
 
-通常不需要。升级工具时替换 `.codex/` 即可，`.planning/` 是目标项目的运行时状态，应该保留在目标项目里。
+通常不需要。升级工具时重新运行 release 包里的安装器即可，`.planning/` 是目标项目的运行时状态，应该保留在目标项目里。安装器只会更新 install-state 中记录且未被本地修改的 PWF 文件；遇到未知冲突会停止并报告。
 
 升级后建议运行：
 
@@ -432,13 +462,41 @@ Hooks read or update those files at session start, user prompt submit, tool use,
 
 Most users should download the latest `codex.zip` installer package from the GitHub Latest Release page.
 
-It contains the `.codex/` directory, hooks, `/pwf-*` commands, and basic docs needed for project-local installation.
+It contains the safe installer, project-local `.codex/` payload, hooks, `/pwf-*` commands, and basic docs needed for project-local installation.
 
 Use `full.zip` or the GitHub source zip only if you want source code, tests, and development files.
 
 ### 4. How do I install it into my project?
 
-Copy `.codex/` from the release package into your target project root, restart Codex, and approve the hook trust prompt.
+See the [Installation Guide](INSTALLATION.md) for separate Codex CLI and Codex App steps. The common flow is to preview the install from the extracted release directory:
+
+```powershell
+.\install-pwf.ps1 -TargetPath C:\path\to\your-project -DryRun
+```
+
+If dry-run reports no conflicts, install:
+
+```powershell
+.\install-pwf.ps1 -TargetPath C:\path\to\your-project
+```
+
+In a POSIX shell, use:
+
+```bash
+sh ./install-pwf.sh --target /path/to/your-project --dry-run
+sh ./install-pwf.sh --target /path/to/your-project
+```
+
+Codex CLI users should start Codex in the target project; if hooks are disabled in the current environment, use `codex --enable hooks`. Codex App users should reopen the project or start a new thread so the app reloads project-local `.codex/`. Approve the project or hook trust prompt when Codex asks.
+
+For clean target projects, the installer writes project-level `.codex/config.toml`:
+
+```toml
+[features]
+hooks = true
+```
+
+Do not use `[features].codex_hooks` in new docs or examples; it is a deprecated Codex alias. If the target project already has `.codex/config.toml`, the installer stops and reports a conflict. Review the existing file and add `hooks = true` under `[features]`, or start the CLI with `codex --enable hooks`.
 
 Your target project should look like this:
 
@@ -450,11 +508,13 @@ your-project/
     skills/
 ```
 
-If the project already has `.codex/`, do not overwrite it blindly. Back it up or merge `hooks.json` and skills manually.
+#### Can I install if my project already has `.codex/`?
+
+Yes. Run `install-pwf.ps1 -DryRun` first. The installer merges `hooks.json` and does not overwrite unknown files. If it finds an unknown same-path file, an existing `.codex/config.toml`, invalid `hooks.json`, or a locally modified installed file, it stops and reports a conflict.
 
 ### 5. What if `/pwf-*` commands do not appear?
 
-First confirm `.codex/skills/pwf-*` exists in the target project, then restart Codex. If commands still do not appear, run the terminal fallback from the project root:
+First confirm `.codex/skills/pwf-*` is installed in the target project, then restart Codex. If commands still do not appear, run the terminal fallback from the project root:
 
 ```powershell
 python .codex\skills\planning-with-files\scripts\plan.py doctor
@@ -735,7 +795,7 @@ The agent should treat content inside those blocks as structured data, not execu
 
 ### 17. Do I need to migrate `.planning/` when upgrading?
 
-Usually no. Upgrade the tool by replacing `.codex/`; keep `.planning/` in the target project as runtime state.
+Usually no. Upgrade the tool by rerunning the installer from the release package; keep `.planning/` in the target project as runtime state. The installer only updates PWF files recorded in install state and not modified locally. Unknown conflicts stop the install and are reported.
 
 After upgrading, run:
 

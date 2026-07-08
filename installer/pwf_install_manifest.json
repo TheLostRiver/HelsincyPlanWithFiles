@@ -1,0 +1,99 @@
+{
+  "schema": 1,
+  "package": "HelsincyPlanWithFiles",
+  "owned_files": [
+    {"source": ".codex/config.toml", "target": ".codex/config.toml", "kind": "config"},
+    {"source": ".codex/hooks/pwf/session_start.py", "target": ".codex/hooks/pwf/session_start.py", "kind": "hook"},
+    {"source": ".codex/hooks/pwf/user_prompt_submit.py", "target": ".codex/hooks/pwf/user_prompt_submit.py", "kind": "hook"},
+    {"source": ".codex/hooks/pwf/pre_tool_use.py", "target": ".codex/hooks/pwf/pre_tool_use.py", "kind": "hook"},
+    {"source": ".codex/hooks/pwf/post_tool_use.py", "target": ".codex/hooks/pwf/post_tool_use.py", "kind": "hook"},
+    {"source": ".codex/hooks/pwf/pre_compact.py", "target": ".codex/hooks/pwf/pre_compact.py", "kind": "hook"},
+    {"source": ".codex/hooks/pwf/stop.py", "target": ".codex/hooks/pwf/stop.py", "kind": "hook"},
+    {"source": ".codex/hooks/pwf/codex_hook_adapter.py", "target": ".codex/hooks/pwf/codex_hook_adapter.py", "kind": "hook"},
+    {"source": ".codex/hooks/pwf/planning_state.py", "target": ".codex/hooks/pwf/planning_state.py", "kind": "hook"},
+    {"source": ".codex/hooks/pwf/__init__.py", "target": ".codex/hooks/pwf/__init__.py", "kind": "hook"},
+    {"source": ".codex/hooks/post-tool-use.sh", "target": ".codex/hooks/post-tool-use.sh", "kind": "legacy-shell"},
+    {"source": ".codex/hooks/pre-compact.sh", "target": ".codex/hooks/pre-compact.sh", "kind": "legacy-shell"},
+    {"source": ".codex/hooks/pre-tool-use.sh", "target": ".codex/hooks/pre-tool-use.sh", "kind": "legacy-shell"},
+    {"source": ".codex/hooks/resolve-plan-dir.sh", "target": ".codex/hooks/resolve-plan-dir.sh", "kind": "legacy-shell"},
+    {"source": ".codex/hooks/session-start.sh", "target": ".codex/hooks/session-start.sh", "kind": "legacy-shell"},
+    {"source": ".codex/hooks/stop.sh", "target": ".codex/hooks/stop.sh", "kind": "legacy-shell"},
+    {"source": ".codex/hooks/user-prompt-submit.sh", "target": ".codex/hooks/user-prompt-submit.sh", "kind": "legacy-shell"},
+    {"source": ".codex/skills/planning-with-files/SKILL.md", "target": ".codex/skills/planning-with-files/SKILL.md", "kind": "skill"},
+    {"source": ".codex/skills/planning-with-files/references/examples.md", "target": ".codex/skills/planning-with-files/references/examples.md", "kind": "skill"},
+    {"source": ".codex/skills/planning-with-files/references/reference.md", "target": ".codex/skills/planning-with-files/references/reference.md", "kind": "skill"},
+    {"source": ".codex/skills/planning-with-files/scripts/attest-plan.ps1", "target": ".codex/skills/planning-with-files/scripts/attest-plan.ps1", "kind": "skill-script"},
+    {"source": ".codex/skills/planning-with-files/scripts/attest-plan.sh", "target": ".codex/skills/planning-with-files/scripts/attest-plan.sh", "kind": "skill-script"},
+    {"source": ".codex/skills/planning-with-files/scripts/check-complete.ps1", "target": ".codex/skills/planning-with-files/scripts/check-complete.ps1", "kind": "skill-script"},
+    {"source": ".codex/skills/planning-with-files/scripts/check-complete.sh", "target": ".codex/skills/planning-with-files/scripts/check-complete.sh", "kind": "skill-script"},
+    {"source": ".codex/skills/planning-with-files/scripts/init-session.ps1", "target": ".codex/skills/planning-with-files/scripts/init-session.ps1", "kind": "skill-script"},
+    {"source": ".codex/skills/planning-with-files/scripts/init-session.sh", "target": ".codex/skills/planning-with-files/scripts/init-session.sh", "kind": "skill-script"},
+    {"source": ".codex/skills/planning-with-files/scripts/plan.ps1", "target": ".codex/skills/planning-with-files/scripts/plan.ps1", "kind": "skill-script"},
+    {"source": ".codex/skills/planning-with-files/scripts/plan.py", "target": ".codex/skills/planning-with-files/scripts/plan.py", "kind": "skill-script"},
+    {"source": ".codex/skills/planning-with-files/scripts/plan.sh", "target": ".codex/skills/planning-with-files/scripts/plan.sh", "kind": "skill-script"},
+    {"source": ".codex/skills/planning-with-files/scripts/progress_lifecycle.py", "target": ".codex/skills/planning-with-files/scripts/progress_lifecycle.py", "kind": "skill-script"},
+    {"source": ".codex/skills/planning-with-files/scripts/resolve-plan-dir.ps1", "target": ".codex/skills/planning-with-files/scripts/resolve-plan-dir.ps1", "kind": "skill-script"},
+    {"source": ".codex/skills/planning-with-files/scripts/resolve-plan-dir.sh", "target": ".codex/skills/planning-with-files/scripts/resolve-plan-dir.sh", "kind": "skill-script"},
+    {"source": ".codex/skills/planning-with-files/scripts/session-catchup.py", "target": ".codex/skills/planning-with-files/scripts/session-catchup.py", "kind": "skill-script"},
+    {"source": ".codex/skills/planning-with-files/scripts/set-active-plan.ps1", "target": ".codex/skills/planning-with-files/scripts/set-active-plan.ps1", "kind": "skill-script"},
+    {"source": ".codex/skills/planning-with-files/scripts/set-active-plan.sh", "target": ".codex/skills/planning-with-files/scripts/set-active-plan.sh", "kind": "skill-script"},
+    {"source": ".codex/skills/planning-with-files/templates/findings.md", "target": ".codex/skills/planning-with-files/templates/findings.md", "kind": "template"},
+    {"source": ".codex/skills/planning-with-files/templates/progress.md", "target": ".codex/skills/planning-with-files/templates/progress.md", "kind": "template"},
+    {"source": ".codex/skills/planning-with-files/templates/task_plan.md", "target": ".codex/skills/planning-with-files/templates/task_plan.md", "kind": "template"},
+    {"source": ".codex/skills/planning-with-files/templates/zh-CN/findings.md", "target": ".codex/skills/planning-with-files/templates/zh-CN/findings.md", "kind": "template"},
+    {"source": ".codex/skills/planning-with-files/templates/zh-CN/progress.md", "target": ".codex/skills/planning-with-files/templates/zh-CN/progress.md", "kind": "template"},
+    {"source": ".codex/skills/planning-with-files/templates/zh-CN/task_plan.md", "target": ".codex/skills/planning-with-files/templates/zh-CN/task_plan.md", "kind": "template"}
+  ],
+  "owned_directory_globs": [
+    ".codex/skills/pwf-*"
+  ],
+  "hook_entries": [
+    {
+      "event": "SessionStart",
+      "matcher": "startup|resume|compact",
+      "type": "command",
+      "command": "python .codex/hooks/pwf/session_start.py",
+      "statusMessage": "Loading planning context"
+    },
+    {
+      "event": "UserPromptSubmit",
+      "type": "command",
+      "command": "python .codex/hooks/pwf/user_prompt_submit.py"
+    },
+    {
+      "event": "PreToolUse",
+      "matcher": "Bash|apply_patch|Edit|Write",
+      "type": "command",
+      "command": "python .codex/hooks/pwf/pre_tool_use.py",
+      "statusMessage": "Checking plan before tool use"
+    },
+    {
+      "event": "PostToolUse",
+      "matcher": "apply_patch|Edit|Write",
+      "type": "command",
+      "command": "python .codex/hooks/pwf/post_tool_use.py",
+      "statusMessage": "Recording tool context"
+    },
+    {
+      "event": "PreCompact",
+      "matcher": "*",
+      "type": "command",
+      "command": "python .codex/hooks/pwf/pre_compact.py",
+      "statusMessage": "Preparing planning context before compact"
+    },
+    {
+      "event": "Stop",
+      "type": "command",
+      "command": "python .codex/hooks/pwf/stop.py",
+      "timeout": 30
+    }
+  ],
+  "legacy_hook_commands": [
+    {"event": "SessionStart", "command": "python .codex/hooks/session_start.py"},
+    {"event": "UserPromptSubmit", "command": "python .codex/hooks/user_prompt_submit.py"},
+    {"event": "PreToolUse", "command": "python .codex/hooks/pre_tool_use.py"},
+    {"event": "PostToolUse", "command": "python .codex/hooks/post_tool_use.py"},
+    {"event": "PreCompact", "command": "python .codex/hooks/pre_compact.py"},
+    {"event": "Stop", "command": "python .codex/hooks/stop.py"}
+  ]
+}

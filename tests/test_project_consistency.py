@@ -35,6 +35,39 @@ class ProjectConsistencyTests(unittest.TestCase):
         self.assertIn("attestation", readme_cn)
         self.assertIn("attestation", readme_en)
 
+    def test_readmes_document_safe_installer(self):
+        readme_cn = read_text("README.md")
+        readme_en = read_text("README.en.md")
+
+        self.assertIn("install-pwf.ps1", readme_cn)
+        self.assertIn("install-pwf.ps1", readme_en)
+        self.assertIn("--dry-run", readme_cn)
+        self.assertIn("--dry-run", readme_en)
+        self.assertIn("docs/INSTALLATION.md", readme_cn)
+        self.assertIn("docs/INSTALLATION.md", readme_en)
+
+    def test_docs_document_current_hooks_feature_flag(self):
+        checked = {
+            "README.md": read_text("README.md"),
+            "README.en.md": read_text("README.en.md"),
+            "docs/FAQ.md": read_text("docs/FAQ.md"),
+            "docs/INSTALLATION.md": read_text("docs/INSTALLATION.md"),
+            "docs/USER_GUIDE.zh-CN.md": read_text("docs/USER_GUIDE.zh-CN.md"),
+        }
+        manifest = json.loads(read_text("installer/pwf_install_manifest.json"))
+
+        self.assertEqual("[features]\nhooks = true", read_text(".codex/config.toml").strip())
+        self.assertTrue(
+            any(item["target"] == ".codex/config.toml" for item in manifest["owned_files"])
+        )
+        for path, text in checked.items():
+            self.assertIn("[features]", text, path)
+            self.assertIn("hooks = true", text, path)
+            self.assertIn("Codex CLI", text, path)
+            self.assertIn("Codex App", text, path)
+            self.assertNotIn("codex_hooks = true", text, path)
+            self.assertNotIn("[features].codex_hooks = true", text, path)
+
     def test_readmes_link_chinese_localization_plan(self):
         readme_cn = read_text("README.md")
         readme_en = read_text("README.en.md")
@@ -275,11 +308,22 @@ class ProjectConsistencyTests(unittest.TestCase):
 
         referenced = []
         for command in commands:
-            referenced.extend(re.findall(r"\.codex/hooks/[A-Za-z0-9_]+\.py", command))
+            referenced.extend(re.findall(r"\.codex/hooks/(?:pwf/)?[A-Za-z0-9_]+\.py", command))
 
         self.assertTrue(referenced)
         for path in referenced:
             self.assertTrue((REPO_ROOT / path).is_file(), path)
+
+    def test_hooks_json_uses_namespaced_pwf_hooks(self):
+        hooks = json.loads(read_text(".codex/hooks.json"))
+        commands = [
+            command
+            for command in collect_commands(hooks)
+            if ".codex/hooks/" in command
+        ]
+
+        self.assertTrue(commands)
+        self.assertTrue(all(".codex/hooks/pwf/" in command for command in commands))
 
     def test_session_start_hook_matches_compact_source(self):
         hooks = json.loads(read_text(".codex/hooks.json"))
@@ -401,6 +445,13 @@ class ProjectConsistencyTests(unittest.TestCase):
         self.assertIn("中文", release_notes)
         self.assertIn("English", release_notes)
         self.assertIn(f"HelsincyPlanWithFiles-v{version}", release_notes)
+
+    def test_release_script_includes_safe_installer_files(self):
+        script = read_text("build-release.ps1")
+
+        self.assertIn("install-pwf.ps1", script)
+        self.assertIn("install-pwf.sh", script)
+        self.assertIn("installer", script)
 
     def test_released_compaction_hardening_is_recorded_in_0_2_0(self):
         changelog = read_text("CHANGELOG.md")

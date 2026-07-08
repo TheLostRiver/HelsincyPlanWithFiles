@@ -5,8 +5,8 @@
 .DESCRIPTION
   Produces two variants in dist/:
     HelsincyPlanWithFiles-v<version>-codex.zip
-        Install package: .codex/, docs/, README*, CHANGELOG, LICENSE, VERSION.
-        What an end user copies into their project.
+        Install package: installer, install wrappers, .codex payload, docs, README*, CHANGELOG, LICENSE, VERSION.
+        What an end user runs against their project.
     HelsincyPlanWithFiles-v<version>-full.zip
         Source package: everything in -codex plus tests/ and .gitignore.
         What a developer/contributor clones-equivalent wants.
@@ -59,13 +59,16 @@ $IncludeCommon = @(
     "README.md",
     "README.en.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "install-pwf.ps1",
+    "install-pwf.sh"
 )
 
 # Directories included in BOTH variants.
 $IncludeDirsBoth = @(
     ".codex",
-    "docs"
+    "docs",
+    "installer"
 )
 
 # Extra top-level files / dirs only in -full.

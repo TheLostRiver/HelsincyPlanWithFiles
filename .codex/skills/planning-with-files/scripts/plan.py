@@ -15,24 +15,65 @@ from typing import Any, Iterable
 
 CODEX_DIR = Path(__file__).resolve().parents[3]
 HOOKS_DIR = CODEX_DIR / "hooks"
+PWF_HOOKS_DIR = HOOKS_DIR / "pwf"
 SKILL_DIR = CODEX_DIR / "skills" / "planning-with-files"
 TEMPLATES_DIR = SKILL_DIR / "templates"
-if str(HOOKS_DIR) not in sys.path:
-    sys.path.insert(0, str(HOOKS_DIR))
+for import_dir in (HOOKS_DIR, PWF_HOOKS_DIR):
+    if str(import_dir) not in sys.path:
+        sys.path.insert(0, str(import_dir))
 
 import planning_state  # noqa: E402
 import progress_lifecycle  # noqa: E402
 import codex_hook_adapter  # noqa: E402
 
 
-REQUIRED_HOOK_ENTRYPOINTS = [
-    ".codex/hooks/session_start.py",
-    ".codex/hooks/user_prompt_submit.py",
-    ".codex/hooks/pre_tool_use.py",
-    ".codex/hooks/post_tool_use.py",
-    ".codex/hooks/pre_compact.py",
-    ".codex/hooks/stop.py",
-]
+PWF_CANONICAL_HOOKS = {
+    "SessionStart": ".codex/hooks/pwf/session_start.py",
+    "UserPromptSubmit": ".codex/hooks/pwf/user_prompt_submit.py",
+    "PreToolUse": ".codex/hooks/pwf/pre_tool_use.py",
+    "PostToolUse": ".codex/hooks/pwf/post_tool_use.py",
+    "PreCompact": ".codex/hooks/pwf/pre_compact.py",
+    "Stop": ".codex/hooks/pwf/stop.py",
+}
+PWF_LEGACY_HOOKS = {
+    "SessionStart": ".codex/hooks/session_start.py",
+    "UserPromptSubmit": ".codex/hooks/user_prompt_submit.py",
+    "PreToolUse": ".codex/hooks/pre_tool_use.py",
+    "PostToolUse": ".codex/hooks/post_tool_use.py",
+    "PreCompact": ".codex/hooks/pre_compact.py",
+    "Stop": ".codex/hooks/stop.py",
+}
+PWF_LEGACY_SHELL_FILES = {
+    ".codex/hooks/post-tool-use.sh",
+    ".codex/hooks/pre-compact.sh",
+    ".codex/hooks/pre-tool-use.sh",
+    ".codex/hooks/resolve-plan-dir.sh",
+    ".codex/hooks/session-start.sh",
+    ".codex/hooks/stop.sh",
+    ".codex/hooks/user-prompt-submit.sh",
+}
+PWF_WRAPPER_SKILL_DIRS = {
+    ".codex/skills/pwf-attest",
+    ".codex/skills/pwf-capture",
+    ".codex/skills/pwf-compact",
+    ".codex/skills/pwf-context-deep",
+    ".codex/skills/pwf-context-default",
+    ".codex/skills/pwf-context-expanded",
+    ".codex/skills/pwf-context-lean",
+    ".codex/skills/pwf-context-notice-auto",
+    ".codex/skills/pwf-context-notice-off",
+    ".codex/skills/pwf-context-notice-on",
+    ".codex/skills/pwf-context-status",
+    ".codex/skills/pwf-doctor",
+    ".codex/skills/pwf-init",
+    ".codex/skills/pwf-pause",
+    ".codex/skills/pwf-resume",
+    ".codex/skills/pwf-status",
+    ".codex/skills/pwf-switch",
+    ".codex/skills/pwf-tasks",
+    ".codex/skills/pwf-use",
+}
+INSTALL_STATE_PACKAGE = "HelsincyPlanWithFiles"
 DEFAULT_COMPACT_THRESHOLD = 100
 LEGACY_BIND_SESSION_UNSUPPORTED = (
     "legacy plans do not support session binding; create a named .planning task "
@@ -121,7 +162,13 @@ CLI_MESSAGES = {
         "help_switch": "Set or show active plan",
         "hook_files_missing": "hook files: missing {paths}",
         "hook_files_ok": "hook files: ok",
+        "hook_paths_legacy_warning": (
+            "hook paths: warning legacy PWF hook paths detected; run install-pwf to migrate hooks.json safely"
+        ),
         "hooks_json": "hooks.json: {status}",
+        "installer_state_invalid": "installer state: invalid",
+        "installer_state_missing": "installer state: not found",
+        "installer_state_ok": "installer state: version {version}, {count} files tracked",
         "language_unsupported": "language: warning unsupported PWF_LANG={lang}",
         "legacy_plan_label": "legacy plan",
         "missing_session_id": "session id: unavailable; set PWF_SESSION_ID or run from a hook payload",
@@ -229,7 +276,13 @@ CLI_MESSAGES = {
         "help_switch": "设置或显示当前计划",
         "hook_files_missing": "hook 文件: 缺失 {paths}",
         "hook_files_ok": "hook 文件: ok",
+        "hook_paths_legacy_warning": (
+            "hook paths: warning 检测到旧版 PWF hook 路径；请运行 install-pwf 安全迁移 hooks.json"
+        ),
         "hooks_json": "hooks.json: {status}",
+        "installer_state_invalid": "installer state: invalid",
+        "installer_state_missing": "installer state: not found",
+        "installer_state_ok": "installer state: version {version}, {count} files tracked",
         "language_unsupported": "language: warning unsupported PWF_LANG={lang}",
         "legacy_plan_label": "legacy plan",
         "missing_session_id": "session id: 不可用；请设置 PWF_SESSION_ID 或从 hook payload 运行",
@@ -503,6 +556,106 @@ def _load_hooks_json(root: Path) -> tuple[dict[str, Any] | None, str]:
 def _uses_python3(command: str) -> bool:
     words = command.replace("\\", "/").split()
     return bool(words and words[0].endswith("python3"))
+
+
+def _missing_hook_entrypoints(root: Path) -> list[str]:
+    missing = []
+    for event, canonical in PWF_CANONICAL_HOOKS.items():
+        legacy = PWF_LEGACY_HOOKS[event]
+        if (root / canonical).is_file() or (root / legacy).is_file():
+            continue
+        missing.append(canonical)
+    return missing
+
+
+def _uses_legacy_pwf_hook_paths(commands: Iterable[str]) -> bool:
+    legacy_paths = tuple(path.replace("\\", "/") for path in PWF_LEGACY_HOOKS.values())
+    for command in commands:
+        normalized = command.replace("\\", "/")
+        if any(path in normalized for path in legacy_paths):
+            return True
+    return False
+
+
+def _installer_state_file_allowed(path_text: str) -> bool:
+    normalized = path_text.replace("\\", "/")
+    wrapper_prefixes = tuple(f"{directory}/" for directory in PWF_WRAPPER_SKILL_DIRS)
+    return (
+        normalized == ".codex/config.toml"
+        or normalized.startswith(".codex/hooks/pwf/")
+        or normalized in PWF_LEGACY_SHELL_FILES
+        or normalized.startswith(".codex/skills/planning-with-files/")
+        or normalized.startswith(wrapper_prefixes)
+    )
+
+
+def _installer_state_hook_allowed(event: str, command: str) -> bool:
+    normalized = " ".join(command.replace("\\", "/").split())
+    allowed = {
+        event_name: {
+            f"python {canonical}",
+            f"python {legacy}",
+        }
+        for event_name, canonical in PWF_CANONICAL_HOOKS.items()
+        for legacy in (PWF_LEGACY_HOOKS[event_name],)
+    }
+    return normalized in allowed.get(event, set())
+
+
+def _validate_installer_state_payload(payload: Any) -> tuple[str, int]:
+    if not isinstance(payload, dict):
+        raise ValueError("root must be an object")
+    if type(payload.get("schema")) is not int or payload["schema"] != 1:
+        raise ValueError("schema must be 1")
+    package = payload.get("package")
+    if package != INSTALL_STATE_PACKAGE:
+        raise ValueError("package mismatch")
+    for field in ("version", "installed_at"):
+        if not isinstance(payload.get(field), str) or not payload[field]:
+            raise ValueError(f"{field} must be a non-empty string")
+    files = payload.get("files")
+    if not isinstance(files, list):
+        raise ValueError("files must be an array")
+    for index, item in enumerate(files):
+        if not isinstance(item, dict):
+            raise ValueError(f"files[{index}] must be an object")
+        path_text = item.get("path")
+        if not isinstance(path_text, str) or not path_text:
+            raise ValueError(f"files[{index}].path must be a non-empty string")
+        path = Path(path_text)
+        if path.is_absolute() or ".." in path.parts:
+            raise ValueError(f"files[{index}].path must be a safe relative path")
+        if not _installer_state_file_allowed(path_text):
+            raise ValueError(f"files[{index}].path is not a PWF-owned path")
+        if not isinstance(item.get("sha256"), str) or not item["sha256"]:
+            raise ValueError(f"files[{index}].sha256 must be a non-empty string")
+    hooks = payload.get("hooks")
+    if not isinstance(hooks, list):
+        raise ValueError("hooks must be an array")
+    for index, item in enumerate(hooks):
+        if not isinstance(item, dict):
+            raise ValueError(f"hooks[{index}] must be an object")
+        if not isinstance(item.get("event"), str) or not item["event"]:
+            raise ValueError(f"hooks[{index}].event must be a non-empty string")
+        if not isinstance(item.get("command"), str) or not item["command"]:
+            raise ValueError(f"hooks[{index}].command must be a non-empty string")
+        if not _installer_state_hook_allowed(item["event"], item["command"]):
+            raise ValueError(f"hooks[{index}].command is not a PWF-owned hook")
+    return str(payload.get("version")), len(files)
+
+
+def _installer_state_line(root: Path) -> tuple[str, bool]:
+    state_path = root / ".codex" / "pwf-install-state.json"
+    if not state_path.exists():
+        return _message("installer_state_missing"), True
+    if not state_path.is_file():
+        return _message("installer_state_invalid"), False
+    try:
+        payload = json.loads(state_path.read_text(encoding="utf-8"))
+        version_text, count = _validate_installer_state_payload(payload)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return _message("installer_state_invalid"), False
+    return _message("installer_state_ok", version=version_text, count=count), True
 
 
 def _short_digest(value: str | None) -> str:
@@ -1155,9 +1308,7 @@ def doctor(root: Path, *, verbose: bool = False, as_json: bool = False, strict: 
         lines.append(_message("hooks_json", status=hooks_status))
         ok = False
 
-    missing_hook_files = [
-        path for path in REQUIRED_HOOK_ENTRYPOINTS if not (root / path).is_file()
-    ]
+    missing_hook_files = _missing_hook_entrypoints(root)
     if missing_hook_files:
         lines.append(_message("hook_files_missing", paths=", ".join(missing_hook_files)))
         ok = False
@@ -1165,10 +1316,15 @@ def doctor(root: Path, *, verbose: bool = False, as_json: bool = False, strict: 
         lines.append(_message("hook_files_ok"))
 
     commands = _collect_hook_commands(hooks_payload) if hooks_payload is not None else []
+    if _uses_legacy_pwf_hook_paths(commands):
+        lines.append(_message("hook_paths_legacy_warning"))
     if any(_uses_python3(command) for command in commands):
         lines.append(_message("python_runtime_warning"))
     else:
         lines.append(_message("python_runtime_ok"))
+    installer_line, installer_ok = _installer_state_line(root)
+    lines.append(installer_line)
+    ok = ok and installer_ok
 
     lines.extend(_session_status_lines(root))
 

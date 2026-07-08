@@ -76,7 +76,7 @@ Helsincy Plan With Files 把这些易丢失的信息落到项目文件里，让�
 
 ## 核心工作流
 
-1. 把 `.codex/` 安装到目标项目根目录。
+1. 从 Release 包运行 `install-pwf.ps1`，先 dry-run 再安装到目标项目根目录。
 2. 运行 `/pwf-doctor` 检查 hooks 和命令是否可用。
 3. 用 `/pwf-init <task name>` 创建一个 planning 任务。
 4. 正常让 Codex 研究、修改、测试和总结。
@@ -122,44 +122,61 @@ $env:PWF_LANG="en"
 
 ## 安装
 
-推荐普通用户从 [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest) 下载最新的 `codex.zip` 安装包。这个包只包含安装到项目所需的 `.codex/`、hooks、`/pwf-*` commands 和基础文档。
+推荐普通用户从 [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest) 下载最新的 `codex.zip` 安装包。详细步骤见 [Installation Guide](docs/INSTALLATION.md)，里面分开说明了 Codex CLI 和 Codex App。
 
-### 方式 A：从 Release 下载
+### Codex CLI
 
-1. 打开 [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest)。
-2. 下载最新 Release 里的 `codex.zip` 安装包。
-3. 解压后，把里面的 `.codex/` 复制到你的项目根目录。
-4. 重启 Codex，第一次提示信任 hook 时选择批准。
-5. 在 Codex 中运行 `/pwf-doctor` 检查安装状态。
+1. 下载最新 Release 里的 `codex.zip` 安装包并解压。
+2. 先 dry-run：
 
-目标项目目录应类似这样：
+   ```powershell
+   .\install-pwf.ps1 -TargetPath C:\path\to\your-project -DryRun
+   ```
 
-```text
-your-project/
-  .codex/
-    hooks.json
-    hooks/
-    skills/
+3. 如果没有 conflict，再安装：
+
+   ```powershell
+   .\install-pwf.ps1 -TargetPath C:\path\to\your-project
+   ```
+
+4. 在目标项目中启动 Codex CLI。若当前环境禁用了 hooks，使用 `codex --enable hooks`。
+5. 信任项目和 hooks 后运行 `/pwf-doctor`。
+
+### Codex App
+
+1. 在 Codex App 中打开目标项目，并使用 Local mode。
+2. 从最新 Release 解压 `codex.zip`，对这个目标项目先 dry-run 再安装。
+3. 重新打开项目或新建 thread，让 App 重新加载项目本地 `.codex/`。
+4. 信任项目和 hooks 后运行 `/pwf-doctor`。
+
+安装包会为干净目标项目写入项目级 `.codex/config.toml`：
+
+```toml
+[features]
+hooks = true
 ```
 
-如果目标项目已经有 `.codex/`，请先备份或手动合并 `hooks.json`，避免覆盖已有的项目配置。
+不要再使用 `[features].codex_hooks`；这是 Codex 已弃用的旧别名。如果目标项目已有 `.codex/config.toml`，安装器会停止并报告 conflict，而不是盲目合并配置。请人工检查后把 `hooks = true` 加到已有 `[features]` 中，或在 CLI 启动时使用 `codex --enable hooks`。
 
-### 方式 B：从 git clone 安装
+安装器不会递归覆盖整个 `.codex/`。它会按 manifest 复制 PWF 自己拥有的文件，解析并合并 `.codex/hooks.json`，并把安装状态记录到 `.codex/pwf-install-state.json`。如果发现未知同名文件、无效 `hooks.json`，或已安装文件被本地修改，默认会停止并报告 conflict。
+
+### 从 git clone 安装
 
 适合想看源码、跑测试或参与开发的用户：
 
 ```powershell
 git clone https://github.com/TheLostRiver/HelsincyPlanWithFiles.git
-Copy-Item -Recurse -Force .\HelsincyPlanWithFiles\.codex .\your-project\
+.\HelsincyPlanWithFiles\install-pwf.ps1 -TargetPath .\your-project -DryRun
+.\HelsincyPlanWithFiles\install-pwf.ps1 -TargetPath .\your-project
 ```
 
-### 方式 C：下载源码 zip
+### 下载源码 zip
 
-也可以在 GitHub 页面点击 `Code` -> `Download ZIP` 下载完整源码。解压后同样只需要把 `.codex/` 复制到目标项目根目录。普通使用优先选择 Release 里的 `codex.zip`。
+也可以在 GitHub 页面点击 `Code` -> `Download ZIP` 下载完整源码。解压后同样使用 `install-pwf.ps1` 或 `install-pwf.sh` 安装。普通使用优先选择 Release 里的 `codex.zip`。
 
 ## Agent Slash Commands
 
-仓库提供 `.codex/skills/pwf-*` 本地 user-invocable skill wrapper。复制 `.codex/` 到目标项目后，这些命令会像 `/planning-with-files` 一样随项目生效，不需要安装到用户全局 `.codex`，卸载时删除项目内 `.codex/` 即可。
+仓库提供 `.codex/skills/pwf-*` 本地 user-invocable skill wrapper。通过 installer 安装到目标项目后，这些命令会像 `/planning-with-files` 一样随项目生效，不需要安装到用户全局 `.codex`。卸载时使用 `.\install-pwf.ps1 -TargetPath C:\path\to\your-project -Uninstall`，它只移除 install-state 记录的 PWF 文件和 hook 条目，不会删除 `.planning/`。
 
 第一批命令都使用 `/pwf-XXX` 命名，`pwf` 代表 planning with files：
 
