@@ -325,6 +325,22 @@ class ProjectConsistencyTests(unittest.TestCase):
         self.assertNotIn(f"HelsincyPlanWithFiles-v{version}-codex.zip", readme_cn)
         self.assertNotIn(f"HelsincyPlanWithFiles-v{version}-codex.zip", readme_en)
 
+    def test_readmes_include_project_badges(self):
+        readme_cn = read_text("README.md")
+        readme_en = read_text("README.en.md")
+
+        for readme in (readme_cn, readme_en):
+            for badge in (
+                "img.shields.io/badge/Codex_CLI-supported",
+                "img.shields.io/badge/Codex_App-supported",
+                "img.shields.io/badge/Windows-supported",
+                "img.shields.io/github/license/TheLostRiver/HelsincyPlanWithFiles",
+                "img.shields.io/github/issues-pr/TheLostRiver/HelsincyPlanWithFiles",
+                "img.shields.io/github/v/release/TheLostRiver/HelsincyPlanWithFiles",
+                "img.shields.io/github/downloads/TheLostRiver/HelsincyPlanWithFiles/total",
+            ):
+                self.assertIn(badge, readme)
+
     def test_faq_document_is_linked_and_covers_user_questions(self):
         readme_cn = read_text("README.md")
         readme_en = read_text("README.en.md")
