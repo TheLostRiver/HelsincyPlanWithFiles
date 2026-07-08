@@ -26,11 +26,7 @@ hook 会在会话开始、用户提交提示、工具调用前后和停止前读
 
 ### 3. 应该下载哪个 Release 包？
 
-普通用户优先下载：
-
-```text
-HelsincyPlanWithFiles-v0.2.7-codex.zip
-```
+普通用户优先从 GitHub 的 Latest Release 页面下载最新的 `codex.zip` 安装包。
 
 这个包只包含安装到目标项目所需的 `.codex/`、hooks、`/pwf-*` commands 和基础文档。
 
@@ -434,11 +430,7 @@ Hooks read or update those files at session start, user prompt submit, tool use,
 
 ### 3. Which release package should I download?
 
-Most users should download:
-
-```text
-HelsincyPlanWithFiles-v0.2.7-codex.zip
-```
+Most users should download the latest `codex.zip` installer package from the GitHub Latest Release page.
 
 It contains the `.codex/` directory, hooks, `/pwf-*` commands, and basic docs needed for project-local installation.
 

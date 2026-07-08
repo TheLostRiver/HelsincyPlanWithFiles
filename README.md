@@ -2,6 +2,14 @@
 
 [简体中文](README.md) | [English](README.en.md)
 
+[![Codex CLI](https://img.shields.io/badge/Codex_CLI-supported-00A67E)](README.md)
+[![Codex App](https://img.shields.io/badge/Codex_App-supported-00A67E)](README.md)
+[![Windows](https://img.shields.io/badge/Windows-supported-0078D4)](README.md)
+[![License](https://img.shields.io/github/license/TheLostRiver/HelsincyPlanWithFiles?label=license)](LICENSE)
+[![PRs](https://img.shields.io/github/issues-pr/TheLostRiver/HelsincyPlanWithFiles?label=PRs)](https://github.com/TheLostRiver/HelsincyPlanWithFiles/pulls)
+[![Version](https://img.shields.io/github/v/release/TheLostRiver/HelsincyPlanWithFiles?label=version)](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/TheLostRiver/HelsincyPlanWithFiles/total?label=downloads)](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest)
+
 Helsincy Plan With Files 是给 Codex 准备的“任务记忆本”。
 
 当你让 Codex 做一个很长的任务时，它可能会遇到几种麻烦：聊着聊着上下文变短、换了一个新会话后忘了做到哪一步、多个会话同时操作同一个项目时把进度写混。这个工具会在你的项目里保存任务计划、重要发现和执行进度，让 Codex 可以像翻自己的工作笔记一样找回状态。
@@ -114,12 +122,12 @@ $env:PWF_LANG="en"
 
 ## 安装
 
-推荐普通用户从 Release 下载 `HelsincyPlanWithFiles-v0.3.3-codex.zip`。这个包只包含安装到项目所需的 `.codex/`、hooks、`/pwf-*` commands 和基础文档。
+推荐普通用户从 [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest) 下载最新的 `codex.zip` 安装包。这个包只包含安装到项目所需的 `.codex/`、hooks、`/pwf-*` commands 和基础文档。
 
 ### 方式 A：从 Release 下载
 
 1. 打开 [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest)。
-2. 下载 `HelsincyPlanWithFiles-v0.3.3-codex.zip`。
+2. 下载最新 Release 里的 `codex.zip` 安装包。
 3. 解压后，把里面的 `.codex/` 复制到你的项目根目录。
 4. 重启 Codex，第一次提示信任 hook 时选择批准。
 5. 在 Codex 中运行 `/pwf-doctor` 检查安装状态。

@@ -2,6 +2,14 @@
 
 [简体中文](README.md) | [English](README.en.md)
 
+[![Codex CLI](https://img.shields.io/badge/Codex_CLI-supported-00A67E)](README.en.md)
+[![Codex App](https://img.shields.io/badge/Codex_App-supported-00A67E)](README.en.md)
+[![Windows](https://img.shields.io/badge/Windows-supported-0078D4)](README.en.md)
+[![License](https://img.shields.io/github/license/TheLostRiver/HelsincyPlanWithFiles?label=license)](LICENSE)
+[![PRs](https://img.shields.io/github/issues-pr/TheLostRiver/HelsincyPlanWithFiles?label=PRs)](https://github.com/TheLostRiver/HelsincyPlanWithFiles/pulls)
+[![Version](https://img.shields.io/github/v/release/TheLostRiver/HelsincyPlanWithFiles?label=version)](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/TheLostRiver/HelsincyPlanWithFiles/total?label=downloads)](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest)
+
 Helsincy Plan With Files gives Codex a project-local task notebook.
 
 When a Codex task gets long, the chat can lose early context, a later session may not remember where the work stopped, and multiple Codex conversations in the same project can accidentally mix their progress. This tool stores the task plan, useful findings, and progress log in project files so Codex can recover the work state instead of relying only on the current chat window.
@@ -114,12 +122,12 @@ Other `PWF_LANG` values fall back to English; `plan.py doctor` reports `language
 
 ## Installation
 
-For regular users, download `HelsincyPlanWithFiles-v0.3.3-codex.zip` from the release page. This package contains only the project-local `.codex/`, hooks, `/pwf-*` commands, and basic docs needed for installation.
+For regular users, download the latest `codex.zip` installer package from the [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest). This package contains only the project-local `.codex/`, hooks, `/pwf-*` commands, and basic docs needed for installation.
 
 ### Option A: Download From Release
 
 1. Open the [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest).
-2. Download `HelsincyPlanWithFiles-v0.3.3-codex.zip`.
+2. Download the latest Release's `codex.zip` installer package.
 3. Unzip it and copy the `.codex/` directory into your target project root.
 4. Restart Codex and approve the hooks when Codex asks for trust.
 5. Run `/pwf-doctor` in Codex to check the installation.

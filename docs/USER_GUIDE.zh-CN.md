@@ -43,16 +43,12 @@ progress.md    # 进度日志：什么时候做了什么，改了哪些文件
 
 ## 第一次安装
 
-普通用户推荐下载 release 里的这个包：
-
-```text
-HelsincyPlanWithFiles-v0.2.7-codex.zip
-```
+普通用户推荐从 GitHub 的 Latest Release 页面下载最新的 `codex.zip` 安装包。
 
 安装步骤：
 
 1. 打开 GitHub 的 Latest Release 页面。
-2. 下载 `HelsincyPlanWithFiles-v0.2.7-codex.zip`。
+2. 下载最新 Release 里的 `codex.zip` 安装包。
 3. 解压。
 4. 把解压出来的 `.codex/` 文件夹复制到你的项目根目录。
 5. 重启 Codex。
