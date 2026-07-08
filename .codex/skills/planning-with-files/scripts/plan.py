@@ -15,10 +15,12 @@ from typing import Any, Iterable
 
 CODEX_DIR = Path(__file__).resolve().parents[3]
 HOOKS_DIR = CODEX_DIR / "hooks"
+PWF_HOOKS_DIR = HOOKS_DIR / "pwf"
 SKILL_DIR = CODEX_DIR / "skills" / "planning-with-files"
 TEMPLATES_DIR = SKILL_DIR / "templates"
-if str(HOOKS_DIR) not in sys.path:
-    sys.path.insert(0, str(HOOKS_DIR))
+for import_dir in (HOOKS_DIR, PWF_HOOKS_DIR):
+    if str(import_dir) not in sys.path:
+        sys.path.insert(0, str(import_dir))
 
 import planning_state  # noqa: E402
 import progress_lifecycle  # noqa: E402
@@ -579,7 +581,8 @@ def _installer_state_file_allowed(path_text: str) -> bool:
     normalized = path_text.replace("\\", "/")
     wrapper_prefixes = tuple(f"{directory}/" for directory in PWF_WRAPPER_SKILL_DIRS)
     return (
-        normalized.startswith(".codex/hooks/pwf/")
+        normalized == ".codex/config.toml"
+        or normalized.startswith(".codex/hooks/pwf/")
         or normalized in PWF_LEGACY_SHELL_FILES
         or normalized.startswith(".codex/skills/planning-with-files/")
         or normalized.startswith(wrapper_prefixes)

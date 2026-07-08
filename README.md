@@ -122,47 +122,45 @@ $env:PWF_LANG="en"
 
 ## 安装
 
-推荐普通用户从 [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest) 下载最新的 `codex.zip` 安装包。这个包包含安全安装器、项目本地 `.codex/` payload、hooks、`/pwf-*` commands 和基础文档。
+推荐普通用户从 [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest) 下载最新的 `codex.zip` 安装包。详细步骤见 [Installation Guide](docs/INSTALLATION.md)，里面分开说明了 Codex CLI 和 Codex App。
 
-### 方式 A：从 Release 下载
+### Codex CLI
 
-1. 打开 [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest)。
-2. 下载最新 Release 里的 `codex.zip` 安装包。
-3. 解压到任意临时目录。
-4. 先预览安装：
+1. 下载最新 Release 里的 `codex.zip` 安装包并解压。
+2. 先 dry-run：
 
    ```powershell
    .\install-pwf.ps1 -TargetPath C:\path\to\your-project -DryRun
    ```
 
-   POSIX shell 环境也可以使用：
-
-   ```bash
-   sh ./install-pwf.sh --target /path/to/your-project --dry-run
-   ```
-
-5. 如果 dry-run 没有报告 conflict，再执行安装：
+3. 如果没有 conflict，再安装：
 
    ```powershell
    .\install-pwf.ps1 -TargetPath C:\path\to\your-project
    ```
 
-6. 重启 Codex，第一次提示信任 hook 时选择批准。
-7. 在目标项目中运行 `/pwf-doctor` 检查安装状态。
+4. 在目标项目中启动 Codex CLI。若当前环境禁用了 hooks，使用 `codex --enable hooks`。
+5. 信任项目和 hooks 后运行 `/pwf-doctor`。
 
-目标项目目录应类似这样：
+### Codex App
 
-```text
-your-project/
-  .codex/
-    hooks.json
-    hooks/
-    skills/
+1. 在 Codex App 中打开目标项目，并使用 Local mode。
+2. 从最新 Release 解压 `codex.zip`，对这个目标项目先 dry-run 再安装。
+3. 重新打开项目或新建 thread，让 App 重新加载项目本地 `.codex/`。
+4. 信任项目和 hooks 后运行 `/pwf-doctor`。
+
+安装包会为干净目标项目写入项目级 `.codex/config.toml`：
+
+```toml
+[features]
+hooks = true
 ```
+
+不要再使用 `[features].codex_hooks`；这是 Codex 已弃用的旧别名。如果目标项目已有 `.codex/config.toml`，安装器会停止并报告 conflict，而不是盲目合并配置。请人工检查后把 `hooks = true` 加到已有 `[features]` 中，或在 CLI 启动时使用 `codex --enable hooks`。
 
 安装器不会递归覆盖整个 `.codex/`。它会按 manifest 复制 PWF 自己拥有的文件，解析并合并 `.codex/hooks.json`，并把安装状态记录到 `.codex/pwf-install-state.json`。如果发现未知同名文件、无效 `hooks.json`，或已安装文件被本地修改，默认会停止并报告 conflict。
 
-### 方式 B：从 git clone 安装
+### 从 git clone 安装
 
 适合想看源码、跑测试或参与开发的用户：
 
@@ -172,7 +170,7 @@ git clone https://github.com/TheLostRiver/HelsincyPlanWithFiles.git
 .\HelsincyPlanWithFiles\install-pwf.ps1 -TargetPath .\your-project
 ```
 
-### 方式 C：下载源码 zip
+### 下载源码 zip
 
 也可以在 GitHub 页面点击 `Code` -> `Download ZIP` 下载完整源码。解压后同样使用 `install-pwf.ps1` 或 `install-pwf.sh` 安装。普通使用优先选择 Release 里的 `codex.zip`。
 

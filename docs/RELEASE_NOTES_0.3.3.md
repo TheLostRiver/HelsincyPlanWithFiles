@@ -10,7 +10,7 @@ HelsincyPlanWithFiles-v0.3.3-codex.zip
 
 Use the `full.zip` package or a source checkout only when you need repository history, tests, and development files.
 
-`v0.3.3` is a feature and reliability release focused on default findings context injection and compact recovery. It enables `findings.md` tail injection by default in `SessionStart` and `UserPromptSubmit`, routes Codex compact recovery through the normal context renderer, separates user-visible context notices from agent-injected data, and improves the semantics of blocked-context notices.
+`v0.3.3` is a feature and reliability release focused on safer installation, default findings context injection, and compact recovery. It enables `findings.md` tail injection by default in `SessionStart` and `UserPromptSubmit`, routes Codex compact recovery through the normal context renderer, separates user-visible context notices from agent-injected data, updates hook feature-flag docs to `[features] hooks = true`, and improves the semantics of blocked-context notices.
 
 ## 中文
 
@@ -20,12 +20,20 @@ Use the `full.zip` package or a source checkout only when you need repository hi
 
 同时，Codex 上下文压缩后的恢复路径也没有走正常的 context renderer，压缩后注入的 planning context 可能不完整。context injection notice 作为 hook message 和注入给 agent 的 `additionalContext` 混在一起，既浪费 token 又可能干扰 agent 理解。
 
-这个版本做了四件事：
+这个版本做了五件事：
 
-1. 默认注入 `findings.md` 有界 tail，保留显式关闭。
-2. 压缩恢复复用正常 context renderer。
-3. context notice 从 agent 注入数据中分离出来。
-4. blocked context 通知的语义更准确。
+1. 安装路线区分 Codex CLI 和 Codex App，并使用安全 installer。
+2. 默认注入 `findings.md` 有界 tail，保留显式关闭。
+3. 压缩恢复复用正常 context renderer。
+4. context notice 从 agent 注入数据中分离出来。
+5. blocked context 通知的语义更准确。
+
+### 安装更安全
+
+- 普通用户使用 Release 包里的 `install-pwf.ps1` / `install-pwf.sh`，先 dry-run 再安装，不再手动覆盖整个 `.codex/`。
+- 干净目标项目会获得项目级 `.codex/config.toml`，内容使用官方当前的 `[features] hooks = true`。
+- 不再推荐 `[features].codex_hooks`；这是 Codex 已弃用的旧别名。
+- 如果目标项目已有 `.codex/config.toml`，安装器会停止并报告 conflict，请人工检查后添加 `hooks = true` 或用 `codex --enable hooks` 启动 CLI。
 
 ### findings 默认注入
 
@@ -66,7 +74,7 @@ Codex 的 `SessionStart` hook 现在覆盖 `compact` source。
 
 ### 升级
 
-从 `v0.3.2` 升级：直接覆盖目标项目里的 `.codex/`，保留你的 `.planning/` 数据即可。推荐普通用户下载：
+从 `v0.3.2` 升级：使用 Release 包里的安全 installer，先 dry-run，再安装到目标项目；保留你的 `.planning/` 数据。推荐普通用户下载：
 
 ```text
 HelsincyPlanWithFiles-v0.3.3-codex.zip
@@ -80,12 +88,20 @@ Before `v0.3.3`, injecting `findings.md` content required explicitly setting `PW
 
 At the same time, Codex compact recovery did not route through the normal context renderer, so injected planning context after compaction could be inconsistent. Context injection notices were mixed into the same `additionalContext` payload sent to the agent, wasting tokens and potentially confusing the agent's understanding of injected data.
 
-This release makes four changes:
+This release makes five changes:
 
-1. Enables bounded `findings.md` tail injection by default, with an explicit opt-out.
-2. Routes Codex compact recovery through the normal context renderer.
-3. Separates user-visible context notices from agent-injected data.
-4. Improves the semantics of blocked-context notices.
+1. Splits installation into Codex CLI and Codex App flows using the safe installer.
+2. Enables bounded `findings.md` tail injection by default, with an explicit opt-out.
+3. Routes Codex compact recovery through the normal context renderer.
+4. Separates user-visible context notices from agent-injected data.
+5. Improves the semantics of blocked-context notices.
+
+### Safer installation
+
+- Regular users should run `install-pwf.ps1` / `install-pwf.sh` from the release package, dry-run first, and avoid manually overwriting the whole `.codex/`.
+- Clean target projects receive project-level `.codex/config.toml` with the current official `[features] hooks = true` setting.
+- New docs and examples no longer recommend `[features].codex_hooks`; it is a deprecated Codex alias.
+- If the target project already has `.codex/config.toml`, the installer stops and reports a conflict. Review the existing file and add `hooks = true`, or start the CLI with `codex --enable hooks`.
 
 ### Findings injection is now default
 
@@ -126,7 +142,7 @@ The `.planning/` data format is unchanged; no migration of existing tasks is req
 
 ### Upgrade
 
-From `v0.3.2`: overwrite the target project's `.codex/` directory and keep your existing `.planning/` data. The recommended package for regular users is:
+From `v0.3.2`: run the safe installer from the release package, dry-run first, then install into the target project. Keep your existing `.planning/` data. The recommended package for regular users is:
 
 ```text
 HelsincyPlanWithFiles-v0.3.3-codex.zip

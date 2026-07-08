@@ -2,6 +2,10 @@
 
 ## 0.3.3 - 2026-06-19
 
+- 中文：安装文档改为区分 Codex CLI 和 Codex App；安装包为干净项目写入项目级 `.codex/config.toml`，使用官方当前的 `[features] hooks = true`，并明确不再推荐已弃用的 `[features].codex_hooks`。
+- English: Split installation docs into Codex CLI and Codex App flows; the installer package now writes project-level `.codex/config.toml` with the current official `[features] hooks = true` setting for clean projects and no longer recommends deprecated `[features].codex_hooks`.
+- 中文：修复安装到干净项目后 `plan.py doctor` 不能加载 namespaced hook helper 的问题，并让 doctor 接受 install-state 中记录的 `.codex/config.toml`。
+- English: Fixed installed `plan.py doctor` so it can load namespaced hook helpers in clean target projects, and taught doctor to accept `.codex/config.toml` in install-state.
 - 中文：新增 manifest 驱动的安全安装器，默认合并 `.codex/hooks.json`、记录 `.codex/pwf-install-state.json`，并在遇到未知同名文件时停止，避免直接复制 `.codex/` 覆盖项目已有配置。
 - English: Added a manifest-driven safe installer that merges `.codex/hooks.json`, records `.codex/pwf-install-state.json`, and stops on unknown same-path files so users no longer need to copy `.codex/` over existing project configuration.
 

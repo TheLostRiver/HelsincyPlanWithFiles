@@ -2,6 +2,7 @@
   "schema": 1,
   "package": "HelsincyPlanWithFiles",
   "owned_files": [
+    {"source": ".codex/config.toml", "target": ".codex/config.toml", "kind": "config"},
     {"source": ".codex/hooks/pwf/session_start.py", "target": ".codex/hooks/pwf/session_start.py", "kind": "hook"},
     {"source": ".codex/hooks/pwf/user_prompt_submit.py", "target": ".codex/hooks/pwf/user_prompt_submit.py", "kind": "hook"},
     {"source": ".codex/hooks/pwf/pre_tool_use.py", "target": ".codex/hooks/pwf/pre_tool_use.py", "kind": "hook"},

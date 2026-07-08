@@ -43,6 +43,30 @@ class ProjectConsistencyTests(unittest.TestCase):
         self.assertIn("install-pwf.ps1", readme_en)
         self.assertIn("--dry-run", readme_cn)
         self.assertIn("--dry-run", readme_en)
+        self.assertIn("docs/INSTALLATION.md", readme_cn)
+        self.assertIn("docs/INSTALLATION.md", readme_en)
+
+    def test_docs_document_current_hooks_feature_flag(self):
+        checked = {
+            "README.md": read_text("README.md"),
+            "README.en.md": read_text("README.en.md"),
+            "docs/FAQ.md": read_text("docs/FAQ.md"),
+            "docs/INSTALLATION.md": read_text("docs/INSTALLATION.md"),
+            "docs/USER_GUIDE.zh-CN.md": read_text("docs/USER_GUIDE.zh-CN.md"),
+        }
+        manifest = json.loads(read_text("installer/pwf_install_manifest.json"))
+
+        self.assertEqual("[features]\nhooks = true", read_text(".codex/config.toml").strip())
+        self.assertTrue(
+            any(item["target"] == ".codex/config.toml" for item in manifest["owned_files"])
+        )
+        for path, text in checked.items():
+            self.assertIn("[features]", text, path)
+            self.assertIn("hooks = true", text, path)
+            self.assertIn("Codex CLI", text, path)
+            self.assertIn("Codex App", text, path)
+            self.assertNotIn("codex_hooks = true", text, path)
+            self.assertNotIn("[features].codex_hooks = true", text, path)
 
     def test_readmes_link_chinese_localization_plan(self):
         readme_cn = read_text("README.md")

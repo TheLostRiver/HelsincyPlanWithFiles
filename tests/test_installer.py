@@ -59,6 +59,15 @@ class InstallerManifestTests(unittest.TestCase):
         self.assertIn("python .codex/hooks/pwf/session_start.py", commands)
         self.assertTrue(all(".codex/hooks/pwf/" in command for command in commands))
 
+    def test_manifest_declares_project_hooks_feature_config(self):
+        module = load_installer()
+        manifest = module.load_manifest(REPO_ROOT / "installer" / "pwf_install_manifest.json")
+
+        self.assertIn(
+            module.OwnedFile(".codex/config.toml", ".codex/config.toml", "config"),
+            manifest.owned_files,
+        )
+
 
 class InstallerFilePlanTests(unittest.TestCase):
     def test_missing_target_file_is_planned_for_copy(self):
@@ -406,6 +415,49 @@ class InstallerApplyTests(unittest.TestCase):
             state = json.loads((target / ".codex/pwf-install-state.json").read_text(encoding="utf-8"))
             self.assertEqual("0.3.4", state["version"])
             self.assertEqual(".codex/hooks/pwf/session_start.py", state["files"][0]["path"])
+
+    def test_repo_install_writes_hooks_config_and_plan_doctor_runs(self):
+        module = load_installer()
+        manifest = module.load_manifest(REPO_ROOT / "installer" / "pwf_install_manifest.json")
+        version = (REPO_ROOT / "VERSION").read_text(encoding="utf-8").strip()
+        with tempfile.TemporaryDirectory() as target_dir:
+            target = Path(target_dir)
+
+            result = module.install(REPO_ROOT, target, manifest, version=version, dry_run=False)
+
+            self.assertEqual(0, result.exit_code, "\n".join(result.messages))
+            config = (target / ".codex/config.toml").read_text(encoding="utf-8")
+            self.assertIn("[features]", config)
+            self.assertIn("hooks = true", config)
+            init = subprocess.run(
+                [
+                    sys.executable,
+                    str(target / ".codex/skills/planning-with-files/scripts/plan.py"),
+                    "init",
+                    "Install Smoke",
+                    "--no-bind-session",
+                ],
+                cwd=target,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(0, init.returncode, init.stdout + init.stderr)
+            doctor = subprocess.run(
+                [
+                    sys.executable,
+                    str(target / ".codex/skills/planning-with-files/scripts/plan.py"),
+                    "doctor",
+                ],
+                cwd=target,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(0, doctor.returncode, doctor.stdout + doctor.stderr)
+            self.assertIn("hooks.json: ok", doctor.stdout)
+            self.assertIn("hook files: ok", doctor.stdout)
 
     def test_install_aborts_before_writing_when_conflict_exists(self):
         module = load_installer()

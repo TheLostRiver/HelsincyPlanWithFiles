@@ -122,47 +122,45 @@ Other `PWF_LANG` values fall back to English; `plan.py doctor` reports `language
 
 ## Installation
 
-For regular users, download the latest `codex.zip` installer package from the [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest). This package contains the safe installer, project-local `.codex/` payload, hooks, `/pwf-*` commands, and basic docs needed for installation.
+For regular users, download the latest `codex.zip` installer package from the [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest). See the [Installation Guide](docs/INSTALLATION.md) for separate Codex CLI and Codex App steps.
 
-### Option A: Download From Release
+### Codex CLI
 
-1. Open the [Latest Release](https://github.com/TheLostRiver/HelsincyPlanWithFiles/releases/latest).
-2. Download the latest Release's `codex.zip` installer package.
-3. Extract it to a temporary directory.
-4. Preview the install:
+1. Download and extract the latest Release's `codex.zip` installer package.
+2. Preview the install:
 
    ```powershell
    .\install-pwf.ps1 -TargetPath C:\path\to\your-project -DryRun
    ```
 
-   In a POSIX shell, use:
-
-   ```bash
-   sh ./install-pwf.sh --target /path/to/your-project --dry-run
-   ```
-
-5. If dry-run reports no conflicts, install:
+3. If dry-run reports no conflicts, install:
 
    ```powershell
    .\install-pwf.ps1 -TargetPath C:\path\to\your-project
    ```
 
-6. Restart Codex and approve hooks when prompted.
-7. Run `/pwf-doctor` inside the target project.
+4. Start Codex CLI in the target project. If hooks are disabled in your environment, use `codex --enable hooks`.
+5. Trust the project and hooks, then run `/pwf-doctor`.
 
-The target project should look like this:
+### Codex App
 
-```text
-your-project/
-  .codex/
-    hooks.json
-    hooks/
-    skills/
+1. Open the target project in Codex App and use Local mode.
+2. Extract the latest Release's `codex.zip`, then dry-run and install into that target project.
+3. Reopen the project or start a new thread so the app reloads project-local `.codex/`.
+4. Trust the project and hooks, then run `/pwf-doctor`.
+
+For clean target projects, the installer writes project-level `.codex/config.toml`:
+
+```toml
+[features]
+hooks = true
 ```
+
+Do not use `[features].codex_hooks` in new docs or examples; it is a deprecated Codex alias. If the target project already has `.codex/config.toml`, the installer stops and reports a conflict instead of merging config blindly. Review the existing file and add `hooks = true` under `[features]`, or start the CLI with `codex --enable hooks`.
 
 The installer does not recursively overwrite the whole `.codex/` directory. It copies only files declared as PWF-owned in the manifest, parses and merges `.codex/hooks.json`, and records install state in `.codex/pwf-install-state.json`. If it finds an unknown same-path file, invalid `hooks.json`, or a locally modified installed file, it stops and reports a conflict by default.
 
-### Option B: Install From git clone
+### Install From git clone
 
 Use this path if you want to inspect source code, run tests, or contribute:
 
@@ -172,7 +170,7 @@ git clone https://github.com/TheLostRiver/HelsincyPlanWithFiles.git
 .\HelsincyPlanWithFiles\install-pwf.ps1 -TargetPath .\your-project
 ```
 
-### Option C: Download Source ZIP
+### Download Source ZIP
 
 You can also use `Code` -> `Download ZIP` on GitHub to download the full source. After extracting it, install with `install-pwf.ps1` or `install-pwf.sh`. For normal use, prefer the release `codex.zip` package.
 

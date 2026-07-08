@@ -34,7 +34,7 @@ hook 会在会话开始、用户提交提示、工具调用前后和停止前读
 
 ### 4. 怎么安装到我的项目？
 
-解压 Release 包后，先在解压目录里预览安装：
+Codex CLI 和 Codex App 的详细步骤见 [Installation Guide](INSTALLATION.md)。共同原则是：解压 Release 包后，先在解压目录里预览安装：
 
 ```powershell
 .\install-pwf.ps1 -TargetPath C:\path\to\your-project -DryRun
@@ -53,7 +53,16 @@ sh ./install-pwf.sh --target /path/to/your-project --dry-run
 sh ./install-pwf.sh --target /path/to/your-project
 ```
 
-安装后重启 Codex，并在首次提示信任 hook 时批准。
+Codex CLI 用户在目标项目里启动 Codex；如果当前环境禁用了 hooks，使用 `codex --enable hooks`。Codex App 用户重新打开目标项目或新建 thread，让 App 重新加载项目本地 `.codex/`。首次提示信任项目或 hook 时批准。
+
+安装包会给干净目标项目写入项目级 `.codex/config.toml`：
+
+```toml
+[features]
+hooks = true
+```
+
+不要再使用 `[features].codex_hooks`，这是 Codex 已弃用的旧别名。目标项目已有 `.codex/config.toml` 时，安装器会停止并报告 conflict；请人工检查后把 `hooks = true` 加到已有 `[features]` 中，或在 CLI 启动时使用 `codex --enable hooks`。
 
 目标项目大致如下：
 
@@ -67,7 +76,7 @@ your-project/
 
 #### 我的项目已经有 `.codex/`，还能安装吗？
 
-可以。请使用 `install-pwf.ps1 -DryRun` 先预览。安装器会合并 `hooks.json`，不会覆盖未知文件；如果存在同名未知文件、无效 `hooks.json`，或已安装文件被本地修改，它会停止并报告 conflict。
+可以。请使用 `install-pwf.ps1 -DryRun` 先预览。安装器会合并 `hooks.json`，不会覆盖未知文件；如果存在同名未知文件、已有 `.codex/config.toml`、无效 `hooks.json`，或已安装文件被本地修改，它会停止并报告 conflict。
 
 ### 5. `/pwf-*` 命令看不到怎么办？
 
@@ -459,7 +468,7 @@ Use `full.zip` or the GitHub source zip only if you want source code, tests, and
 
 ### 4. How do I install it into my project?
 
-After extracting the release package, preview the install from the extracted directory:
+See the [Installation Guide](INSTALLATION.md) for separate Codex CLI and Codex App steps. The common flow is to preview the install from the extracted release directory:
 
 ```powershell
 .\install-pwf.ps1 -TargetPath C:\path\to\your-project -DryRun
@@ -478,7 +487,16 @@ sh ./install-pwf.sh --target /path/to/your-project --dry-run
 sh ./install-pwf.sh --target /path/to/your-project
 ```
 
-After installing, restart Codex and approve the hook trust prompt.
+Codex CLI users should start Codex in the target project; if hooks are disabled in the current environment, use `codex --enable hooks`. Codex App users should reopen the project or start a new thread so the app reloads project-local `.codex/`. Approve the project or hook trust prompt when Codex asks.
+
+For clean target projects, the installer writes project-level `.codex/config.toml`:
+
+```toml
+[features]
+hooks = true
+```
+
+Do not use `[features].codex_hooks` in new docs or examples; it is a deprecated Codex alias. If the target project already has `.codex/config.toml`, the installer stops and reports a conflict. Review the existing file and add `hooks = true` under `[features]`, or start the CLI with `codex --enable hooks`.
 
 Your target project should look like this:
 
@@ -492,7 +510,7 @@ your-project/
 
 #### Can I install if my project already has `.codex/`?
 
-Yes. Run `install-pwf.ps1 -DryRun` first. The installer merges `hooks.json` and does not overwrite unknown files. If it finds an unknown same-path file, invalid `hooks.json`, or a locally modified installed file, it stops and reports a conflict.
+Yes. Run `install-pwf.ps1 -DryRun` first. The installer merges `hooks.json` and does not overwrite unknown files. If it finds an unknown same-path file, an existing `.codex/config.toml`, invalid `hooks.json`, or a locally modified installed file, it stops and reports a conflict.
 
 ### 5. What if `/pwf-*` commands do not appear?
 

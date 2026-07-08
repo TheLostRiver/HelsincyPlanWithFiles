@@ -43,7 +43,7 @@ progress.md    # 进度日志：什么时候做了什么，改了哪些文件
 
 ## 第一次安装
 
-普通用户推荐从 GitHub 的 Latest Release 页面下载最新的 `codex.zip` 安装包。
+普通用户推荐从 GitHub 的 Latest Release 页面下载最新的 `codex.zip` 安装包。更详细的 Codex CLI / Codex App 分流步骤见 [Installation Guide](INSTALLATION.md)。
 
 安装步骤：
 
@@ -68,8 +68,9 @@ progress.md    # 进度日志：什么时候做了什么，改了哪些文件
    .\install-pwf.ps1 -TargetPath C:\path\to\your-project
    ```
 
-6. 重启 Codex。
-7. 如果 Codex 提示是否信任 hooks，选择允许或批准。
+6. 如果你使用 Codex CLI，在目标项目里启动 Codex；当前环境禁用 hooks 时，用 `codex --enable hooks` 启动。
+7. 如果你使用 Codex App，重新打开目标项目或新建 thread，让 App 重新加载项目本地 `.codex/`。
+8. 如果 Codex 提示是否信任项目或 hooks，选择允许或批准。
 
 你的项目大概会变成这样：
 
@@ -79,7 +80,7 @@ your-project/
   你的其他文件...
 ```
 
-如果你的项目本来就有 `.codex/` 文件夹，请先运行 dry-run。安装器会合并 `hooks.json`，不会递归覆盖整个 `.codex/`；如果发现未知同名文件、无效 `hooks.json`，或已安装文件被本地修改，它会停止并报告 conflict。
+安装包会给干净目标项目写入项目级 `.codex/config.toml`，使用 `[features] hooks = true` 启用 hooks。不要再使用 `[features].codex_hooks`，这是 Codex 已弃用的旧别名。如果你的项目本来就有 `.codex/` 文件夹，请先运行 dry-run。安装器会合并 `hooks.json`，不会递归覆盖整个 `.codex/`；如果发现未知同名文件、已有 `.codex/config.toml`、无效 `hooks.json`，或已安装文件被本地修改，它会停止并报告 conflict。
 
 ## 安装后先做什么？
 
