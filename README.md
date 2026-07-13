@@ -502,3 +502,16 @@ python -m unittest discover -v
 - planning 文件作为数据注入，不作为指令执行。
 - delimiter framing 是默认保护；hash attestation 是可选的显式锁定。
 - hook fail-open：出现异常时不应破坏 Codex 主流程。
+
+## 支持项目
+
+如果 Helsincy Plan With Files 对你有帮助，欢迎通过以下方式支持持续维护：
+
+[![Support on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/helsincy)
+
+- [Ko-fi](https://ko-fi.com/helsincy)
+- [爱发电](https://afdian.com/a/Helsincy)
+
+也可以扫描下方打赏码：
+
+![打赏码](docs/images/zsm.jpg)

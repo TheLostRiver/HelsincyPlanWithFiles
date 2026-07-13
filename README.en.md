@@ -502,3 +502,16 @@ The tests cover:
 - Planning files are injected as data, not executable instructions.
 - Delimiter framing is enabled by default; hash attestation is optional explicit locking.
 - Hooks fail open: errors should not break the main Codex workflow.
+
+## Support the Project
+
+If Helsincy Plan With Files is useful to you, support its continued maintenance through either option below:
+
+[![Support on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/helsincy)
+
+- [Ko-fi](https://ko-fi.com/helsincy)
+- [Afdian](https://afdian.com/a/Helsincy)
+
+You can also scan this donation code:
+
+![Donation code](docs/images/zsm.jpg)
